@@ -18,8 +18,8 @@ class Checkpoint(val id: Int, val x: Float, val y: Float, val z: Float) {
     var sortKey = 0f
 }
 
-class Portal(val x: Float, val y: Float, val z: Float, val isEnd: Boolean,
-             val destX: Float = 0f, val destY: Float = 0f, val destZ: Float = 0f) {
+/** The Ancient Gate at the top of the tower (level exit). */
+class Portal(val x: Float, val y: Float, val z: Float) {
     var sortKey = 0f
     var charge = 0f
 }
@@ -28,12 +28,12 @@ class Portal(val x: Float, val y: Float, val z: Float, val isEnd: Boolean,
 class Section(val name: String, val z0: Int, val z1: Int, val originX: Float)
 
 object Ev {
-    const val STORM = 1; const val CHASE = 2; const val DRAGON = 3; const val COLLAPSE = 4; const val LAVA = 5
-    const val HINT_TARGET = 6; const val HINT_JUMP = 7; const val HINT_TOOLS = 8; const val HINT_FORK = 9; const val CHASE_END = 10
-    const val STORM_END = 11; const val LAVA_STOP = 12; const val HINT_BLOCK = 13
+    const val CHASE = 2; const val COLLAPSE = 4; const val LAVA = 5
+    const val HINT_TARGET = 6; const val HINT_JUMP = 7; const val HINT_TOOLS = 8; const val FORK = 9; const val CHASE_END = 10
+    const val LAVA_STOP = 12; const val HINT_BLOCK = 13; const val FINAL = 14; const val TRAPS = 15; const val ZONE = 16
 }
 
-class Trigger(val z: Float, val xMin: Float, val xMax: Float, val event: Int) {
+class Trigger(val z: Float, val xMin: Float, val xMax: Float, val event: Int, val text: String = "", val text2: String = "") {
     var fired = false
 }
 

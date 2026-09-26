@@ -10,6 +10,8 @@ class Art(p: Platform) {
     val boy = p.loadImage("img/boy.png")
     /** Boy sprite placement in the original artwork (for sizing). */
     val boyArtX = 410f; val boyArtY = 774f
+    /** The same boy artwork cut into animatable parts. */
+    val rig = BoyRig.build(p, p.loadPixels("img/boy.png"))
 
     val coin = p.loadImage("img/coin.png")
     val heartFull = p.loadImage("img/heart_full.png")

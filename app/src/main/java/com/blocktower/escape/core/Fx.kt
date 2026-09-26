@@ -15,7 +15,8 @@ class Particle {
     @JvmField var grow = 0f
 }
 
-object PK { const val SPARK = 0; const val SHARD = 1; const val DUST = 2; const val EMBER = 3; const val STAR = 4; const val FIRE = 5; const val RAIN = 6 }
+object PK { const val SPARK = 0; const val SHARD = 1; const val DUST = 2; const val EMBER = 3; const val STAR = 4; const val FIRE = 5
+    const val CONFETTI = 7; const val STREAK = 8 }
 
 /** Screen-space item flying to a HUD counter. */
 class Flyer {
@@ -42,6 +43,11 @@ class Banner(val line1: String, val line2: String, val color: Int, val dur: Floa
     var t = 0f
 }
 
+/** Small message under the top bar (zone names, objective updates). */
+class Toast(val text: String, val sub: String, val color: Int, val dur: Float) {
+    var t = 0f
+}
+
 class ScreenRing {
     @JvmField var active = false
     @JvmField var x = 0f; @JvmField var y = 0f
@@ -56,6 +62,7 @@ class Fx {
     val popups = Array(24) { Popup() }
     val rings = Array(16) { ScreenRing() }
     val banners = ArrayList<Banner>()
+    val toasts = ArrayList<Toast>()
     private var pi = 0
     val rng = Rng(777)
 
@@ -93,6 +100,19 @@ class Fx {
             p.life = rng.f(0.6f, 1.1f); p.maxLife = p.life
             p.size = rng.f(0.12f, 0.26f); p.color = color; p.kind = PK.SHARD; p.gravity = 22f
             p.rot = rng.f(0f, TAU); p.vrot = rng.f(-12f, 12f)
+        }
+    }
+
+    private val confettiColors = intArrayOf(0xFFFF4A5A.toInt(), 0xFFFFD23A.toInt(), 0xFF4ADB6A.toInt(), 0xFF3FA8FF.toInt(), 0xFFD884FA.toInt(), 0xFFFFFFFF.toInt())
+    fun confetti(x: Float, y: Float, z: Float, n: Int, speed: Float = 5f) {
+        for (i in 0 until n) {
+            val p = spawn()
+            p.x = x + rng.f(-0.3f, 0.3f); p.y = y; p.z = z + rng.f(-0.3f, 0.3f)
+            val a = rng.f(0f, TAU); val s = speed * rng.f(0.3f, 1f)
+            p.vx = kotlin.math.cos(a) * s; p.vz = kotlin.math.sin(a) * s; p.vy = rng.f(3f, 8f)
+            p.life = rng.f(1.1f, 1.8f); p.maxLife = p.life; p.size = rng.f(0.07f, 0.12f)
+            p.color = confettiColors[rng.i(confettiColors.size)]; p.kind = PK.CONFETTI
+            p.gravity = 9f; p.drag = 2.2f; p.rot = rng.f(0f, TAU); p.vrot = rng.f(-14f, 14f)
         }
     }
 
@@ -140,6 +160,11 @@ class Fx {
         banners.add(Banner(l1, l2, color, dur, warn))
     }
 
+    fun toast(text: String, sub: String, color: Int, dur: Float = 2.2f) {
+        if (toasts.size >= 3) toasts.removeAt(toasts.size - 1)
+        toasts.add(Toast(text, sub, color, dur))
+    }
+
     /** Returns list of flyers that arrived this frame through the callback. */
     fun update(dt: Float, onArrive: (Flyer) -> Unit) {
         for (p in parts) if (p.active) {
@@ -161,6 +186,8 @@ class Fx {
         for (p in popups) if (p.active) { p.t += dt; if (p.t >= p.dur) p.active = false }
         for (r in rings) if (r.active) { r.t += dt; if (r.t >= r.dur) r.active = false }
         if (banners.isNotEmpty()) { val b = banners[0]; b.t += dt; if (b.t >= b.dur) banners.removeAt(0) }
+        // toasts wait while a banner is on screen, then play one after another
+        if (toasts.isNotEmpty() && banners.isEmpty()) { val o = toasts[0]; o.t += dt; if (o.t >= o.dur) toasts.removeAt(0) }
     }
 
     fun clear() {
@@ -169,5 +196,6 @@ class Fx {
         for (p in popups) p.active = false
         for (r in rings) r.active = false
         banners.clear()
+        toasts.clear()
     }
 }

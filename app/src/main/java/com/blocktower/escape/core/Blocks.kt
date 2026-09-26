@@ -86,6 +86,8 @@ class Block(
     @JvmField var sortKey = 0f
     @JvmField var contact = false    // player touching this frame
     @JvmField var wasContact = false
+    @JvmField var crackT = 0f        // collected blue block: 0 idle, 0..1 cracking, then it shatters
+    @JvmField var pop = 0f           // scale pop after a shell shatters / a block is built
 
     val x0 get() = x - sx * 0.5f
     val x1 get() = x + sx * 0.5f
@@ -111,6 +113,7 @@ object Tune {
     const val RADIUS = 0.28f
     const val HEIGHT = 1.45f
     const val START_TIME = 102f      // 01:42
+    const val FALL_DEPTH = 4.6f      // how far below the last ground a fall triggers the rescue
     const val TARGET_NEED = 12
     const val START_COINS = 4250
     const val START_GEMS = 320
