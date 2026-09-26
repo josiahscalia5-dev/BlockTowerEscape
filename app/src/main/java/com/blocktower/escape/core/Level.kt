@@ -21,10 +21,12 @@ object Level {
 
 private class LevelWriter(val w: World) {
     var ox = 0f
+    /** Height offset applied to everything after the start staircase. */
+    var lo = 0f
     private val rng = Rng(23)
 
     fun blk(x: Float, lvl: Float, z: Int, c: Int, t: BT = BT.NORMAL): Block {
-        val b = Block(ox + x, lvl - 1f, z.toFloat(), c, t)
+        val b = Block(ox + x, lvl + lo - 1f, z.toFloat(), c, t)
         b.variant = (hash3((ox + x).toInt(), lvl.toInt(), z) ushr 3) % 3
         if (b.variant < 0) b.variant += 3
         when (t) {
@@ -40,11 +42,13 @@ private class LevelWriter(val w: World) {
         return b
     }
 
-    fun row(z: Int, lvl: Int, s: String, x0: Int = -(s.length - 1) / 2, path: Boolean = true) {
+    fun row(z: Int, lvl: Int, s: String, x0: Int = -(s.length - 1) / 2, path: Boolean = true) = row(z, lvl.toFloat(), s, x0, path)
+
+    fun row(z: Int, lvl: Float, s: String, x0: Int = -(s.length - 1) / 2, path: Boolean = true) {
         for (i in s.indices) {
             val ch = s[i]
             val x = (x0 + i).toFloat()
-            val l = lvl.toFloat()
+            val l = lvl
             when (ch) {
                 'R' -> blk(x, l, z, BC.RED)
                 'G' -> blk(x, l, z, BC.GREEN)
@@ -65,7 +69,7 @@ private class LevelWriter(val w: World) {
                 '.' -> {}
             }
         }
-        if (path) { w.pathLevel[z] = lvl.toFloat(); w.pathX[z] = ox }
+        if (path) { w.pathLevel[z] = lvl + lo; w.pathX[z] = ox }
     }
 
     private val palette = intArrayOf(BC.RED, BC.GREEN, BC.YELLOW, BC.PURPLE, BC.RED, BC.GREEN, BC.YELLOW)
@@ -74,9 +78,12 @@ private class LevelWriter(val w: World) {
     fun pillar(x: Int, topLvl: Int, z: Int, n: Int) {
         for (k in 1..n) blk(x.toFloat(), (topLvl - k).toFloat(), z, BC.BRICK, BT.BRICK)
     }
+    fun pillarF(x: Int, topLvl: Float, z: Int, n: Int) {
+        for (k in 1..n) blk(x.toFloat(), topLvl - k, z, BC.BRICK, BT.BRICK)
+    }
 
     fun coin(x: Float, lvl: Float, z: Int, dz: Float = 0.5f) {
-        w.coins.add(Coin(ox + x, lvl + 0.85f, z + dz)); w.coinTotal++
+        w.coins.add(Coin(ox + x, lvl + lo + 0.85f, z + dz)); w.coinTotal++
     }
     fun coinLine(x: Float, lvl: Float, z0: Int, z1: Int) { for (z in z0..z1) coin(x, lvl, z) }
 
@@ -97,7 +104,13 @@ private class LevelWriter(val w: World) {
         val id = w.checkpoints.size
         val b = blk(x, lvl.toFloat(), z, BC.STONE, BT.CHECKPOINT)
         b.checkpointId = id
-        w.checkpoints.add(Checkpoint(id, ox + x, lvl.toFloat(), z + 0.5f))
+        w.checkpoints.add(Checkpoint(id, ox + x, lvl + lo, z + 0.5f))
+    }
+
+    /** Raise one block of a row (lane variety, as in the artwork's uneven stacks). */
+    fun raise(x: Int, z: Int, dy: Float) {
+        val r = w.row(z) ?: return
+        for (b in r) if (absf(b.x - (ox + x)) < 0.01f && b.type != BT.MOVING) { b.y += dy; b.remember() }
     }
 
     fun trig(z: Int, ev: Int) { w.triggers.add(Trigger(z.toFloat(), ox - 8f, ox + 8f, ev)) }
@@ -106,52 +119,69 @@ private class LevelWriter(val w: World) {
 
     fun write() {
         // ================= SECTION 0 : START — composition of the artwork =================
-        ox = 0f
+        // a half-step staircase climbing toward the far portal, as in the artwork
+        ox = 0f; lo = 0f
         section("start", -8, 13)
         w.spawnX = 0f; w.spawnY = 0f; w.spawnZ = 0.45f
         // the start pad counts as checkpoint 0 (recovery point before checkpoint A)
         w.checkpoints.add(Checkpoint(0, 0f, 0f, 0.45f).also { it.active = true })
-        row(-6, -1, "YBRR", -1)
-        row(-5, -1, "GYRR", -1)
-        row(-4, -1, "RGYR", -1)
-        row(-3, -1, "YBRR", -1)
-        row(-2, -1, "YBRR", -1)
-        row(-1, -1, "YBRR", -1)
-        pillar(-2, -1, -1, 1); pillar(-2, -1, -2, 1); pillar(-3, -2, -1, 1)
-        row(0, 0, "GBY")
-        blk(-2f, -1f, 0, BC.BRICK, BT.BRICK); blk(2f, -1f, 0, BC.RED)
-        row(1, 0, "RRG")
-        blk(-2f, -1f, 1, BC.BRICK, BT.BRICK)
-        row(2, 0, "RRG")
-        blk(2f, 1f, 2, BC.YELLOW); blk(2f, 1f, 3, BC.YELLOW)
-        // floating star (boost) block on the left, as in the artwork
-        blk(-3f, 1f, 1, BC.CYAN, BT.BOOST)
-        row(3, 1, "RGB")
-        row(4, 1, "BGR")
-        row(5, 1, "BRR")
-        for (z in 4..6) blk(2f, 0f, z, BC.BRICK, BT.BRICK)
-        mystery(3f, 2f, 5, Reward.COINS, BC.GREEN)
-        row(6, 2, "BYG")
-        row(7, 2, "GYB")
-        row(8, 2, "GRR")
-        // ledge where the boost lands
-        row(8, 2, "KK", -4, path = false); row(9, 2, "KY", -4, path = false); row(10, 3, "GR", -4, path = false)
-        row(9, 3, "YBG")
-        row(10, 3, "PGR")
-        row(11, 3, "RGB")
-        mystery(1f, 5.6f, 10, Reward.GEMS, BC.RED)
-        blk(-3f, 4f, 12, BC.RED)
-        row(12, 4, "GRY")
-        row(13, 4, "YPR")
-        coin(-1f, 0f, 1); coin(-1f, 0f, 2)
-        coin(0f, 1f, 4)
-        coin(-2.4f, 2.3f, 6)
-        coinLine(0f, 3f, 9, 11)
-        coin(1f, 4f, 13)
+        // lanes are separate columns of different heights, like the artwork's uneven stacks
+        fun lane(x: Int, z: Int, lvl: Float, c: Char) { row(z, lvl, c.toString(), x, path = false) }
+        val L = arrayOf(
+            // z, left, centre, right
+            Triple(-6, "Y-2.5", "B-3.0"), Triple(-5, "G-2.0", "Y-2.5"), Triple(-4, "R-2.0", "G-2.0"),
+            Triple(-3, "Y-1.5", "B-1.5"), Triple(-2, "G-1.5", "B-1.0"), Triple(-1, "Y-1.0", "B-0.5"))
+        val R = arrayOf("R-3.0", "R-2.5", "Y-2.0", "R-1.5", "Y-1.0", "R-0.5")
+        for ((i, t) in L.withIndex()) {
+            val z = t.first
+            lane(-1, z, t.second.substring(1).toFloat(), t.second[0])
+            lane(0, z, t.third.substring(1).toFloat(), t.third[0])
+            lane(1, z, R[i].substring(1).toFloat(), R[i][0])
+            w.pathLevel[z] = t.third.substring(1).toFloat(); w.pathX[z] = 0f
+        }
+        blk(2f, -1.0f, -1, BC.RED); blk(2f, -1.5f, -2, BC.RED)
+        pillarF(-2, -1.5f, -1, 1); blk(-2f, -1.5f, 0, BC.BRICK, BT.BRICK); blk(-2f, -2.5f, 0, BC.BRICK, BT.BRICK)
+        // player row
+        lane(-1, 0, -0.5f, 'G'); lane(0, 0, 0f, 'B'); lane(1, 0, 0f, 'Y')
+        w.pathLevel[0] = 0f; w.pathX[0] = 0f
+        pillarF(-1, -0.5f, 0, 1)
+        lane(-1, 1, 0.5f, 'R'); lane(0, 1, 0.5f, 'R'); lane(1, 1, 0f, 'G')
+        lane(-1, 2, 1.0f, 'R'); lane(0, 2, 0.5f, 'R'); lane(1, 2, 0.5f, 'G')
+        w.pathLevel[1] = 0.5f; w.pathLevel[2] = 0.5f
+        // elevated yellow on the right, floating star block on the left
+        blk(2f, 1.5f, 2, BC.YELLOW); blk(2f, 1.5f, 3, BC.YELLOW)
+        blk(-2f, 1.0f, 1, BC.CYAN, BT.BOOST)
+        lane(-1, 3, 1.5f, 'R'); lane(0, 3, 1.0f, 'G'); lane(1, 3, 1.0f, 'Y')
+        lane(-1, 4, 1.5f, 'Y'); lane(0, 4, 1.5f, 'G'); lane(1, 4, 1.0f, 'R')
+        lane(-1, 5, 2.0f, 'B'); lane(0, 5, 2.0f, 'R'); lane(1, 5, 2.0f, 'R')
+        w.pathLevel[3] = 1f; w.pathLevel[4] = 1.5f; w.pathLevel[5] = 2f
+        for (z in 4..6) blk(2f, 1.0f, z, BC.BRICK, BT.BRICK)
+        mystery(3f, 3.0f, 5, Reward.COINS, BC.GREEN)
+        lane(-1, 6, 2.5f, 'Y'); lane(0, 6, 2.5f, 'B'); lane(1, 6, 3.0f, 'G')
+        blk(-2f, 3.5f, 6, BC.BLUE, BT.TARGET); blk(-2f, 2.5f, 6, BC.PURPLE)
+        lane(-1, 7, 3.0f, 'G'); lane(0, 7, 3.0f, 'Y'); lane(1, 7, 3.0f, 'R')
+        // ledge where the star boost lands
+        blk(-2f, 2.5f, 7, BC.BRICK, BT.BRICK); blk(-2f, 2.5f, 8, BC.BRICK, BT.BRICK); blk(-3f, 2.5f, 8, BC.BRICK, BT.BRICK); blk(-2f, 3.5f, 9, BC.YELLOW)
+        lane(-1, 8, 3.5f, 'Y'); lane(0, 8, 3.5f, 'G'); lane(1, 8, 4.0f, 'B')
+        lane(-1, 9, 4.0f, 'P'); lane(0, 9, 4.0f, 'G'); lane(1, 9, 4.5f, 'R')
+        lane(-1, 10, 4.5f, 'R'); lane(0, 10, 4.5f, 'B'); lane(1, 10, 4.5f, 'Y')
+        for (z in 6..10) w.pathLevel[z] = 2.5f + (z - 6) * 0.5f
+        mystery(1f, 7.0f, 10, Reward.GEMS, BC.RED)
+        blk(-3f, 6.5f, 11, BC.RED); blk(2f, 5.5f, 11, BC.GREEN)
+        row(11, 5.5f, "GYP")
+        row(12, 6.0f, "YRG")
+        row(13, 6.5f, "RGY")
+        raise(-1, 11, 0.5f); raise(1, 12, 0.5f)
+        coin(-1f, 1.0f, 1); coin(-1f, 1.0f, 2)
+        coin(0f, 1.5f, 4)
+        coin(-2.6f, 2.6f, 6)
+        coin(0f, 4.0f, 9); coin(0f, 5.5f, 11); coin(0f, 6f, 12)
+        coin(1f, 6.5f, 13)
         // coins along the boost arc
-        coin(-3f, 3.2f, 3); coin(-3f, 4.0f, 5); coin(-3f, 3.8f, 7)
+        coin(-2f, 2.6f, 3); coin(-2f, 3.2f, 4); coin(-2f, 2.9f, 8)
         trig(1, Ev.HINT_TARGET)
 
+        lo = 3f
         // ================= SECTION 1 : JUMPS & CRUMBLING BLOCKS =================
         section("jumps", 14, 39)
         row(14, 4, "YRG")
@@ -219,7 +249,7 @@ private class LevelWriter(val w: World) {
         row(65, 9, "PPP")
         row(66, 9, "RYG")
         pillar(-1, 9, 65, 2); pillar(1, 9, 65, 2)
-        w.portals.add(Portal(0f, 9f, 65.5f, false, 40f, 10f, 70.5f))
+        w.portals.add(Portal(0f, 9f + lo, 65.5f, false, 40f, 10f + lo, 70.5f))
 
         // ================= SECTION 3 : STORM (another tower section) =================
         ox = 40f
@@ -371,7 +401,7 @@ private class LevelWriter(val w: World) {
         row(194, 24, "GYR")
         row(195, 24, "RYG")
         trig(195, Ev.LAVA_STOP)
-        for (z in 182..195) coin(0f, w.pathLevel[z] ?: 18f, z)
+        for (z in 182..195) coin(0f, (w.pathLevel[z] ?: 21f) - lo, z)
 
         // ================= SECTION 8 : END PORTAL =================
         section("end", 196, 208)
@@ -383,7 +413,7 @@ private class LevelWriter(val w: World) {
         row(201, 24, "PKKKP", -2)
         row(202, 24, "KKKKK", -2)
         for (z in 199..202) { pillar(-2, 24, z, 3); pillar(2, 24, z, 3) }
-        w.portals.add(Portal(0f + ox, 24f, 201.5f, true))
+        w.portals.add(Portal(0f + ox, 24f + lo, 201.5f, true))
         // decorative arch of the end portal
         for (k in 0..3) {
             val l = blk(-2f, 25f + k, 201, BC.BRICK, BT.BRICK); l.decor = false

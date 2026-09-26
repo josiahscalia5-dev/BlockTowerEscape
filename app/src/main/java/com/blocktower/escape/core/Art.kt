@@ -56,7 +56,7 @@ class Art(p: Platform) {
         val lut = IntArray(256)
         for (i in 0 until 256) {
             var t = i / 255f
-            t = if (isTop) 0.16f + 0.84f * t else t * 0.97f
+            t = if (isTop) 0.08f + 0.92f * t else t * 0.97f
             lut[i] = rampAt(ramp, t)
         }
         for (i in out.indices) {
