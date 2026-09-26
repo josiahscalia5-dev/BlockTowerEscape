@@ -75,7 +75,7 @@ class WorldRenderer(val g: Game) {
     // ------------------------------------------------------------------ background
     private fun drawBackground(gr: Gfx) {
         val h = g.hud
-        val s = h.sceneS
+        val s = h.bgS
         gr.fillRect(0f, 0f, gr.width.toFloat(), gr.height.toFloat(), 0xFF0A3CA8.toInt())
         val sec = g.world.sectionAt(g.player.z)
         val ox = sec?.originX ?: 0f
@@ -84,7 +84,7 @@ class WorldRenderer(val g: Game) {
         val w = art.bg.w * s
         val hh = art.bg.h * s
         val left = gr.width * 0.5f - (art.bgArtX + 512f) * s + px
-        val top = h.sceneArtTop - art.bgArtY * s + climb
+        val top = h.bgArtTop - art.bgArtY * s + climb
         gr.image(art.bg, left, top, w, hh)
         if (top > 0f) gr.fillRectGradient(0f, 0f, gr.width.toFloat(), top + 2f, 0xFF03287E.toInt(), 0xFF04349F.toInt())
         val st = g.ev.stormAmt
@@ -352,7 +352,8 @@ class WorldRenderer(val g: Game) {
         val wid = hgt * art.coin.w / art.coin.h
         val spin = cos(g.t * 3.2f + c.oz * 0.9f)
         val sxs = max(0.18f, abs(spin))
-        val a = 1f - smooth((cam.depth - (maxDepth - 10f)) / 10f)
+        val a = (1f - smooth((cam.depth - (maxDepth - 10f)) / 10f)) * smooth((cam.depth - 2.2f) / 1.6f)
+        if (a <= 0.01f) return
         gr.setAdditive(true)
         gr.glow(cam.sx, cam.sy, hgt * 0.95f, Col.withA(0xFFFFC830.toInt(), 0.55f * a))
         gr.setAdditive(false)
@@ -645,65 +646,15 @@ class WorldRenderer(val g: Game) {
     private fun drawDragon(gr: Gfx) {
         val d = g.ev.dragon
         if (!cam.project(d.x, d.y, d.z)) return
-        val s = cam.scaleAt(cam.depth) * 1.35f
-        val x = cam.sx; val y = cam.sy
+        val s = cam.scaleAt(cam.depth) * 1.6f
         val dir = if (d.vx < 0f) -1f else 1f
-        val flap = sin(g.t * 7f)
+        val flap = sin(g.t * 6.5f)
         gr.save()
-        gr.translate(x, y)
+        gr.translate(cam.sx, cam.sy)
         gr.scale(dir * s / 100f, s / 100f)
-        // far wing
-        wing(gr, -10f, -18f, flap * 0.8f, 0xFF5A1A7A.toInt(), 0xFF8A2AA8.toInt())
-        // tail
-        poly[0] = -60f; poly[1] = 0f; poly[2] = -150f; poly[3] = 18f + flap * 6f; poly[4] = -210f; poly[5] = 6f + flap * 10f
-        poly[6] = -150f; poly[7] = 30f; poly[8] = -58f; poly[9] = 22f
-        gr.fillPolyGradient(poly, 5, 0f, 0f, 0f, 30f, 0xFFB43AD0.toInt(), 0xFF6A1A8A.toInt())
-        poly[0] = -205f; poly[1] = 6f + flap * 10f; poly[2] = -240f; poly[3] = -14f + flap * 10f; poly[4] = -232f; poly[5] = 20f + flap * 10f
-        gr.fillPoly(poly, 3, 0xFFFF7A30.toInt())
-        // body
-        gr.fillPath(dragonBody, dragonBodyFill)
-        gr.fillPath(dragonBelly, dragonBellyFill)
-        // neck + head
-        gr.fillPath(dragonNeck, dragonBodyFill)
-        gr.fillPath(dragonHead, dragonBodyFill)
-        gr.fillCircle(102f, -52f, 7f, 0xFFFFE040.toInt())
-        gr.fillCircle(104f, -52f, 3.2f, 0xFF201000.toInt())
-        poly[0] = 84f; poly[1] = -66f; poly[2] = 70f; poly[3] = -96f; poly[4] = 94f; poly[5] = -70f
-        gr.fillPoly(poly, 3, 0xFFF4E8D0.toInt())
-        poly[0] = 98f; poly[1] = -66f; poly[2] = 94f; poly[3] = -94f; poly[4] = 108f; poly[5] = -66f
-        gr.fillPoly(poly, 3, 0xFFF4E8D0.toInt())
-        // near wing
-        wing(gr, 0f, -10f, flap, 0xFF7A22A0.toInt(), 0xFFC050E8.toInt())
-        // breath glow when shooting
-        if (d.shots < 3 && d.t > 0.6f) {
-            gr.setAdditive(true)
-            gr.glow(140f, -36f, 40f, 0x88FF8A20.toInt())
-            gr.setAdditive(false)
-        }
+        gr.rotate(-6f + sin(g.t * 1.3f) * 4f)
+        DragonArt.draw(gr, flap, g.t, d.shots < 3 && d.t > 1.6f)
         gr.restore()
-    }
-
-    private val dragonBody = VPath().moveTo(-70f, 10f).cubicTo(-60f, -30f, 20f, -40f, 60f, -18f).cubicTo(80f, -6f, 70f, 34f, 30f, 36f)
-        .cubicTo(-10f, 40f, -60f, 36f, -70f, 10f).close()
-    private val dragonBelly = VPath().moveTo(-50f, 20f).cubicTo(-20f, 36f, 30f, 34f, 56f, 14f).cubicTo(40f, 32f, -10f, 42f, -50f, 20f).close()
-    private val dragonNeck = VPath().moveTo(40f, -20f).cubicTo(60f, -40f, 76f, -54f, 92f, -58f).lineTo(100f, -36f).cubicTo(80f, -30f, 70f, -8f, 58f, 8f).close()
-    private val dragonHead = VPath().moveTo(80f, -62f).cubicTo(96f, -74f, 122f, -66f, 146f, -48f).cubicTo(150f, -40f, 140f, -30f, 124f, -30f)
-        .cubicTo(110f, -28f, 96f, -32f, 84f, -38f).close()
-    private val dragonBodyFill = Linear(0f, -60f, 0f, 40f, intArrayOf(0xFFD24EE8.toInt(), 0xFF8A20B0.toInt(), 0xFF5A1478.toInt()))
-    private val dragonBellyFill = Linear(0f, 10f, 0f, 40f, intArrayOf(0xFFFFC060.toInt(), 0xFFFF7A30.toInt()))
-    private val wingPath = VPath()
-
-    private fun wing(gr: Gfx, ox: Float, oy: Float, flap: Float, c0: Int, c1: Int) {
-        val lift = -110f * flap - 30f
-        poly[0] = ox - 20f; poly[1] = oy
-        poly[2] = ox - 70f; poly[3] = oy + lift * 0.9f
-        poly[4] = ox - 10f; poly[5] = oy + lift * 1.15f
-        poly[6] = ox + 30f; poly[7] = oy + lift
-        poly[8] = ox + 50f; poly[9] = oy + lift * 0.55f
-        poly[10] = ox + 30f; poly[11] = oy
-        gr.fillPolyGradient(poly, 6, ox, oy + lift, ox, oy, c1, c0)
-        gr.line(ox - 20f, oy, ox - 10f, oy + lift * 1.15f, 5f, 0xFF3A0A50.toInt())
-        gr.line(ox + 10f, oy, ox + 30f, oy + lift, 5f, 0xFF3A0A50.toInt())
     }
 
     private fun drawFireball(gr: Gfx, f: Fireball) {

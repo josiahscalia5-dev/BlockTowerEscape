@@ -17,6 +17,9 @@ class Hud(val g: Game) {
     var sceneS = 1f
     var sceneArtTop = 0f
     var sceneCY = 768f
+    /** Background plate scale/placement: covers the full screen height on tall phones. */
+    var bgS = 1f
+    var bgArtTop = 0f
     var focal = 1024f
     var topInset = 0f
     var bottomInset = 0f
@@ -47,6 +50,8 @@ class Hud(val g: Game) {
         sceneArtTop = feetY - 1190f * sceneS
         sceneCY = sceneArtTop + 768f * sceneS
         focal = 1024f * sceneS
+        bgS = max(sceneS, h / 1536f)
+        bgArtTop = if (bgS > sceneS + 0.001f) (h - 1536f * bgS) * 0.5f else sceneArtTop
     }
 
     // art -> screen
@@ -248,7 +253,7 @@ class Hud(val g: Game) {
         gr.image(cube, targetIconX() - cw * 0.5f, targetIconY() - cw * 0.5f * cube.h / cube.w, cw, cw * cube.h / cube.w)
         gr.text("Collect", ax(907f), ayT(282f), 33f * s, Font.UI, Col.WHITE)
         gr.text("12 Blue Blocks", ax(907f), ayT(314f), 30f * s, Font.UI, Col.WHITE)
-        val cnt = "${g.shownTarget}/${Tune.TARGET_NEED}"
+        val cnt = "${min(g.shownTarget, Tune.TARGET_NEED)}/${Tune.TARGET_NEED}"
         val cs = 46f * s * (1f + 0.35f * sin(targetBump * PI.toFloat()))
         gr.text(cnt, ax(907f), ayT(360f), cs, Font.UI, if (done) 0xFF7CFFA8.toInt() else Col.WHITE)
         if (done) gr.text("✓", ax(975f), ayT(360f), 34f * s, Font.UI, 0xFF7CFFA8.toInt())

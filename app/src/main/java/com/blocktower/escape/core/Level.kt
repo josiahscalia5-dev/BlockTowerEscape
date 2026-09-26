@@ -186,7 +186,7 @@ private class LevelWriter(val w: World) {
         section("jumps", 14, 39)
         row(14, 4, "YRG")
         row(15, 4, "GBR")
-        row(16, 4, "RYB")
+        row(16, 4, "RYG")
         trig(15, Ev.HINT_JUMP)
         // gap rows 17-18, with a rare save block far below
         blk(0f, 1f, 17, BC.GOLD, BT.SAVE)
@@ -201,12 +201,12 @@ private class LevelWriter(val w: World) {
         coinLine(0f, 6f, 24, 25)
         row(26, 6, "RGY")
         mystery(0f, 8.6f, 26, Reward.TOOL_BLOCK, BC.GREEN)
-        row(27, 6, "BRG")
+        row(27, 6, "GRY")
         row(28, 6, "fff")
         row(29, 6, "fff")
         // row 30 gap
         row(31, 6, "RGY")
-        row(32, 6, "YBR")
+        row(32, 6, "YPR")
         row(33, 6, "GRB")
         row(34, 6, "RYs")
         row(35, 6, "GRY")
@@ -220,7 +220,7 @@ private class LevelWriter(val w: World) {
         // ================= SECTION 2 : MOVING / APPEARING / COLOUR-SHIFT =================
         section("moving", 40, 66)
         row(40, 7, "GYR")
-        row(41, 7, "RBG")
+        row(41, 7, "RGY")
         trig(41, Ev.HINT_TOOLS)
         // gap 42..49 : sliding platforms, and a hidden bridge on the left that appears on approach
         moving(0f, 7, 43, 1.4f, 1.5f, 0f)
@@ -239,7 +239,7 @@ private class LevelWriter(val w: World) {
         row(56, 8, ".RG")
         mystery(-1f, 8f, 56, Reward.SHORTCUT, BC.GREEN)
         row(57, 9, "GYR")
-        row(58, 9, "RBY")
+        row(58, 9, "RGY")
         // gap 59..62: stepping stones or the shortcut bridge
         blk(1f, 9f, 60, BC.PURPLE, BT.DISAPPEAR)
         blk(-1f, 9f, 61, BC.YELLOW)
@@ -255,7 +255,7 @@ private class LevelWriter(val w: World) {
         ox = 40f
         section("storm", 67, 98)
         row(70, 10, "GYR")
-        row(71, 10, "RBG")
+        row(71, 10, "RGP")
         row(72, 10, "YGR")
         trig(73, Ev.STORM)
         row(73, 10, "RG", 0)
@@ -280,7 +280,7 @@ private class LevelWriter(val w: World) {
         row(91, 12, "RYG")
         row(92, 12, "YcR")
         row(93, 12, "GRY")
-        row(94, 12, "RGB")
+        row(94, 12, "RGY")
         coinLine(0.5f, 10f, 73, 75); coinLine(-0.5f, 11f, 77, 80); coinLine(0f, 12f, 85, 89)
         trig(95, Ev.STORM_END)
         row(95, 12, "YGR")
@@ -295,7 +295,7 @@ private class LevelWriter(val w: World) {
         row(100, 12, "RGY")
         row(101, 12, "YRG")
         trig(101, Ev.CHASE)
-        row(102, 12, "GBR")
+        row(102, 12, "GYR")
         row(103, 12, "tGt")
         row(104, 13, "RYG")
         row(105, 13, "YGB")
@@ -315,7 +315,7 @@ private class LevelWriter(val w: World) {
         }
         coinLine(2.5f, 13f, 109, 121)
         row(122, 13, "RGYGR", -2)
-        row(123, 13, "YBR")
+        row(123, 13, "YGR")
         row(124, 13, "sGs")
         row(125, 13, "GYR")
         row(126, 14, "RGY")
@@ -323,7 +323,7 @@ private class LevelWriter(val w: World) {
         row(128, 14, "fff")
         row(129, 14, "GRY")
         row(130, 15, "RYG")
-        row(131, 15, "GBR")
+        row(131, 15, "GRY")
         row(132, 15, "YtG")
         row(133, 15, "RGY")
         row(134, 15, "GYR")
@@ -343,7 +343,7 @@ private class LevelWriter(val w: World) {
         trig(141, Ev.DRAGON)
         trig(140, Ev.HINT_BLOCK)
         for (z in 141..157) {
-            val s = when (z) { 143 -> "RBG"; 149 -> "BRY"; 153 -> "GYB"; else -> if (z % 3 == 0) "YGR" else if (z % 3 == 1) "RYG" else "GRY" }
+            val s = when (z) { 143 -> "RYG"; 149 -> "BRY"; 153 -> "GYB"; else -> if (z % 3 == 0) "YGR" else if (z % 3 == 1) "RYG" else "GRY" }
             row(z, 15, s)
         }
         for (z in 141..157) coin(0f, 15f, z)
@@ -361,7 +361,7 @@ private class LevelWriter(val w: World) {
         row(160, 15, "RGY")
         row(161, 15, "YRG")
         row(162, 15, "GRY")
-        row(163, 15, "RYB")
+        row(163, 15, "RYG")
         row(164, 16, "GRY")
         row(165, 16, "YGR")
         row(166, 16, "fGf")
@@ -370,7 +370,7 @@ private class LevelWriter(val w: World) {
         // row 169 gap
         row(170, 17, "RGY")
         // gap 171..173 with a sliding platform at 172
-        moving(0f, 17, 172, 1.2f, 2.0f, 0f, 2f, BC.PURPLE)
+        moving(0f, 17, 172, 0.8f, 1.6f, 0f, 2.6f, BC.PURPLE)
         row(174, 17, "YBR")
         row(175, 17, "GRY")
         row(176, 17, "RYG")
@@ -387,7 +387,7 @@ private class LevelWriter(val w: World) {
         row(181, 17, "YRG")
         trig(181, Ev.LAVA)
         row(182, 18, "GRY")
-        row(183, 18, "RBG")
+        row(183, 18, "RYG")
         row(184, 19, "YGR")
         row(185, 19, "G.Y")
         row(186, 20, "RbG")

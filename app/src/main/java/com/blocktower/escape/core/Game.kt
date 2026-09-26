@@ -906,8 +906,12 @@ class Game(val platform: Platform) {
             if (tr.fired) continue
             if (p.z >= tr.z && p.x >= tr.xMin && p.x <= tr.xMax) { tr.fired = true; fire(tr.event) }
         }
+        if (p.grounded) for (cp in world.checkpoints) {
+            if (!cp.active && abs(p.z - cp.z) < 0.9f && abs(p.x - cp.x) < 1.9f && abs(p.y - cp.y) < 1.2f) activateCheckpoint(cp.id)
+        }
         for (po in world.portals) {
-            if (abs(p.x - po.x) < 1.0f && abs(p.z - po.z) < 0.55f && p.y > po.y - 0.5f && p.y < po.y + 2.5f) {
+            val half = if (po.isEnd) 1.75f else 1.15f
+            if (abs(p.x - po.x) < half && abs(p.z - po.z) < 0.6f && p.y > po.y - 0.5f && p.y < po.y + 2.8f) {
                 if (po.isEnd) beginComplete(po) else beginTeleport(po)
                 break
             }

@@ -28,7 +28,7 @@ class Dragon {
     var vx = 0f
     var shots = 0
     var sortKey = 0f
-    var ox = 0f; var lvl = 15f
+    var ox = 0f; var lvl = 15f; var z0 = 0f
 }
 
 class Fireball {
@@ -164,9 +164,9 @@ class Events(val g: Game) {
             }
             Ev.DRAGON -> {
                 dragon.on = true; dragon.done = false; dragon.t = 0f; dragon.shots = 0
-                dragon.ox = ox; dragon.lvl = g.world.levelAt(floor(p.z).toInt())
+                dragon.ox = ox; dragon.lvl = g.world.levelAt(floor(p.z).toInt()); dragon.z0 = p.z; dragonPos(0f)
                 groupHit.fill(false)
-                g.fx.banner("DRAGON ATTACK!", "IT'S BURNING THE BRIDGE!", 0xFFFF8A3A.toInt(), 2.4f, true)
+                g.fx.banner("DRAGON ATTACK!", "IT'S BURNING THE BRIDGE!", 0xFFFF8A3A.toInt(), 1.7f, true)
                 g.platform.sound(Sfx.DRAGON)
             }
             Ev.COLLAPSE -> {
@@ -325,13 +325,16 @@ class Events(val g: Game) {
 
     // ------------------------------------------------------------------ dragon
     private fun dragonPos(t: Float) {
-        val u = clamp01(t / 5.2f)
+        val u = clamp01(t / 6f)
         val ox = dragon.ox; val l = dragon.lvl
-        // cubic bezier across the course, ahead of the player
-        val p0x = ox + 26f; val p0y = l + 12f; val p0z = 166f
-        val p1x = ox + 9f; val p1y = l + 6.5f; val p1z = 157f
-        val p2x = ox - 7f; val p2y = l + 6.5f; val p2z = 151f
-        val p3x = ox - 30f; val p3y = l + 14f; val p3z = 161f
+        // stays ahead of the player while it sweeps across the view
+        dragon.z0 = lerp(dragon.z0, g.player.z, 0.08f)
+        val z0 = dragon.z0
+        // cubic bezier sweeping across the view, ahead of the player
+        val p0x = ox + 20f; val p0y = l + 6f; val p0z = z0 + 20f
+        val p1x = ox + 7f; val p1y = l + 2.5f; val p1z = z0 + 12f
+        val p2x = ox - 6f; val p2y = l + 2.5f; val p2z = z0 + 12f
+        val p3x = ox - 20f; val p3y = l + 7f; val p3z = z0 + 18f
         val a = (1 - u) * (1 - u) * (1 - u); val b = 3 * (1 - u) * (1 - u) * u; val c = 3 * (1 - u) * u * u; val d = u * u * u
         val nx = a * p0x + b * p1x + c * p2x + d * p3x
         dragon.vx = nx - dragon.x
@@ -344,12 +347,12 @@ class Events(val g: Game) {
         if (dragon.on) {
             dragon.t += dt
             dragonPos(dragon.t)
-            val shotTimes = floatArrayOf(1.0f, 1.7f, 2.4f)
+            val shotTimes = floatArrayOf(2.1f, 2.8f, 3.5f)
             if (dragon.shots < 3 && dragon.t >= shotTimes[dragon.shots]) {
                 dragon.shots++
                 shoot()
             }
-            if (dragon.t > 5.2f) { dragon.on = false; dragon.done = true }
+            if (dragon.t > 6f) { dragon.on = false; dragon.done = true }
         }
         for (f in fireballs) if (f.on) {
             f.t += dt / 0.6f
@@ -369,7 +372,7 @@ class Events(val g: Game) {
         for (i in dragonGroups.indices) if (!groupHit[i] && dragonGroups[i][0] > p.z + 2.2f) { gi = i; break }
         for (f in fireballs) if (!f.on) {
             f.on = true; f.t = 0f; f.group = gi
-            f.x0 = dragon.x + (if (dragon.vx < 0) -1.6f else 1.6f); f.y0 = dragon.y + 0.3f; f.z0 = dragon.z
+            f.x0 = dragon.x + (if (dragon.vx < 0) -3.9f else 3.9f); f.y0 = dragon.y + 1.3f; f.z0 = dragon.z
             if (gi >= 0) {
                 val rows = dragonGroups[gi]
                 f.x1 = dragon.ox + 0.2f; f.y1 = dragon.lvl; f.z1 = (rows.first() + rows.last() + 1) * 0.5f
