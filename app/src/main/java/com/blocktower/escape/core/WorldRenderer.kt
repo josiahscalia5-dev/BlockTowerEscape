@@ -201,11 +201,11 @@ class WorldRenderer(val g: Game) {
         val vFull = ts
         val vClip = if (y0 > y0In) ts * (y1 - y0) / (y1 - y0In) else ts
         if (showBottom) { quad(0, 1, 2, 3); gr.imageQuad(sideImg, 0f, 0f, ts, ts, q, a, 0.5f, addC, addA) }
-        if (showBack) { quad(6, 7, 3, 2); gr.imageQuad(sideImg, 0f, 0f, ts, vClip, q, a, 0.8f, addC, addA); faceOverlay(gr, overlay, a, 1, depth) }
-        if (showLeft) { quad(7, 4, 0, 3); gr.imageQuad(sideImg, 0f, 0f, ts, vClip, q, a, 0.8f, addC, addA); faceOverlay(gr, overlay, a, 2, depth) }
-        if (showRight) { quad(5, 6, 2, 1); gr.imageQuad(sideImg, 0f, 0f, ts, vClip, q, a, 0.8f, addC, addA); faceOverlay(gr, overlay, a, 3, depth) }
-        if (showFront) { quad(4, 5, 1, 0); gr.imageQuad(sideImg, 0f, 0f, ts, vClip, q, a, 0.94f, addC, addA); faceOverlay(gr, overlay, a, 4, depth) }
-        if (showTop) { quad(7, 6, 5, 4); gr.imageQuad(topImg, 0f, 0f, ts, vFull, q, a, 1f, addC, addA); faceOverlay(gr, overlay, a, 5, depth) }
+        if (showBack) { quad(6, 7, 3, 2); gr.imageQuad(sideImg, 0f, 0f, ts, vClip, q, a, 0.7f, addC, addA); faceOverlay(gr, overlay, a, 1, depth) }
+        if (showLeft) { quad(7, 4, 0, 3); gr.imageQuad(sideImg, 0f, 0f, ts, vClip, q, a, 0.7f, addC, addA); faceOverlay(gr, overlay, a, 2, depth) }
+        if (showRight) { quad(5, 6, 2, 1); gr.imageQuad(sideImg, 0f, 0f, ts, vClip, q, a, 0.7f, addC, addA); faceOverlay(gr, overlay, a, 3, depth) }
+        if (showFront) { quad(4, 5, 1, 0); gr.imageQuad(sideImg, 0f, 0f, ts, vClip, q, a, 0.86f, addC, addA); faceOverlay(gr, overlay, a, 4, depth) }
+        if (showTop) { quad(7, 6, 5, 4); gr.imageQuad(topImg, 0f, 0f, ts, vFull, q, a, 1.06f, addC, addA); faceOverlay(gr, overlay, a, 5, depth) }
         return true
     }
 
@@ -246,8 +246,10 @@ class WorldRenderer(val g: Game) {
         when (ov) {
             OV.MYSTERY_G -> { if (face == 5) return; img = art.qPlate; inset = 0.14f }
             OV.MYSTERY_R -> { if (face == 5) return; img = art.qOrange; inset = 0.1f }
-            OV.BOOST -> { img = if (face == 5) art.star else art.frameGlow; inset = if (face == 5) 0.16f else 0f
-                if (face == 5) { gr.imageQuad(art.frameGlow, 0f, 0f, art.frameGlow.w.toFloat(), art.frameGlow.h.toFloat(), q, a * (0.75f + 0.25f * pulse(g.t, 5f))) } }
+            OV.BOOST -> { img = if (face == 5) art.star else art.frameGlow; inset = if (face == 5) 0.14f else 0f
+                gr.setAdditive(true)
+                gr.imageQuad(art.frameGlow, 0f, 0f, art.frameGlow.w.toFloat(), art.frameGlow.h.toFloat(), q, a * (0.8f + 0.2f * pulse(g.t, 5f)))
+                gr.setAdditive(false) }
             OV.SAVE -> { if (face != 5 && face != 4) return; img = art.saveEmblem; inset = 0.12f }
             OV.BOUNCE -> { if (face != 5) return; img = art.chevrons; inset = 0.1f }
             OV.TRAP -> { if (face != 5) return; img = art.trapHoles; inset = 0.02f }
@@ -290,7 +292,7 @@ class WorldRenderer(val g: Game) {
         var glowC = 0; var glowA = 0f
         when (b.type) {
             BT.MYSTERY -> overlay = if (b.color == BC.RED) OV.MYSTERY_R else OV.MYSTERY_G
-            BT.BOOST -> { overlay = OV.BOOST; glowC = 0xFFB0F6FF.toInt(); glowA = 0.12f + 0.12f * pulse(t, 5f) }
+            BT.BOOST -> { overlay = OV.BOOST; color = BC.BLUE; glowC = 0xFF7FE6FF.toInt(); glowA = 0.08f + 0.08f * pulse(t, 5f) }
             BT.SAVE -> { overlay = OV.SAVE; glowC = 0xFFFFFFD0.toInt(); glowA = 0.1f + 0.15f * pulse(t, 4f) }
             BT.BOUNCE -> overlay = OV.BOUNCE
             BT.TRAP -> overlay = OV.TRAP
@@ -355,7 +357,7 @@ class WorldRenderer(val g: Game) {
         val a = (1f - smooth((cam.depth - (maxDepth - 10f)) / 10f)) * smooth((cam.depth - 2.2f) / 1.6f)
         if (a <= 0.01f) return
         gr.setAdditive(true)
-        gr.glow(cam.sx, cam.sy, hgt * 0.95f, Col.withA(0xFFFFC830.toInt(), 0.55f * a))
+        gr.glow(cam.sx, cam.sy, hgt * 1.25f, Col.withA(0xFFFFC830.toInt(), 0.75f * a))
         gr.setAdditive(false)
         gr.save()
         gr.translate(cam.sx, cam.sy)
