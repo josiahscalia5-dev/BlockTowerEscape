@@ -56,11 +56,22 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         Choreographer.getInstance().postFrameCallback(this)
     }
 
+    /**
+     * The safe area: the camera cut-out at the top, and at the bottom the cut-out or the gesture-navigation strip,
+     * whichever is taller (a swipe that starts in that strip goes to the system, so no control may sit in it).
+     * The game draws edge to edge; only buttons and text keep inside the safe area.
+     */
+    @Suppress("DEPRECATION")
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
         var top = 0f
         var bottom = 0f
         if (Build.VERSION.SDK_INT >= 28) {
             insets.displayCutout?.let { top = it.safeInsetTop.toFloat(); bottom = it.safeInsetBottom.toFloat() }
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            bottom = maxOf(bottom, insets.getInsets(WindowInsets.Type.mandatorySystemGestures()).bottom.toFloat())
+        } else if (Build.VERSION.SDK_INT >= 29) {
+            bottom = maxOf(bottom, insets.mandatorySystemGestureInsets.bottom.toFloat())
         }
         app.setInsets(top, bottom)
         return super.onApplyWindowInsets(insets)
