@@ -134,7 +134,7 @@ class Events(val g: Game) {
                 chase = Chase.ESCAPED; phaseT = 0f; camBlend = 0f
                 // the tower gives way under the guard
                 chaseCollapse.on = true; chaseCollapse.speed = 16f; chaseCollapse.maxSpeed = 16f
-                g.fx.banner("ESCAPED!", "THE GUARD FELL BEHIND", 0xFF7FFFA0.toInt(), 2.2f)
+                g.fx.banner("CHASE COMPLETE!", "THE GUARD FELL BEHIND", 0xFF7FFFA0.toInt(), 2.2f)
                 g.addScore(500, p.x, p.y + 2.6f, p.z, "ESCAPE BONUS")
                 g.platform.sound(Sfx.CHECKPOINT, 1f, 1.1f)
                 g.fx.confetti(p.x, p.y + 2.2f, p.z + 0.5f, 40)

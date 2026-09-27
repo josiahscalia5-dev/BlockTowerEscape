@@ -40,7 +40,7 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
     fun pause() {
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
-        if (game.state == GS.PLAY && !game.paused) game.togglePause()
+        if ((game.state == GS.PLAY || game.state == GS.INTRO) && !game.paused) game.togglePause()
     }
 
     fun release() {

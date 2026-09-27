@@ -745,8 +745,12 @@ class WorldRenderer(val g: Game) {
         val fall = if (gd.falling) gd.fallT else 0f
         // painter order within the golem: legs, torso, arms, head (from the camera's side)
         val lookBack = abs(cam.yaw) > 1.5f
+        // between the camera and the boy it turns see-through: it looms, but never hides the path
+        val p = g.player
+        val between = abs(cam.yaw) < 1f && gz < p.z && gz + 1.2f > cam.ez
+        val ga = if (between) lerp(1f, 0.35f, clamp01((gz + 1.2f - cam.ez) / 1.5f)) else 1f
         fun box(x0: Float, y0: Float, z0: Float, x1: Float, y1: Float, z1: Float, col: Int, v: Int) {
-            drawBox(gr, gx + x0, baseY + y0 + bob, gz + z0, gx + x1, baseY + y1 + bob, gz + z1, col, v, 1f, 0f, null)
+            drawBox(gr, gx + x0, baseY + y0 + bob, gz + z0, gx + x1, baseY + y1 + bob, gz + z1, col, v, ga, 0f, null)
         }
         val ls = sw * 0.45f
         val reach = gd.reach
