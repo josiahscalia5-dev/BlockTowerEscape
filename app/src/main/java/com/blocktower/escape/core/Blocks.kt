@@ -4,8 +4,8 @@ package com.blocktower.escape.core
 object BC {
     const val RED = 0; const val GREEN = 1; const val YELLOW = 2; const val BLUE = 3; const val PURPLE = 4
     const val ORANGE = 5; const val BRICK = 6; const val GOLD = 7; const val CYAN = 8; const val MAGENTA = 9
-    const val STONE = 10; const val IRON = 11; const val ENERGY = 12; const val TEMPLE = 13
-    const val COUNT = 14
+    const val STONE = 10; const val IRON = 11; const val ENERGY = 12; const val TEMPLE = 13; const val TEMPLE_DARK = 14
+    const val COUNT = 15
 
     /** 5-stop colour ramps: shadow, base, bright, highlight, white-hot. */
     val ramps: Array<IntArray> = arrayOf(
@@ -23,6 +23,7 @@ object BC {
         intArrayOf(0xFF14161E.toInt(), 0xFF2A2E3C.toInt(), 0xFF484E62.toInt(), 0xFF7C8498.toInt(), 0xFFC8D0E0.toInt()),  // iron (guard)
         intArrayOf(0xFF1060B0.toInt(), 0xFF40A8F0.toInt(), 0xFF90E0FF.toInt(), 0xFFD0F8FF.toInt(), 0xFFFFFFFF.toInt()),  // energy (tool block)
         intArrayOf(0xFF3A342A.toInt(), 0xFF6E6452.toInt(), 0xFF9C8F74.toInt(), 0xFFC8BA98.toInt(), 0xFFEAE0C8.toInt()),  // temple stone (Level 5)
+        intArrayOf(0xFF1E1C1A.toInt(), 0xFF3E3A34.toInt(), 0xFF5E574C.toInt(), 0xFF8A806E.toInt(), 0xFFC0B6A0.toInt()),  // dark temple stone (spike slabs)
     )
 
     /** Representative colours (for particles, far LOD and silhouettes). */

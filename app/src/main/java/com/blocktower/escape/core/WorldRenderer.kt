@@ -375,7 +375,7 @@ class WorldRenderer(val g: Game) {
                 else { overlay = OV.BOOST; color = BC.BLUE; glowC = 0xFF7FE6FF.toInt(); glowA = 0.08f + 0.08f * pulse(t, 5f) }
             BT.SAVE -> { overlay = OV.SAVE; glowC = 0xFFFFFFD0.toInt(); glowA = 0.1f + 0.15f * pulse(t, 4f) }
             BT.BOUNCE -> if (!g.spec.jungle) overlay = OV.SPRING
-            BT.TRAP -> if (b.speed == 0f) overlay = OV.TRAP else { overlay = OV.TRAP
+            BT.TRAP -> if (b.speed == 0f) overlay = if (g.spec.jungle) OV.EMBLEM else OV.TRAP else { overlay = OV.TRAP
                 // armed: the trap glows red just before the spikes pop
                 val c = (t + b.phase) % 2.6f
                 if (c in 1.25f..1.85f) { glowC = 0xFFFF3A2A.toInt(); glowA = 0.28f * sin(((c - 1.25f) / 0.6f) * Math.PI.toFloat()) } }
@@ -387,7 +387,7 @@ class WorldRenderer(val g: Game) {
             BT.COLORSHIFT -> { color = g.shiftColor(b); overlay = OV.SHIFT }
             BT.TOOLBLOCK, BT.RESCUE -> { overlay = OV.ENERGY; glowC = Col.WHITE; glowA = 0.15f + 0.15f * pulse(t, 7f) }
             BT.TARGET -> { glowC = 0xFF9FD8FF.toInt(); glowA = if (objective) 0.07f + 0.09f * pulse(t + b.z * 0.7f, 3f) else 0.03f }
-            else -> if (b.star) { overlay = OV.STAR; glowC = 0xFF7FE6FF.toInt(); glowA = 0.05f + 0.05f * pulse(t, 3f) }
+            else -> if (b.star) { overlay = if (b.color == BC.GREEN) OV.STAR_Y else OV.STAR; glowC = if (b.color == BC.GREEN) 0xFFFFF0A0.toInt() else 0xFF7FE6FF.toInt(); glowA = 0.05f + 0.05f * pulse(t, 3f) }
         }
         if (b.crackT > 0f) {
             val u = b.crackT

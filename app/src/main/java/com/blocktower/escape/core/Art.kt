@@ -66,10 +66,22 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER) {
         texSize = topT[0].w
         top = Array(BC.COUNT) { c -> Array(3) { v ->
             if (c == BC.TEMPLE && jungle) p.loadImage("l5/temple_top$v.png")
+            else if (c == BC.TEMPLE_DARK && jungle) p.createImage(darken(p.loadPixels("l5/temple_top$v.png"), 0.55f))
             else p.createImage(colorize(if (c == BC.BRICK || c == BC.TEMPLE) brick else topT[v], BC.ramps[c], true)) } }
         side = Array(BC.COUNT) { c -> Array(3) { v ->
             if (c == BC.TEMPLE && jungle) p.loadImage("l5/temple_side$v.png")
+            else if (c == BC.TEMPLE_DARK && jungle) p.createImage(darken(p.loadPixels("l5/temple_side$v.png"), 0.55f))
             else p.createImage(colorize(if (c == BC.BRICK || c == BC.TEMPLE) brick else sideT[v], BC.ramps[c], false)) } }
+    }
+
+    private fun darken(src: Pixels, k: Float): Pixels {
+        val out = IntArray(src.argb.size)
+        for (i in out.indices) {
+            val c = src.argb[i]
+            val r = (((c shr 16) and 255) * k).toInt(); val g = (((c shr 8) and 255) * k).toInt(); val b = ((c and 255) * k * 1.05f).toInt().coerceAtMost(255)
+            out[i] = (c and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+        }
+        return Pixels(src.w, src.h, out)
     }
 
     private fun colorize(src: Pixels, ramp: IntArray, isTop: Boolean): Pixels {

@@ -33,7 +33,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
     fun stoneRow(z: Int, lvl: Float, x0: Int, x1: Int) { for (x in x0..x1) stone(x.toFloat(), lvl, z) }
     /** A column of temple stone under a block (so raised blocks stand on something). */
     fun under(x: Float, topLvl: Float, z: Int, n: Int) { for (k in 1..n) blk(x, topLvl - k, z, BC.TEMPLE, BT.BRICK) }
-    fun spikeSlab(x: Float, lvl: Float, z: Int) = blk(x, lvl, z, BC.TEMPLE, BT.TRAP).also { it.speed = 0f }
+    fun spikeSlab(x: Float, lvl: Float, z: Int) = blk(x, lvl, z, BC.TEMPLE_DARK, BT.TRAP).also { it.speed = 0f }
     fun spring(x: Float, lvl: Float, z: Int) = blk(x, lvl, z, BC.TEMPLE, BT.BOUNCE)
     /** A carved stone ledge (one block deep) under rows z0..z1, from x0 to x1, top at [top]. */
     fun ledge(z0: Int, z1: Int, x0: Float, x1: Float, top: Float) {
@@ -86,12 +86,12 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         blk(-0.3f, 1.5f, 4, BC.BLUE, BT.TARGET); under(-0.3f, 1.5f, 4, 1)
         blk(0.7f, 1.0f, 4, BC.YELLOW)
         blk(0f, 1.0f, 5, BC.YELLOW); under(0f, 1.0f, 5, 1)
-        bubble(0.95f, 0f, 5, TK.MAGNET)
+        bubble(1.0f, 0.5f, 5, TK.MAGNET)
         setPath(4, 1f); setPath(5, 1f)
         // the spiked log swings across here
         blk(0f, 1.5f, 6, BC.GREEN); under(0f, 1.5f, 6, 1)
         // the green ? block floating low on the right, beside the mossy log bridge
-        mystery(1.4f, 0.6f, 6, Reward.COINS, BC.GREEN)
+        mystery(1.45f, 1.7f, 6, Reward.COINS, BC.GREEN)
         setPath(6, 1.5f)
         stone(-0.5f, 1.5f, 7); stone(0.5f, 1.5f, 7); under(-0.5f, 1.5f, 7, 1); under(0.5f, 1.5f, 7, 1)
         setPath(7, 1.5f)
@@ -100,7 +100,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         blk(0f, 2.0f, 8, BC.YELLOW); under(0f, 2.0f, 8, 1)
         setPath(8, 2f)
         // the green star block, the red block and the stone steps up to the CHECKPOINT arch
-        blk(0.6f, 2.0f, 9, BC.GREEN, BT.BOOST); under(0.6f, 2.0f, 9, 1)
+        blk(0.6f, 2.0f, 9, BC.GREEN).star = true; under(0.6f, 2.0f, 9, 1)
         blk(-0.4f, 2.0f, 9, BC.RED)
         blk(1.0f, 2.5f, 10, BC.RED); blk(0f, 2.5f, 10, BC.YELLOW)
         mystery(-2.45f, 2.3f, 10, Reward.GEMS, BC.GREEN)
@@ -112,34 +112,38 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         setPath(14, 3f)
         // after the checkpoint the path swings left past the guardian's ruins, then right toward the portal,
         // in clusters of blocks on carved ledges (as in the design) with short hops between them
-        stoneRow(15, 3.5f, 0, 1); blk(-1.0f, 4.0f, 15, BC.PURPLE)
-        blk(-0.4f, 4.0f, 16, BC.GREEN); blk(0.6f, 4.0f, 16, BC.YELLOW)
-        ledge(15, 16, -1.5f, 2.5f, 3.5f)
+        stone(0.4f, 3.5f, 15); stone(1.4f, 3.5f, 15); blk(-0.6f, 4.0f, 15, BC.PURPLE); under(-0.6f, 4.0f, 15, 1)
+        blk(-0.6f, 4.0f, 16, BC.GREEN); blk(0.4f, 4.0f, 16, BC.YELLOW)
+        ledge(16, 16, -1.1f, 0.9f, 3.0f)
+        // hop up to the guardian's ruins (row 17 is a gap)
         blk(-0.8f, 5.0f, 18, BC.RED); blk(0.2f, 5.0f, 18, BC.BLUE, BT.TARGET)
-        stone(-2.6f, 5.5f, 19); stone(-1.6f, 5.5f, 19); blk(-0.6f, 5.0f, 19, BC.GREEN); blk(0.4f, 5.0f, 19, BC.YELLOW)
-        ledge(18, 19, -3f, 1.5f, 4.5f)
+        stone(-2.8f, 5.5f, 19); stone(-1.8f, 5.5f, 19); blk(-0.8f, 5.0f, 19, BC.GREEN); blk(0.2f, 5.0f, 19, BC.YELLOW)
+        ledge(18, 19, -1.3f, 0.7f, 4.0f); under(-2.8f, 5.5f, 19, 2); under(-1.8f, 5.5f, 19, 2)
+        // the shield floats over the next gap
         bubble(0.9f, 5.2f, 20, TK.SHIELD)
         blk(0.4f, 6.0f, 21, BC.RED); blk(1.4f, 6.0f, 21, BC.PURPLE)
         blk(0.8f, 6.0f, 22, BC.YELLOW); blk(1.8f, 6.0f, 22, BC.GREEN)
-        ledge(21, 22, -0.5f, 2.5f, 5.5f)
+        ledge(21, 22, -0.1f, 2.3f, 5.0f)
         blk(1.4f, 7.0f, 24, BC.YELLOW); blk(2.4f, 7.0f, 24, BC.GREEN)
-        ledge(24, 24, 0.5f, 3.2f, 6.5f)
-        mystery(3.3f, 8.5f, 24, Reward.TOOL_SPEED, BC.BLUE)
-        for (z in 15..24) setPath(z, (w.row(z)?.filter { it.type != BT.MYSTERY && it.type != BT.BRICK }?.maxOfOrNull { it.y1 } ?: w.levelAt(z - 1)))
+        ledge(24, 24, 0.9f, 2.9f, 6.0f)
+        // the lightning block floats over the right lane: jump into it from below
+        mystery(2.9f, 9.5f, 24, Reward.TOOL_SPEED, BC.BLUE)
+        setPath(15, 3.5f); setPath(16, 4f); setPath(17, 4f); setPath(18, 5f); setPath(19, 5f); setPath(20, 5f)
+        setPath(21, 6f); setPath(22, 6f); setPath(23, 6f); setPath(24, 7f)
         // the coin trail winding up toward the portal
         val trail = floatArrayOf(1.8f, 1.5f, 1.2f, 0.9f, 1.0f, 1.3f, 1.6f, 1.7f, 1.5f)
         val tl = floatArrayOf(7.5f, 7.5f, 8.5f, 8.5f, 9.5f, 9.5f, 10.5f, 10.5f, 11.5f)
         for ((i, x) in trail.withIndex()) {
-            val z = 26 + i
+            val z = 25 + i
             blk(x, tl[i], z, palette[i % palette.size]); setPath(z, tl[i])
-            if (i % 2 == 1) ledge(z - 1, z, x - 1.5f, x + 1.5f, tl[i] - 1f)
+            if (i % 2 == 1) ledge(z - 1, z, x - 1.5f, x + 1.5f, tl[i] - 1f) else under(x, tl[i], z, 1)
         }
         // coins, as in the design (the big ones sit on the blocks next to the boy)
         coinAt(-0.85f, 1.05f, 0.7f); coinAt(-0.7f, 1.25f, 1.9f); coin(0f, 1.5f, 6); coin(0.6f, 2.0f, 9); coin(-0.2f, 2.5f, 10)
         coin(-0.4f, 4.0f, 16); coin(-0.8f, 5.0f, 18); coin(0f, 6.0f, 21); coin(1.6f, 7.0f, 23)
-        for ((i, x) in trail.withIndex()) coin(x, tl[i], 26 + i)
+        for ((i, x) in trail.withIndex()) coin(x, tl[i], 25 + i)
         // the spiked log swings across the path, hanging on ropes from high above
-        swingLog(1.5f, 7.8f, 6.0f, 5.6f, 0.55f, 3.4f, 0.46f)
+        swingLog(1.5f, 7.3f, 5.0f, 5.6f, 0.55f, 3.4f, 0.46f)
         // scenery from the design: the rope island, the mossy log bridges beside the path
         deco(DK.ISLAND, 3.1f, 5.05f, 18.5f, 2.0f)
         deco(DK.BRIDGE_L, -2.7f, 2.3f, 16.8f, 4.0f)
@@ -161,8 +165,8 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         blk(2f, 3f, 7, BC.BLUE, BT.TARGET); under(2f, 3f, 7, 2)
         coin(2f, 3f, 6)
         row(8, 2.5f, "GRY"); row(9, 3, "PYG")
-        mystery(0f, 5.4f, 9, Reward.COINS, BC.GREEN)
-        row(11, 3, "RGY"); row(12, 3, "YBG"); row(13, 3.5f, "GPR")
+        mystery(0f, 5.6f, 9, Reward.COINS, BC.GREEN)
+        row(11, 3, "RGY"); row(12, 3, "YRG"); row(13, 3.5f, "GPR")
         row(15, 3.5f, "YRG"); row(16, 4, "GYR"); row(17, 4, "RGY")
         mystery(-2f, 4f, 16, Reward.TOOL_MAGNET, BC.BLUE)
         row(19, 4, "PYP"); row(20, 4.5f, "YGY"); row(21, 5, "GRG"); row(22, 5, "RYR")
@@ -193,7 +197,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         coin(0f, 1.1f, 22); coin(0f, 1.6f, 23); coin(0f, 2.1f, 24)
         row(25, 1, "RGR"); row(26, 1, "RYR")
         archCheckpoint(27, 1)
-        row(28, 1, "GYG"); row(29, 1.5f, "YRY"); row(30, 2, "GBG"); row(31, 2, "YGY"); row(32, 2, "GYG")
+        row(28, 1, "GYG"); row(29, 1.5f, "YRY"); row(30, 2, "GRG"); row(31, 2, "YGY"); row(32, 2, "GYG")
         coinLine(0f, 1f, 25, 26); coinLine(0f, 2f, 30, 32)
 
         // ================= SECTION 4 : TOOL TRIALS =================
@@ -233,7 +237,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         trig(1, Ev.CHASE)
         row(3, 0, "KYK"); row(4, 0, "KBK"); row(5, 0, "KYK")
         row(7, 0, "RYR"); row(8, 0, "RYR"); row(9, 0, "tYt"); row(10, 0, "RYR")
-        row(12, 0, "ccc"); row(13, 0, "cBc"); row(14, 0, "ccc")
+        row(12, 0, "ccc"); row(13, 0, "cYc"); row(14, 0, "ccc")
         stoneRow(15, 0.5f, -1, 1); stoneRow(16, 1f, -1, 1); row(17, 1, "K*K"); stoneRow(18, 1f, -1, 1)
         save(0f, -2, 20)
         row(22, 1, "RYR"); row(23, 1, "RBR"); row(24, 1, "RYR")
@@ -241,7 +245,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         save(0f, -2, 26)
         row(28, 1, "KYK"); row(29, 1, "tYt"); row(30, 1, "KYK"); row(31, 1, "KYK")
         row(32, 1, "fff"); row(33, 1, "fff"); row(34, 1, "fff")
-        row(35, 1, "KYK"); row(36, 1, "KBK"); row(37, 1, "KYK"); row(38, 1, "KYK")
+        row(35, 1, "KYK"); row(36, 1, "KYK"); row(37, 1, "KYK"); row(38, 1, "KYK")
         coinLine(0f, 0f, 3, 5); coinLine(0f, 0f, 7, 10); coinLine(0f, 0f, 12, 14)
         coinLine(0f, 1f, 22, 24); coinLine(0f, 1f, 28, 38)
         coin(0f, 2.4f, 20)
@@ -263,7 +267,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         stoneRow(0, 0f, -1, 1); row(1, 0, "KbK")
         stoneRow(2, 2f, -1, 1); stoneRow(3, 2f, -1, 1); under(-1f, 2f, 2, 2); under(0f, 2f, 2, 2); under(1f, 2f, 2, 2)
         coin(0f, 3.4f, 1)
-        row(4, 2, "tBt"); row(5, 2.5f, "YRY"); row(6, 3, "RYR")
+        row(4, 2, "tYt"); row(5, 2.5f, "YRY"); row(6, 3, "RYR")
         swingLog(0f, 8.8f, 7.5f, 4.6f, 0.72f, 3.0f, -0.5f)
         stoneRow(7, 3f, -1, 1); stoneRow(8, 3f, -1, 1)
         row(10, 3, "ddd"); row(11, 3.5f, "ddd"); row(12, 4, "ddd")
@@ -279,7 +283,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         row(26, 7, "YGY"); row(27, 7, "^Y^"); row(28, 7, "YGY")
         swingLog(0f, 12.6f, 29.5f, 4.4f, 0.7f, 2.8f, 0.8f)
         stoneRow(29, 7f, -1, 1); stoneRow(30, 7f, -1, 1)
-        row(31, 7.5f, "PBP"); row(32, 8, "PRP"); row(33, 8.5f, "PYP"); row(34, 9, "PGP")
+        row(31, 7.5f, "PYP"); row(32, 8, "PRP"); row(33, 8.5f, "PYP"); row(34, 9, "PGP")
         row(35, 9, "KYK"); row(36, 9, "KYK")
         coinLine(0f, 2f, 5, 6); coinLine(0f, 3f, 7, 8); coinLine(0f, 6f, 16, 17); coinLine(0f, 7f, 26, 28)
         coin(0f, 4.2f, 10); coin(0f, 4.7f, 11); coin(0f, 5.2f, 12)
@@ -289,9 +293,9 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         zo = 202; lo = 30f
         section("approach", 0, 28)
         trig(0, Ev.FINAL)
-        row(0, 0, "KYK"); row(1, 0, "KYK"); row(2, 0, "KBK"); row(3, 0, "KYK")
+        row(0, 0, "KYK"); row(1, 0, "KYK"); row(2, 0, "KYK"); row(3, 0, "KYK")
         row(5, 0, "KOK"); row(6, 0, "KYK"); row(7, 0, "KOK")
-        row(9, 0, "KYK"); row(10, 0, "KBK")
+        row(9, 0, "KYK"); row(10, 0, "KYK")
         coinLine(0f, 0f, 0, 3); coinLine(0f, 0f, 5, 7); coinLine(0f, 0f, 9, 10)
         coin(0f, 1.4f, 4); coin(0f, 1.4f, 8)
         collapsible(-38, 10)
@@ -308,6 +312,6 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         w.portals.add(Portal(ox, 5f + lo, (24 + zo).toFloat() + 0.2f))
 
         // in the temple every stone, spike base, spring housing and crumbling block is carved temple stone
-        for (b in w.blocks) if (b.color == BC.BRICK || b.color == BC.STONE || b.color == BC.IRON) { b.color = BC.TEMPLE; b.remember() }
+        for (b in w.blocks) if (b.color == BC.BRICK || b.color == BC.STONE || b.color == BC.IRON) { b.color = if (b.type == BT.TRAP) BC.TEMPLE_DARK else BC.TEMPLE; b.remember() }
     }
 }
