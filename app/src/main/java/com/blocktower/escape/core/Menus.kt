@@ -39,6 +39,7 @@ class Menus(private val app: App) {
             Pop.LEVEL -> levelCard(gr, u)
             Pop.RESET -> confirmReset(gr, u)
             Pop.SOON -> soon(gr, u)
+            Pop.MORE -> more(gr, u)
         }
     }
 
@@ -117,7 +118,7 @@ class Menus(private val app: App) {
             gr.text(m.title, l + 24f * s, y0 + 30f * s, 30f * s, Font.UI, if (claimed) 0xFF9FB4E0.toInt() else Col.WHITE, Align.LEFT)
             // progress bar
             val v = min(pr.missionValue(i), m.goal)
-            val bl = l + 24f * s; val br = r - 250f * s; val bt = y0 + 56f * s; val bb = bt + 22f * s
+            val bl = l + 24f * s; val br = r - 330f * s; val bt = y0 + 56f * s; val bb = bt + 22f * s
             gr.fillRoundRect(bl, bt, br, bb, 11f * s, 0xFF223058.toInt())
             if (v > 0) gr.fillRoundRect(bl, bt, bl + (br - bl) * v / m.goal, bb, 11f * s, if (done) 0xFF4ADB6A.toInt() else 0xFF3A9CFF.toInt())
             gr.text("$v/${m.goal}", br + 12f * s, (bt + bb) / 2, 26f * s, Font.UI, 0xFFCFE0FF.toInt(), Align.LEFT)
@@ -254,6 +255,46 @@ class Menus(private val app: App) {
         ui.green(gr, CLOSE, cx, f[3] - 110f * s, 360f * s, 100f * s, "OK")
     }
 
+    // ---- GET MORE (the + buttons on the Home screen): where coins and gems come from
+    private fun more(gr: Gfx, u: Float) {
+        val f = frame(gr, u, 470f, "GET MORE", -1)
+        if (u < 0.9f) return
+        val cx = app.w * 0.5f
+        val art = app.baseArt
+        val isz = 58f * s
+        gr.image(art.coinIcon, cx - 80f * s - isz / 2, f[1] - isz * 0.55f, isz, isz * art.coinIcon.h / art.coinIcon.w)
+        gr.image(art.gem, cx + 80f * s - isz / 2, f[1] - isz * 0.55f, isz, isz * art.gem.h / art.gem.w)
+        ui.label(gr, "Coins and gems come from playing and from these:", cx, f[1] + 140f * s, 28f, 0xFFCFE0FF.toInt())
+        val today = app.today()
+        val missionsReady = Progress.MISSIONS.indices.count { pr.missionClaimable(it) }
+        val chestsReady = Progress.CHESTS.indices.count { pr.chestReady(it) }
+        val rows = arrayOf(
+            Triple(0, "Daily Rewards", if (pr.dailyAvailable(today)) "Today's reward is waiting!" else "Claimed today, more tomorrow"),
+            Triple(1, "Missions", if (missionsReady > 0) "$missionsReady reward${if (missionsReady > 1) "s" else ""} ready to claim" else "Finish missions for coins and gems"),
+            Triple(2, "Prize Vault", if (chestsReady > 0) "$chestsReady chest${if (chestsReady > 1) "s" else ""} ready to open" else "Earn stars to open treasure chests"),
+            Triple(-1, "Play levels", "Coins, gems and more for 3 stars"),
+        )
+        val l = f[0] + 40f * s; val r = f[2] - 40f * s
+        for ((i, row) in rows.withIndex()) {
+            val y0 = f[1] + 185f * s + i * 150f * s
+            val ready = (i == 0 && pr.dailyAvailable(today)) || (i == 1 && missionsReady > 0) || (i == 2 && chestsReady > 0)
+            ui.card(gr, l, y0, r, y0 + 130f * s, ready)
+            val icy = y0 + 65f * s
+            if (row.first >= 0) {
+                val img = headerIcons[row.first]
+                val ih = 92f * s; val iw = ih * img.w / img.h
+                gr.image(img, l + 70f * s - iw / 2, icy - ih / 2, iw, ih)
+            } else {
+                val cube = art.targetCube
+                gr.image(cube, l + 70f * s - 42f * s, icy - 42f * s, 84f * s, 84f * s * cube.h / cube.w)
+            }
+            gr.text(row.second, l + 140f * s, icy - 20f * s, 36f * s, Font.TITLE, Col.WHITE, Align.LEFT, 4f * s, 0xFF10205A.toInt())
+            gr.text(row.third, l + 140f * s, icy + 24f * s, 26f * s, Font.UI, if (ready) 0xFF7CFFA8.toInt() else 0xFFB8C8E8.toInt(), Align.LEFT)
+            if (row.first >= 0) ui.green(gr, MORE0 + i, r - 90f * s, icy, 140f * s, 74f * s, "GO")
+            else ui.orange(gr, MORE0 + i, r - 90f * s, icy, 140f * s, 74f * s, "PLAY")
+        }
+    }
+
     // ---- the level card
     private fun levelCard(gr: Gfx, u: Float) {
         val n = app.popupLevel
@@ -312,6 +353,10 @@ class Menus(private val app: App) {
             SOUND -> { pr.sound = !pr.sound; pr.save(); snd.sound(Sfx.CLICK) }
             VIBRATION -> { pr.vibration = !pr.vibration; pr.save(); snd.sound(Sfx.CLICK); snd.haptic(true) }
             RESET -> app.openPopup(Pop.RESET)
+            MORE0 -> app.openPopup(Pop.DAILY)
+            MORE0 + 1 -> app.openPopup(Pop.MISSIONS)
+            MORE0 + 2 -> app.openPopup(Pop.VAULT)
+            MORE0 + 3 -> { snd.sound(Sfx.GO, 0.6f); app.openMap() }
             RESET_YES -> { pr.reset(); snd.sound(Sfx.CRUMBLE, 0.6f); app.openPopup(Pop.SETTINGS) }
             RESET_NO -> app.openPopup(Pop.SETTINGS)
             in SENS0..SENS0 + 2 -> { pr.sensitivity = id - SENS0; pr.save(); app.applySettings(); snd.sound(Sfx.CLICK) }
@@ -334,6 +379,6 @@ class Menus(private val app: App) {
     companion object {
         const val BLOCK = 9999; const val CLOSE = 1; const val CLAIM = 2; const val PLAY = 3
         const val SOUND = 4; const val VIBRATION = 5; const val RESET = 6; const val RESET_YES = 7; const val RESET_NO = 8
-        const val SENS0 = 10; const val MISSION0 = 20; const val CHEST0 = 40
+        const val SENS0 = 10; const val MISSION0 = 20; const val CHEST0 = 40; const val MORE0 = 50
     }
 }

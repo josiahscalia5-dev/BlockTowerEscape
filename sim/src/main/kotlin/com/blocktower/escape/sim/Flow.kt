@@ -2,6 +2,7 @@ package com.blocktower.escape.sim
 
 import com.blocktower.escape.core.App
 import com.blocktower.escape.core.GS
+import com.blocktower.escape.core.HomeScreen
 import com.blocktower.escape.core.Levels
 import com.blocktower.escape.core.Menus
 import com.blocktower.escape.core.Pop
@@ -22,6 +23,7 @@ import javax.imageio.ImageIO
  *   -> the app is closed and opened again: everything is still there -> RESET -> a fresh start
  *
  *   flow            run and print a pass/fail checklist (also written to flow-report.txt)
+ *   flow w=540 h=1200 top=50 bottom=24   on another display shape, with a cut-out and a gesture bar
  *   flow shots=1    also save a screenshot of each screen on the way (flow-*.png)
  *   flow video=tour.mp4 ffmpeg=/path/to/ffmpeg   also record it all as a video (30 fps), lingering on each screen
  */
@@ -72,6 +74,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
 
     // ------------------------------------------------------------------ the run
     fun run() {
+        app.setInsets((opts["top"] ?: "0").toFloat(), (opts["bottom"] ?: "0").toFloat())
         app.layout(w, h)
         app.dayOverride = 20_000
         step(40)
@@ -81,6 +84,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
             pr.unlocked == 1 && pr.totalStars == 0 && pr.coins == Progress.START_COINS && pr.gems == Progress.START_GEMS,
             "unlocked ${pr.unlocked}, ${pr.coins} coins, ${pr.gems} gems")
 
+        homeTopBar()
         dailyRewards()
         firstVisitToTheMap()
         for (n in 1..Levels.count) playFromStartToResults(n)
@@ -92,6 +96,29 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         resetProgress()
         video?.let { it.close(); note("video: ${it.frames} frames (${"%.0f".format(it.frames / 30f)} s) -> ${opts["video"]}") }
         report()
+    }
+
+    /** The Home screen's layout on this display, and the top bar's buttons. */
+    private fun homeTopBar() {
+        val pr = app.progress
+        val r = app.home.artRect(w.toFloat(), h.toFloat())
+        check("Home: the whole artwork is on screen, undistorted, full width",
+            r[0] >= -0.5f && r[2] <= w + 0.5f && r[1] >= 0f && r[3] <= h + 0.5f && (r[2] - r[0]) / (r[3] - r[1]) in 0.6660f..0.6674f,
+            "art at %.0f,%.0f-%.0f,%.0f on %dx%d".format(r[0], r[1], r[2], r[3], w, h))
+        check("Home: the top bar sits above the title", r[4] <= r[1] + 118f * (r[2] - r[0]) / 1024f + 0.5f)
+        check("Home: Level ${pr.playerLevel} with ${pr.levelXp}/${Progress.XP_PER_LEVEL} XP on a fresh install", pr.playerLevel == 1 && pr.levelXp == 0)
+        tapHome(HomeScreen.GEAR)
+        check("the top bar's gear opens SETTINGS", app.popup == Pop.SETTINGS)
+        tapId(Menus.CLOSE)
+        tapHome(HomeScreen.COIN_PLUS)
+        check("+ beside the coins opens GET MORE", app.popup == Pop.MORE)
+        shot("01b-get-more")
+        tapId(Menus.MORE0 + 2)
+        check("GET MORE -> Prize Vault", app.popup == Pop.VAULT)
+        tapId(Menus.CLOSE)
+        tapHome(HomeScreen.GEM_PLUS)
+        check("+ beside the gems opens GET MORE", app.popup == Pop.MORE)
+        tapId(Menus.CLOSE)
     }
 
     private fun dailyRewards() {
@@ -156,7 +183,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         val pr = app.progress
         val g = app.game
         if (g == null || g.spec.number != n) { check("Level $n is being played", false, "game: ${g?.spec?.number}"); return }
-        val coins0 = pr.coins; val gems0 = pr.gems
+        val coins0 = pr.coins; val gems0 = pr.gems; val xp0 = pr.xp
         check("Level $n starts with the saved wallet", g.coins == coins0 && g.gems == gems0, "HUD ${g.coins} / ${g.gems}, saved $coins0 / $gems0")
         val open = (0..3).filter { !g.toolLocked(it) }.map { g.toolName(it) }
         val expected = (0..3).filter { n >= Levels.toolUnlock[it] }.map { g.toolName(it) }
@@ -172,6 +199,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         check("Level $n: stars, best score and relic saved; Level ${n + 1} unlocked",
             pr.stars[n] == r.stars && pr.best[n] == r.totalScore && pr.relics[n] && pr.unlocked == n + 1,
             "stars ${pr.stars[n]}, best ${pr.best[n]}, unlocked ${pr.unlocked}")
+        check("Level $n: XP for the finish (+${Progress.xpFor(r.stars)})", pr.xp == xp0 + Progress.xpFor(r.stars), "xp ${pr.xp}, player level ${pr.playerLevel}")
         check("Level $n: wallet += coins and gems picked up + level reward",
             pr.coins == coins0 + r.earnedCoins + r.rewardCoins && pr.gems == gems0 + r.earnedGems + r.gemReward,
             "coins $coins0 + ${r.earnedCoins} + ${r.rewardCoins} = ${pr.coins}, gems $gems0 + ${r.earnedGems} + ${r.gemReward} = ${pr.gems}")
@@ -283,14 +311,14 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         val same = a.unlocked == b.unlocked && a.stars.contentEquals(b.stars) && a.best.contentEquals(b.best) && a.relics.contentEquals(b.relics) &&
             a.coins == b.coins && a.gems == b.gems && a.missionClaimed.contentEquals(b.missionClaimed) && a.chestOpened.contentEquals(b.chestOpened) &&
             a.dailyIndex == b.dailyIndex && a.lastClaimDay == b.lastClaimDay && a.sound == b.sound && a.vibration == b.vibration &&
-            a.sensitivity == b.sensitivity && a.levelsDone == b.levelsDone && a.totalBlue == b.totalBlue && a.chases == b.chases
+            a.sensitivity == b.sensitivity && a.levelsDone == b.levelsDone && a.totalBlue == b.totalBlue && a.chases == b.chases && a.xp == b.xp
         check("reopening the app restores everything", same, "unlocked ${b.unlocked}, stars ${b.totalStars}, ${b.coins} coins, ${b.gems} gems, sensitivity ${b.sensitivity}")
     }
 
     private fun resetProgress() {
         val pr = app.progress
         tapHome(4); tapId(Menus.RESET); tapId(Menus.RESET_YES)
-        check("RESET starts over (settings kept)", pr.unlocked == 1 && pr.totalStars == 0 && pr.coins == Progress.START_COINS &&
+        check("RESET starts over (settings kept)", pr.unlocked == 1 && pr.totalStars == 0 && pr.coins == Progress.START_COINS && pr.xp == 0 &&
             pr.gems == Progress.START_GEMS && pr.relics.none { it } && pr.missionClaimed.none { it } && pr.sensitivity == 2)
         tapId(Menus.CLOSE)
         val b = App(SimPlatform(assets).also { it.saveFile = saveFile }).progress

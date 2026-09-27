@@ -122,6 +122,7 @@ fun appShots(assets: File, out: File, w: Int, h: Int) {
     val m = app.home.buttonCentre(2, w.toFloat(), h.toFloat()); tap(m[0], m[1]); step(20); shot("missions.png"); app.back(); step(10)
     val v = app.home.buttonCentre(3, w.toFloat(), h.toFloat()); tap(v[0], v[1]); step(20); shot("vault.png"); app.back(); step(10)
     val st = app.home.buttonCentre(4, w.toFloat(), h.toFloat()); tap(st[0], st[1]); step(20); shot("settings.png"); app.back(); step(10)
+    val mo = app.home.buttonCentre(com.blocktower.escape.core.HomeScreen.COIN_PLUS, w.toFloat(), h.toFloat()); tap(mo[0], mo[1]); step(20); shot("more.png"); app.back(); step(10)
     val p = app.home.buttonCentre(0, w.toFloat(), h.toFloat()); tap(p[0], p[1]); step(40); shot("map.png")
     val n1 = app.map.nodeCentre(1); tap(n1[0], n1[1]); step(20); shot("levelcard.png")
     // the other level cards (opened directly: those levels are still locked)

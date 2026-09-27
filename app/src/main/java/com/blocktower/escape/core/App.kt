@@ -3,7 +3,7 @@ package com.blocktower.escape.core
 import kotlin.math.min
 
 object Scr { const val HOME = 0; const val MAP = 1; const val GAME = 2 }
-object Pop { const val NONE = 0; const val DAILY = 1; const val MISSIONS = 2; const val VAULT = 3; const val SETTINGS = 4; const val LEVEL = 5; const val RESET = 6; const val SOON = 7 }
+object Pop { const val NONE = 0; const val DAILY = 1; const val MISSIONS = 2; const val VAULT = 3; const val SETTINGS = 4; const val LEVEL = 5; const val RESET = 6; const val SOON = 7; const val MORE = 8 }
 
 /** Sound and vibration follow the player's settings. */
 private class GatedPlatform(private val p: Platform, private val prog: () -> Progress?) : Platform by p {

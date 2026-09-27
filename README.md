@@ -3,8 +3,10 @@
 Native Android (Kotlin) game: a boy climbs floating block towers, collects blue blocks and escapes through the
 portal at the top before time runs out. Built so far:
 
-- **Home screen** from the approved artwork (`design/home_reference.png`), with DAILY REWARDS, MISSIONS, PRIZE VAULT,
-  SETTINGS and PLAY
+- **Home screen** from the approved Home artwork (`design/home_reference.png`): the title, the boy running from the
+  Block Tower Guardian toward the portal, DAILY REWARDS and MISSIONS on the left, PRIZE VAULT and SETTINGS on the
+  right, the PLAY button and RUN • JUMP • COLLECT • ESCAPE, with a live top bar (player level and XP, coins,
+  gems, + buttons, settings)
 - **Level map** (Select Level): a winding trail of blocks, one per level, locked levels with padlocks, stars on the
   finished ones, the boy standing on the level you are up to
 - **Five levels**: three teaching levels in the sky world, **Level 4** (the sky tower, built to match the Screen 4
@@ -24,9 +26,14 @@ Every push to `main` or to a `claude/...` working branch is built automatically 
 No third-party libraries: rendering uses `android.graphics` on a hardware-accelerated view; sound effects are synthesized at first launch.
 
 ## The app
-- **Home**: the artwork shown whole on every phone shape; PLAY breathes, gems and coins twinkle, the monster's eyes
-  glow. A red badge on a button means something is waiting there (a daily reward, a mission to claim, a chest to open).
-  Back on the Home screen closes the app.
+- **Home**: the artwork is shown whole and undistorted on every display: it spans the full width (nothing at the
+  sides is ever cut off) and fits between the camera cut-out and the gesture bar. The top bar is pinned to the top
+  of the safe area; a taller phone gets its spare height as sky between the top bar and the title, a wider screen
+  (tablet, foldable) gets soft scenery at the sides. PLAY opens the level map; DAILY REWARDS, MISSIONS, PRIZE
+  VAULT, SETTINGS and the gear open their screens; the + buttons open GET MORE (where coins and gems come from).
+  A red "!" badge shows only when something is waiting (a daily reward, a mission to claim, a chest to open).
+  PLAY breathes, the portal pulses, coins twinkle and the monster's eyes glow. Back on the Home screen closes the app.
+- **Player level**: finishing a level gives XP (30 + 20 per star, replays too); every 100 XP is a new player level.
 - **Level map**: tap a level for its card (objective, what the level introduces, the three star goals, best score)
   and PLAY. A level opens when the one before it is finished; a newly opened level says **NEW!**.
 - **Stars**: 1 for finishing (the portal only opens once the blue-block objective is done), 2 for also collecting the
@@ -155,6 +162,7 @@ rewards, settings and the saved progress, and prints a pass/fail checklist.
 ./gradlew :sim:run --args="flow out=sim-out shots=1"                          # the whole app, a screenshot of each screen
 ./gradlew :sim:run --args="flow w=720 h=1560 out=sim-out video=sim-out/tour.mp4 ffmpeg=ffmpeg"  # the whole app as a video tour
 ./gradlew :sim:run --args="app out=sim-out"                                   # Home, map, popups and level cards
+./gradlew :sim:run --args="devices out=sim-out"                               # every screen on 8 display shapes (layout audit)
 ./gradlew :sim:run --args="shot level=4 out=sim-out frames=240"               # one frame
 ./gradlew :sim:run --args="poses out=sim-out"                                 # the character animation poses
 ```
@@ -165,7 +173,7 @@ rewards, settings and the saved progress, and prints a pass/fail checklist.
   events, renderer, HUD and the character rig
 - `app/src/main/java/com/blocktower/escape/`: Android host (Activity, game view and loop, Canvas renderer, sound, saved progress)
 - `app/src/main/assets/`: artwork taken from the designs (Home screen, backgrounds, gates, boy, coins, HUD icons), block textures and fonts
-- `design/`: the approved references and the scripts that cut the artwork out of them (`home/`, `level5/`, `map/`, `make_gate_assets.py`)
+- `design/`: the approved references and the scripts that build the game's artwork from them (`home/build_home.py`, `level5/`, `map/`, `make_gate_assets.py`)
 - `sim/`: desktop playtest harness (not part of the APK)
 
 The boy's animations (run, jump, fall, land, turn, collect, hurt, celebrate, rescue, capture, portal) come from the

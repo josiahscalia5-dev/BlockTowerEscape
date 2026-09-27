@@ -19,6 +19,10 @@ class Progress(private val p: Platform) {
     val relics = BooleanArray(LEVEL_SLOTS)
     var coins = START_COINS
     var gems = START_GEMS
+    /** Experience from finishing levels: the player's level on the Home screen goes up every [XP_PER_LEVEL]. */
+    var xp = 0
+    val playerLevel get() = 1 + xp / XP_PER_LEVEL
+    val levelXp get() = xp % XP_PER_LEVEL
     // stats (missions)
     var levelsDone = 0; var totalBlue = 0; var totalCoins = 0; var toolsUsed = 0; var chases = 0
     var mysteries = 0; var flawless = 0
@@ -73,6 +77,7 @@ class Progress(private val p: Platform) {
     fun recordLevel(level: Int, starsGot: Int, score: Int, coinsEarned: Int, gemsEarned: Int, blue: Int, coinPickups: Int,
                     tools: Int, escaped: Boolean, opened: Int, noHeartLost: Boolean): Boolean {
         levelsDone++
+        xp += xpFor(starsGot)
         stars[level] = max(stars[level], starsGot)
         best[level] = max(best[level], score)
         relics[level] = true
@@ -90,7 +95,7 @@ class Progress(private val p: Platform) {
     fun save() {
         val sb = StringBuilder()
         fun put(k: String, v: Any) { sb.append(k).append('=').append(v).append(';') }
-        put("v", 1); put("unlocked", unlocked); put("coins", coins); put("gems", gems)
+        put("v", 1); put("unlocked", unlocked); put("coins", coins); put("gems", gems); put("xp", xp)
         put("stars", stars.joinToString(",")); put("best", best.joinToString(","))
         put("relics", relics.joinToString(",") { if (it) "1" else "0" })
         put("levelsDone", levelsDone); put("totalBlue", totalBlue); put("totalCoins", totalCoins); put("toolsUsed", toolsUsed)
@@ -110,6 +115,7 @@ class Progress(private val p: Platform) {
         fun ints(k: String, a: IntArray) { m[k]?.split(',')?.forEachIndexed { i, v -> if (i < a.size) a[i] = v.toIntOrNull() ?: 0 } }
         fun bools(k: String, a: BooleanArray) { m[k]?.split(',')?.forEachIndexed { i, v -> if (i < a.size) a[i] = v == "1" } }
         unlocked = int("unlocked", 1).coerceIn(1, LEVEL_SLOTS - 1); coins = int("coins", START_COINS); gems = int("gems", START_GEMS)
+        xp = int("xp", 0).coerceAtLeast(0)
         ints("stars", stars); ints("best", best); bools("relics", relics)
         levelsDone = int("levelsDone", 0); totalBlue = int("totalBlue", 0); totalCoins = int("totalCoins", 0); toolsUsed = int("toolsUsed", 0)
         chases = int("chases", 0); mysteries = int("mysteries", 0); flawless = int("flawless", 0)
@@ -120,7 +126,7 @@ class Progress(private val p: Platform) {
 
     /** Starts over (settings are kept). */
     fun reset() {
-        unlocked = 1; stars.fill(0); best.fill(0); relics.fill(false); coins = START_COINS; gems = START_GEMS
+        unlocked = 1; stars.fill(0); best.fill(0); relics.fill(false); coins = START_COINS; gems = START_GEMS; xp = 0
         levelsDone = 0; totalBlue = 0; totalCoins = 0; toolsUsed = 0; chases = 0; mysteries = 0; flawless = 0
         missionClaimed.fill(false); dailyIndex = 0; lastClaimDay = -1; chestOpened.fill(false)
         save()
@@ -131,6 +137,9 @@ class Progress(private val p: Platform) {
         const val LEVEL_SLOTS = 11          // levels 1..10 (index 0 unused)
         const val START_COINS = 500
         const val START_GEMS = 50
+        const val XP_PER_LEVEL = 100
+        /** Experience for finishing a level with [stars] stars (replays count too). */
+        fun xpFor(stars: Int) = 30 + stars * 20
         /** Daily calendar: [coins, gems] for days 1..7. */
         val DAILY = arrayOf(intArrayOf(100, 0), intArrayOf(150, 0), intArrayOf(0, 10), intArrayOf(250, 0), intArrayOf(0, 20), intArrayOf(400, 0), intArrayOf(500, 50))
         /** Vault chests: [stars needed, coins, gems]. */
