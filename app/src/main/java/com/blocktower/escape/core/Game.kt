@@ -1482,7 +1482,10 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         if (ev.chase == Chase.RUN || ev.chase == Chase.WARNING) {
             val k = if (ev.chase == Chase.WARNING) smooth(ev.phaseT / 1.1f) else 1f
             dist += 1.3f * k; height += 0.9f * k; pitch += 0.05f * k; fov = lerp(1f, 0.95f, k); roll = sin(t * 1.25f) * 0.012f * k
+            // in the temple the Guardian is ahead on the left: frame it, and keep the camera a little closer
+            if (spec.jungle) { dist -= 0.5f * k; height -= 0.3f * k; yaw -= 0.07f * k }
         }
+        if (spec.jungle && ev.chase == Chase.REVEAL) { yaw -= 0.1f * smooth(ev.phaseT / 0.5f); fov = 0.95f }
         if (ev.lavaOn && !ev.lavaStop) { dist += 0.5f; height += 0.5f; pitch += 0.03f }
         if (ev.finalOn && state == GS.PLAY) {
             // the final escape: a lower, closer, wider camera that sways with the collapse

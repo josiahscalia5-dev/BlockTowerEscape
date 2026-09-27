@@ -315,6 +315,16 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         // the golden portal from the design stands at the far edge of the plaza
         w.portals.add(Portal(ox, 5f + lo, (24 + zo).toFloat() + 0.2f))
 
+        // torches on carved pillars line the path through the temple (as in the design)
+        for (z in intArrayOf(40, 46, 52, 60, 70, 84, 94, 104, 112, 124, 134, 146, 160, 170, 178, 188, 196, 206, 214, 222)) {
+            val row = w.row(z) ?: continue
+            val xs = row.filter { it.collides() && it.type != BT.MOVING }.map { it.x }
+            if (xs.isEmpty()) continue
+            val top = w.levelAt(z) + 0.2f
+            w.decos.add(Deco(DK.TORCH, xs.min() - 1.35f, top, z + 0.5f, 1f))
+            w.decos.add(Deco(DK.TORCH, xs.max() + 1.35f, top, z + 0.5f, 1f))
+        }
+
         // in the temple every stone, spike base, spring housing and crumbling block is carved temple stone
         for (b in w.blocks) if (b.color == BC.BRICK || b.color == BC.STONE || b.color == BC.IRON) { b.color = if (b.type == BT.TRAP) BC.TEMPLE_DARK else BC.TEMPLE; b.remember() }
     }

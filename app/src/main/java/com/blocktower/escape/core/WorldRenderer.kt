@@ -844,7 +844,7 @@ class WorldRenderer(val g: Game) {
             val u = clamp01(1f - (r.y - r.ground) / 11f)
             for (i in 0 until 14) {
                 val a = i / 14f * TAU
-                if (!cam.project(r.x + cos(a) * 0.5f, r.ground + 0.02f, r.z + sin(a) * 0.5f)) { m = 0; break }
+                if (!cam.project(r.tx + cos(a) * 0.5f, r.ground + 0.02f, r.tz + sin(a) * 0.5f)) { m = 0; break }
                 poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
             }
             if (m > 0) {
@@ -890,6 +890,7 @@ class WorldRenderer(val g: Game) {
 
     /** A piece of the design's scenery standing in the world (bridges, the rope island). */
     private fun drawDeco(gr: Gfx, d: Deco) {
+        if (d.kind == DK.TORCH) { drawTorch(gr, d); return }
         val img = when (d.kind) { DK.BRIDGE_L -> art.bridgeLeft; DK.BRIDGE_R -> art.bridgeRight; else -> art.ropeIsland } ?: return
         if (!cam.project(d.x, d.y, d.z)) return
         val a = nearFade(cam.depth)
@@ -897,6 +898,37 @@ class WorldRenderer(val g: Game) {
         val pw = d.w * cam.scaleAt(cam.depth)
         val ph = pw * img.h / img.w
         gr.image(img, cam.sx - pw * 0.5f, cam.sy - ph, pw, ph, a)
+    }
+
+    /** A temple torch: a carved stone pillar with a gold fire bowl and a living flame (as along the design's path). */
+    private fun drawTorch(gr: Gfx, d: Deco) {
+        val x = d.x; val top = d.y; val z = d.z
+        if (!drawBox(gr, x - 0.3f, top - 2.2f, z - 0.3f, x + 0.3f, top, z + 0.3f, BC.TEMPLE, 1, 1f, 0f, null)) return
+        drawBox(gr, x - 0.42f, top, z - 0.42f, x + 0.42f, top + 0.26f, z + 0.42f, BC.GOLD, 0, 1f, 0f, null)
+        if (!cam.project(x, top + 0.45f, z)) return
+        val sc = cam.scaleAt(cam.depth)
+        if (sc < 3f) return
+        val a = nearFade(cam.depth)
+        val t = g.t + d.z * 1.7f
+        val fl = 0.85f + 0.15f * sin(t * 13f) * sin(t * 7.3f + 1f)
+        val fx0 = cam.sx; val fy0 = cam.sy
+        gr.setAdditive(true)
+        gr.glow(fx0, fy0 - 0.1f * sc, 1.3f * sc * fl, Col.withA(0xFFFF7A1A.toInt(), 0.35f * a))
+        gr.glow(fx0, fy0 - 0.12f * sc, 0.5f * sc * fl, Col.withA(0xFFFFB030.toInt(), 0.8f * a))
+        gr.glow(fx0 + sin(t * 9f) * 0.04f * sc, fy0 - 0.3f * sc * fl, 0.28f * sc, Col.withA(0xFFFFE890.toInt(), 0.85f * a))
+        gr.setAdditive(false)
+        // tongue of flame
+        val hgt = 0.62f * sc * fl
+        poly[0] = fx0 - 0.17f * sc; poly[1] = fy0
+        poly[2] = fx0 + sin(t * 11f) * 0.06f * sc; poly[3] = fy0 - hgt
+        poly[4] = fx0 + 0.17f * sc; poly[5] = fy0
+        gr.fillPolyGradient(poly, 3, fx0, fy0 - hgt, fx0, fy0, Col.withA(0xFFFFF4B0.toInt(), a), Col.withA(0xFFFF8A1A.toInt(), a))
+        if (g.fx.rng.f() < 0.08f && a > 0.5f) {
+            val q2 = g.fx.spawn()
+            q2.x = x + g.fx.rng.f(-0.1f, 0.1f); q2.y = top + 0.5f; q2.z = z
+            q2.vx = g.fx.rng.f(-0.2f, 0.2f); q2.vy = g.fx.rng.f(1f, 2f); q2.vz = 0f
+            q2.life = g.fx.rng.f(0.5f, 0.9f); q2.maxLife = q2.life; q2.size = 0.05f; q2.color = 0xFFFFB040.toInt(); q2.kind = PK.EMBER
+        }
     }
 
     /** The spiked log from the design, hanging from two ropes and swinging across the path. */
@@ -955,11 +987,11 @@ class WorldRenderer(val g: Game) {
             val sw = sin(gd.step * Math.PI.toFloat())
             bob = abs(sw) * 0.22f
             x = gd.x; z = gd.z
-            baseY = gd.y - 1.3f - (1f - gd.rise) * 6f + bob
-            worldW = 6.4f; a = 1f
+            baseY = gd.y - 1.6f - (1f - gd.rise) * 5f + bob + gd.reach * 0.3f
+            worldW = 6.0f; a = 1f
             if (gd.falling) a = clamp01(1f - gd.fallT / 2.5f)
         }
-        val front = abs(cam.yaw) > 1.5f || lair
+        val front = abs(cam.yaw) > 1.5f || lair || z > g.player.z
         val p = g.player
         // between the camera and the boy it turns see-through: it looms, but never hides the path
         val between = !front && z < p.z && z + 1.5f > cam.ez

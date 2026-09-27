@@ -33,7 +33,7 @@ class Portal(val x: Float, val y: Float, val z: Float) {
 }
 
 /** Kinds of design pictures standing in the world (Level 5). */
-object DK { const val BRIDGE_L = 0; const val BRIDGE_R = 1; const val ISLAND = 2 }
+object DK { const val BRIDGE_L = 0; const val BRIDGE_R = 1; const val ISLAND = 2; const val TORCH = 3 }
 
 /**
  * A piece of scenery cut from the level's design, standing in the world as a camera-facing picture:

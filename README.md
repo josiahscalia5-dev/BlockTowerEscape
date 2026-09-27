@@ -1,8 +1,9 @@
 # Block Tower Escape — Screen 4 (Main Gameplay)
 
-Native Android (Kotlin) build of **Screen 4: Main Gameplay**, built to match the approved Screen 4 design
-(`design/screen4_reference.png`). Only this screen is built. Home, World Map, Level Select and the other
-screens are intentionally not started yet.
+Native Android (Kotlin) build of **Screen 4: Main Gameplay**. Two levels are built, each to match its approved
+design: **Level 5** (the jungle temple, `design/level5_reference.png`; the app opens this level) and **Level 23**
+(the sky tower, `design/screen4_reference.png`). Home, World Map, Level Select and the other screens are
+intentionally not started yet.
 
 ## Get the APK
 Every push to `main` is built automatically by GitHub Actions (`.github/workflows/build-apk.yml`):
@@ -14,6 +15,30 @@ Every push to `main` is built automatically by GitHub Actions (`.github/workflow
 2. Run the `app` configuration on a phone or emulator (portrait).
 
 No third-party libraries: rendering uses `android.graphics` on a hardware-accelerated view; sound effects are synthesized at first launch.
+
+## Level 5 — the jungle temple
+**Mission:** collect **10 blue blocks** and reach the **golden portal** at the top of the temple (01:15 on the clock,
+three hearts, tools 3 / 2 / 3 / 2). The portal stays sealed until you have 10/10.
+
+The start of the level reproduces the Level 5 design: the blue star block under the boy, the spike platform and the
+floating ? block on the left, the ? block and the red spring button on the right, the magnet, the spiked log
+swinging on its ropes, the stone steps up to the CHECKPOINT arch, the Temple Guardian watching from its ruins with
+the warning sign, the shield, the lightning block and the coin trail winding up to the portal. The picture pieces
+(portal temple, Guardian, checkpoint arch, spiked log, mossy log bridges, rope island) are cut from the design and
+stand in the 3D world where the start camera sees them in the design; the camera was fitted to the design's blocks.
+
+1. **Temple entrance** — the design's opening, first swinging log, first checkpoint; the Guardian leaps away
+2. **Colourful block climb** — rising steps, gaps, an optional blue block on a raised pillar, a magnet box
+3. **Moving stones and hazards** — sliding platforms, cracked and crumbling stones, a swinging log, timed spikes, vanishing stepping stones
+4. **Tool trials** — blue blocks only the magnet reaches, a gap too wide to jump (BLOCK, LIGHTNING, or the vanishing stones), a spike run for the shield, a high ledge for the spring
+5. **Temple Guardian chase** — *DANGER!* It bounds along the ruins ahead on the left, hurls boulders onto the path and closes in whenever you slow down; if it reaches the path it grabs you (game over — continue from the checkpoint just before the chase). The temple crumbles behind you.
+6. **Checkpoint** — reach the arch and the Guardian's ledge gives way; a heart and a shield
+7. **Temple climb** — spring buttons, vanishing stairs, a moving stone, crumbling blocks, spikes and two more swinging logs
+8. **Final approach** — the temple collapses behind you on the way to the grand stairs
+9. **Escape through the portal** — the portal blazes, the boy runs in, the camera pulls back, LEVEL COMPLETE
+
+Swinging logs knock you back and cost a heart (the shield blocks them): watch the swing and pass when it is clear.
+`design/level5/` holds the scripts that cut the Level 5 art out of its design.
 
 ## How to play Level 23
 **Mission:** collect **12 blue blocks** and reach the **Ancient Gate**, the glowing gate at the top of the screen.
@@ -79,7 +104,8 @@ buttons do nothing, that a flick on open ground doesn't jump, that the boy never
 steering stays smooth. It prints a timeline and a pass/fail checklist (`scenario=hearts` tests losing every heart and continuing).
 
 ```
-./gradlew :sim:run --args="play out=sim-out"                                  # report only
+./gradlew :sim:run --args="play level=5 out=sim-out"                          # Level 5 (level=23 for the sky tower)
+./gradlew :sim:run --args="play out=sim-out"                                  # report only (Level 23)
 ./gradlew :sim:run --args="play out=sim-out video=sim-out/run.mp4 ffmpeg=ffmpeg"  # also record a video
 ./gradlew :sim:run --args="shot out=sim-out frames=240"                       # one frame
 ./gradlew :sim:run --args="poses out=sim-out"                                 # the character animation poses
