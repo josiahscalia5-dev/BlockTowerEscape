@@ -53,12 +53,15 @@ class Hud(val g: Game) {
         w = width.toFloat(); h = height.toFloat()
         s = min(w / 1024f, (h - topInset - bottomInset) / 1450f)
         offX = (w - 1024f * s) * 0.5f
-        sceneS = max(w / 1024f, 0.8f * h / 1536f)
+        // the 3D scene fills a phone's width; a wider screen (tablet, foldable) keeps at least the view ahead a
+        // 16:9 phone has (so the portal stays in sight) and shows more scenery at the sides instead
+        sceneS = min(max(w / 1024f, 0.8f * h / 1536f), h / (1.72f * 1024f))
         val feetY = h - (1536f - 1190f) * sceneS
         sceneArtTop = feetY - 1190f * sceneS
         sceneCY = sceneArtTop + 768f * sceneS
         focal = 1024f * sceneS
-        bgS = max(sceneS, h / 1536f)
+        // the sky plate always covers the screen, parallax drift included
+        bgS = max(sceneS, max(h / 1536f, w / 1032f))
         bgArtTop = if (bgS > sceneS + 0.001f) (h - 1536f * bgS) * 0.5f else sceneArtTop
     }
 
