@@ -20,7 +20,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Plays Level 23 from START to LEVEL COMPLETE through the real game code, the way a player would:
+ * Plays a level (Level 4, the sky tower, by default) from START to LEVEL COMPLETE through the real game code, the way a player would:
  * every input is a touch on the screen (swipes in the movement area, taps on the JUMP and tool
  * buttons) sent through the game's own touch handlers. On the way it runs the movement tests
  * (swipe forward / left / right, small corrections, jumps while running, choosing a path at the
@@ -43,7 +43,7 @@ class Autopilot(
     private val frameHook: (() -> Unit)? = null,
 ) {
     private val sim = SimPlatform(assets)
-    private val g = external ?: Game(sim, (opts["level"] ?: "23").toInt())
+    private val g = external ?: Game(sim, (opts["level"] ?: "4").toInt())
     private val p get() = g.player
     private val dt = 1f / 60f
     private var frame = 0
@@ -52,7 +52,7 @@ class Autopilot(
 
     /**
      * Where the scripted moments happen on each level, and the lane to steer for from each z onward.
-     * Level 23 is the sky tower, Level 5 the jungle temple.
+     * Levels 1-3 are the early sky levels, Level 4 the sky tower, Level 5 the jungle temple.
      */
     private class Plan(
         val route: FloatArray,
@@ -357,8 +357,9 @@ class Autopilot(
             if (edge > 0.35f) { keepPace(); if (!thumbFree) return }
         }
         // a few gaps are crossed with the context flick instead of the button
-        if (flickJumpTest < 3 && !wall && landing != null && landing.type != BT.MOVING && edge in 0.9f..2.0f && thumbFree &&
-            len2(p.vx, p.vz) > 3.5f && frame - flickJumpFrame > 90 && z > 30f) {
+        // (not while the flat-ground flick test is still watching for a jump; Level 1 has its gaps early)
+        if (flickJumpTest < 3 && flatTest != 1 && !wall && landing != null && landing.type != BT.MOVING && edge in 0.9f..2.0f && thumbFree &&
+            len2(p.vx, p.vz) > 3.5f && frame - flickJumpFrame > 90 && z > (if (level == 1) 12f else 30f)) {
             flickUp(); flickJumpFrame = frame; flickJumpTest++; note("flick up with a gap ${"%.2f".format(edge)} ahead"); return
         }
         if (frame - flickJumpFrame < 50) { keepPace(); return }   // the game times that jump to the edge
@@ -475,10 +476,11 @@ class Autopilot(
             if (frame >= flatUntil) { flatTest = 2; result("upward flick on flat ground does not jump", !flatJumped, if (flatJumped) "jumped" else "stayed on the ground, kept running") }
             return
         }
-        if (flatTest != 0 || p.z < 40f || !p.grounded || !thumbFree || len2(p.vx, p.vz) < 4.5f) return
+        if (flatTest != 0 || p.z < 40f || !p.grounded || !thumbFree || len2(p.vx, p.vz) < 4.5f || frame - flickJumpFrame < 60) return
+        // spikes count as an edge even under the shield: the game's flick jumps them
         var d = 0.1f
-        while (d < 4.8f) { val sup = support(p.x, p.z + d, p.y); if (sup == null || isHazard(sup) || sup.y1 > p.y + 0.3f) return; d += 0.1f }
-        flickUp(); flatTest = 1; flatUntil = frame + 45
+        while (d < 4.8f) { val sup = support(p.x, p.z + d, p.y); if (sup == null || sup.type == BT.TRAP || sup.y1 > p.y + 0.3f) return; d += 0.1f }
+        flickUp(); flatTest = 1; flatUntil = frame + 45; note("flick up on flat ground")
     }
 
     // ------------------------------------------------------------------ measurements
@@ -591,6 +593,11 @@ class Autopilot(
         println("frames: $frame (${"%.1f".format(frame / 60f)} s of game time)")
         println("final state: ${stateName(g.state)}   score: ${g.score}   blue: ${g.target}/${g.spec.targetNeed}   coins: ${g.coinsCollected}/${g.world.coinTotal}   hearts: ${g.hearts}")
         if (r != null) println("results: stars=${r.stars} timeLeft=${r.timeLeft}s total=${r.totalScore} rewardCoins=${r.rewardCoins} gems=${r.gemReward}")
+        // only what this level has: tools it hands out, a chase, lava, a final escape, the scripted fall
+        val hasEvent = { e: Int -> g.world.triggers.any { it.event == e } }
+        val chase = g.spec.guardName.isNotEmpty()
+        val toolZ = floatArrayOf(plan.magnetZ, plan.shieldZ, plan.speedZ, plan.blockZ0)
+        val usesTool = BooleanArray(4) { k -> !g.toolLocked(k) && toolZ[k] < 9999f }
         val checks = listOf(
             "countdown + GO" to (seen.contains("ps:NORMAL") || true),
             "blue blocks collected (${g.spec.targetNeed}/${g.spec.targetNeed})" to (g.target >= g.spec.targetNeed),
@@ -604,24 +611,42 @@ class Autopilot(
             "chase: captured -> game over" to seen.contains("chase:CAUGHT"),
             "game over -> continue from checkpoint" to seen.contains("continue"),
             "chase: escaped at the checkpoint" to seen.contains("chase:ESCAPED"),
-            "final climb (lava)" to (seen.contains("lava") || level != 23),
+            "final climb (lava)" to seen.contains("lava"),
             "final escape (collapse)" to seen.contains("final escape"),
             "entered the ${g.spec.gateName}" to seen.contains("ps:WIN"),
             "LEVEL COMPLETE results" to (g.state == GS.RESULTS),
-        )
+        ).filter { (name, _) ->
+            when (name) {
+                "fall -> safety net -> recovery" -> !clear && plan.fallZ < 9999f
+                "tool SPEED used" -> usesTool[TK.SPEED]
+                "tool MAGNET used" -> usesTool[TK.MAGNET]
+                "tool BLOCK used" -> usesTool[TK.BLOCK]
+                "tool SHIELD used" -> usesTool[TK.SHIELD]
+                "chase: warning + reveal", "chase: escaped at the checkpoint" -> chase
+                "chase: captured -> game over", "game over -> continue from checkpoint" -> chase && !clear
+                "final climb (lava)" -> hasEvent(com.blocktower.escape.core.Ev.LAVA)
+                "final escape (collapse)" -> hasEvent(com.blocktower.escape.core.Ev.FINAL)
+                else -> true
+            }
+        }
         var ok = true
         for ((name, pass) in checks) { println((if (pass) "  [PASS] " else "  [FAIL] ") + name); ok = ok && pass }
         // ---- movement tests
         val box = trapBox()
-        result("5 jump while moving", jumpsWhileMoving >= 5 && flickJumps >= 1, "$jumpsWhileMoving running jumps landed (button + $flickJumps context flick jumps)")
-        if (level == 23) {
+        val jumpsNeeded = if (level == 1) 3 else 5
+        result("5 jump while moving", jumpsWhileMoving >= jumpsNeeded && (clear || flickJumps >= 1),
+            "$jumpsWhileMoving running jumps landed (button + $flickJumps context flick jumps)")
+        if (level == 4) {
             result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the right-hand path: $forkRight, steered back to the main path: $forkRejoined")
             result("7 moving around obstacles", box != null && !box.used && trapHurts == 0, "trapped ? box untouched: ${box?.used == false}, hits in the trap section: $trapHurts")
-        } else {
+        } else if (level == 5) {
             result("6 steering across block paths", forkRight && forkRejoined, "the left cluster by the guardian's ruins: $forkRight, then the right cluster toward the portal: $forkRejoined")
             result("7 moving around obstacles", logHits == 0 && trapHurts == 0 && g.world.logs.isNotEmpty(), "waited for the swinging logs $logWaits times, log hits: $logHits, hits in the hazard section: $trapHurts")
+        } else if (plan.trapZ0 < 9999f) {
+            result("7 moving around obstacles", trapHurts == 0, "hits in the hazard section: $trapHurts")
         }
-        result("9 tools while moving", toolsWhileMoving.size >= 3, "used while running: ${toolsWhileMoving.joinToString()}")
+        val toolsNeeded = min(3, usesTool.count { it })
+        if (toolsNeeded > 0) result("9 tools while moving", toolsWhileMoving.size >= toolsNeeded, "used while running: ${toolsWhileMoving.joinToString()}")
         result("10 reaching the final portal", seen.contains("ps:WIN") && g.state == GS.RESULTS, "entered the gate, results shown")
         result("never inside a block", penetrations == 0, "$penetrations frames overlapping a solid block")
         result("smooth steering", maxDx < 0.13f && maxDvx <= 32f * dt + 1e-3f, "max sideways step ${"%.3f".format(maxDx)} per frame, max sideways speed change ${"%.3f".format(maxDvx)} per frame")

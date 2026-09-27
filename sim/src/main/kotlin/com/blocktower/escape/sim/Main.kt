@@ -123,4 +123,6 @@ fun appShots(assets: File, out: File, w: Int, h: Int) {
     val st = app.home.buttonCentre(4, w.toFloat(), h.toFloat()); tap(st[0], st[1]); step(20); shot("settings.png"); app.back(); step(10)
     val p = app.home.buttonCentre(0, w.toFloat(), h.toFloat()); tap(p[0], p[1]); step(40); shot("map.png")
     val n1 = app.map.nodeCentre(1); tap(n1[0], n1[1]); step(20); shot("levelcard.png")
+    // the other level cards (opened directly: those levels are still locked)
+    for (n in 2..com.blocktower.escape.core.Levels.count) { app.openPopup(com.blocktower.escape.core.Pop.LEVEL, n); step(30); shot("levelcard$n.png") }
 }
