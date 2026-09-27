@@ -203,7 +203,7 @@ class Menus(private val app: App) {
 
     // ---- SETTINGS
     private fun settings(gr: Gfx, u: Float) {
-        val f = frame(gr, u, 470f, "SETTINGS", 3)
+        val f = frame(gr, u, 540f, "SETTINGS", 3)
         if (u < 0.9f) return
         val l = f[0] + 50f * s; val r = f[2] - 50f * s
         fun row(i: Int, label: String): Float {
@@ -216,13 +216,19 @@ class Menus(private val app: App) {
         toggle(gr, SOUND, r - 110f * s, y, pr.sound)
         y = row(1, "Vibration")
         toggle(gr, VIBRATION, r - 110f * s, y, pr.vibration)
-        y = row(2, "Swipe")
+        y = row(2, "Controls")
+        val modes = arrayOf("SWIPE", "JOYSTICK")
+        for (i in 0..1) {
+            val bx = r - 368f * s + i * 218f * s
+            if (pr.controls == i) ui.green(gr, CTRL0 + i, bx, y, 210f * s, 70f * s, modes[i]) else ui.blue(gr, CTRL0 + i, bx, y, 210f * s, 70f * s, modes[i])
+        }
+        y = row(3, "Sensitivity")
         val labels = arrayOf("LOW", "NORMAL", "HIGH")
         for (i in 0..2) {
             val bx = r - 440f * s + i * 145f * s
             if (pr.sensitivity == i) ui.green(gr, SENS0 + i, bx, y, 138f * s, 70f * s, labels[i]) else ui.blue(gr, SENS0 + i, bx, y, 138f * s, 70f * s, labels[i])
         }
-        ui.red(gr, RESET, app.w * 0.5f, f[1] + 640f * s, 440f * s, 90f * s, "RESET PROGRESS")
+        ui.red(gr, RESET, app.w * 0.5f, f[1] + 780f * s, 440f * s, 90f * s, "RESET PROGRESS")
         ui.label(gr, "Block Tower Escape  •  progress is saved on this phone", app.w * 0.5f, f[3] - 50f * s, 25f, 0xFF9FB4E0.toInt())
     }
 
@@ -360,6 +366,7 @@ class Menus(private val app: App) {
             RESET_YES -> { pr.reset(); snd.sound(Sfx.CRUMBLE, 0.6f); app.openPopup(Pop.SETTINGS) }
             RESET_NO -> app.openPopup(Pop.SETTINGS)
             in SENS0..SENS0 + 2 -> { pr.sensitivity = id - SENS0; pr.save(); app.applySettings(); snd.sound(Sfx.CLICK) }
+            in CTRL0..CTRL0 + 1 -> { pr.controls = id - CTRL0; pr.save(); app.applySettings(); snd.sound(Sfx.CLICK) }
             in MISSION0 until MISSION0 + Progress.MISSIONS.size -> {
                 if (pr.claimMission(id - MISSION0)) {
                     lastClaimed = id - MISSION0; claimFlash = 1f
@@ -379,6 +386,6 @@ class Menus(private val app: App) {
     companion object {
         const val BLOCK = 9999; const val CLOSE = 1; const val CLAIM = 2; const val PLAY = 3
         const val SOUND = 4; const val VIBRATION = 5; const val RESET = 6; const val RESET_YES = 7; const val RESET_NO = 8
-        const val SENS0 = 10; const val MISSION0 = 20; const val CHEST0 = 40; const val MORE0 = 50
+        const val SENS0 = 10; const val MISSION0 = 20; const val CHEST0 = 40; const val MORE0 = 50; const val CTRL0 = 60
     }
 }

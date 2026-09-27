@@ -34,8 +34,10 @@ class Progress(private val p: Platform) {
     // settings
     var sound = true
     var vibration = true
-    /** Swipe sensitivity: 0 low, 1 normal, 2 high. */
+    /** Swipe / joystick sensitivity: 0 low, 1 normal, 2 high. */
     var sensitivity = 1
+    /** How the boy is moved: 0 swipes (the default), 1 the joystick. */
+    var controls = 0
 
     val totalStars get() = stars.sum()
 
@@ -103,7 +105,7 @@ class Progress(private val p: Platform) {
         put("missions", missionClaimed.joinToString(",") { if (it) "1" else "0" })
         put("dailyIndex", dailyIndex); put("lastClaimDay", lastClaimDay)
         put("chests", chestOpened.joinToString(",") { if (it) "1" else "0" })
-        put("sound", if (sound) 1 else 0); put("vibration", if (vibration) 1 else 0); put("sensitivity", sensitivity)
+        put("sound", if (sound) 1 else 0); put("vibration", if (vibration) 1 else 0); put("sensitivity", sensitivity); put("controls", controls)
         p.saveText(KEY, sb.toString())
     }
 
@@ -122,6 +124,7 @@ class Progress(private val p: Platform) {
         bools("missions", missionClaimed); dailyIndex = int("dailyIndex", 0); lastClaimDay = int("lastClaimDay", -1)
         bools("chests", chestOpened)
         sound = int("sound", 1) == 1; vibration = int("vibration", 1) == 1; sensitivity = int("sensitivity", 1).coerceIn(0, 2)
+        controls = int("controls", 0).coerceIn(0, 1)
     }
 
     /** Starts over (settings are kept). */

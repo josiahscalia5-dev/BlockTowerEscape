@@ -164,6 +164,8 @@ class App(platform: Platform) : GameHost {
         game = Game(pf, n, art(spec.theme), this).also {
             it.hud.setInsets(topInset, bottomInset)
             it.swipe.sensitivity = SENSITIVITY[progress.sensitivity]
+            it.joy.sensitivity = SENSITIVITY[progress.sensitivity]
+            it.joystickMode = progress.controls == 1
         }
         screen = Scr.GAME; popup = Pop.NONE; justUnlocked = 0
     }
@@ -172,7 +174,11 @@ class App(platform: Platform) : GameHost {
     /** Coins placed in a level (for the star goals on the level card). */
     fun coinTotal(n: Int) = coinTotals.getOrPut(n) { Levels.get(n).build().coinTotal }
 
-    fun applySettings() { game?.swipe?.sensitivity = SENSITIVITY[progress.sensitivity] }
+    fun applySettings() {
+        val g = game ?: return
+        g.swipe.sensitivity = SENSITIVITY[progress.sensitivity]; g.joy.sensitivity = SENSITIVITY[progress.sensitivity]
+        g.joystickMode = progress.controls == 1
+    }
 
     // ------------------------------------------------------------------ input
     private var menuPointer = -1

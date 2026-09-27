@@ -87,7 +87,12 @@ Swinging logs knock you back and cost a heart (the shield blocks them): watch th
 `design/level5/` holds the scripts that cut the Level 5 art out of its design.
 
 ## Controls
-| Control | Action |
+Swipes are the default. **SETTINGS → Controls → JOYSTICK** turns the movement pad into a thumb stick instead: push up
+to run (a little is a jog, all the way a sprint), down to slow down and step back, left / right to steer (the further,
+the quicker; he still settles onto the middle of a block). It drives the same eased movement as the swipes, and
+jumping stays on the JUMP button. **Sensitivity** (low / normal / high) applies to both.
+
+| Control (swipe mode) | Action |
 |---|---|
 | Swipe up (lower screen) | Run forward. Short swipe = jog, medium = run, long = sprint. A quick flick keeps him running after you lift your thumb; a held swipe runs while you hold and eases to a stop when you let go |
 | Swipe left / right | Steer toward that side of the path: a short swipe is a small correction, a medium one about one block, a long one up to 2½ blocks. Slide back to steer back |
@@ -148,7 +153,8 @@ small corrections, jumping while running (button and context flick), choosing a 
 obstacles, falling and recovery, tools while running, and reaching the portal. It also checks that stray touches and
 swipes over tool buttons do nothing, that a flick on open ground doesn't jump, that the boy never ends up inside a
 block, and that steering stays smooth. It prints a timeline and a pass/fail checklist of what that level contains
-(`scenario=hearts` tests losing every heart and continuing; `scenario=clear` just plays through).
+(`scenario=hearts` tests losing every heart and continuing; `scenario=clear` just plays through;
+`controls=joystick` plays the level with the joystick instead of swipes).
 
 `flow` plays the whole app from a fresh install by tapping the screen: Home, daily rewards (claim, the next day, a
 missed day), the level map (a locked level stays shut), the level card, pause -> LEVEL MAP, Levels 1-5 in a row

@@ -80,6 +80,11 @@ class Hud(val g: Game) {
     private val toolYs = floatArrayOf(510f, 650f, 795f, 940f)
     fun toolX(k: Int) = ax(934f); fun toolY(k: Int) = ayT(toolYs[k])
     private fun joyCX() = ax(183f); private fun joyCY() = ayB(1302f)
+    /** The movement pad's centre (the joystick's centre in joystick mode). */
+    fun joyX() = joyCX(); fun joyY() = joyCY()
+    /** Joystick mode: a touch here takes the stick (around the pad, and the lower-left corner). */
+    private fun inJoyZone(x: Float, y: Float) = !inJump(x, y) && !inToolColumn(x, y) &&
+        (sq(x - joyCX()) + sq(y - joyCY()) <= sq(220f * s) || (x < w * 0.5f && y > joyCY() - 200f * s))
     private fun jumpCX() = ax(872f); private fun jumpCY() = ayB(1308f)
 
     fun bumpTarget() { targetBump = 1f }
@@ -102,12 +107,13 @@ class Hud(val g: Game) {
         // the pad's knob follows the thumb while swiping and leans forward while the boy keeps running
         val sw = g.swipe
         var tx = 0f; var ty = 0f
-        if (sw.holding) {
+        if (g.joystickMode) { tx = g.joy.x; ty = g.joy.y }
+        else if (sw.holding) {
             tx = (sw.fingerX - sw.anchorX) / (120f * s); ty = (sw.fingerY - sw.anchorY) / (120f * s)
         } else ty = -0.4f * sw.cruise
         val m = len2(tx, ty)
         if (m > 1f) { tx /= m; ty /= m }
-        val k = damp(16f, dt)
+        val k = damp(if (g.joystickMode) 40f else 16f, dt)
         knobX = lerp(knobX, tx, k); knobY = lerp(knobY, ty, k)
     }
 
@@ -136,15 +142,18 @@ class Hud(val g: Game) {
             g.input.jumpHeld = true; g.input.jumpPressed = true
             return
         }
+        if (g.joystickMode) { if (inJoyZone(x, y) && !g.joy.holding) g.joy.down(id, x, y); return }
         if (inSwipeArea(x, y) && !g.swipe.holding) g.swipe.down(id, x, y)
     }
 
     fun touchMove(id: Int, x: Float, y: Float) {
-        if (id == g.swipe.id) g.swipe.move(id, x, y)
+        if (id == g.joy.id) g.joy.move(id, x, y)
+        else if (id == g.swipe.id) g.swipe.move(id, x, y)
         else if (id == toolId && len2(x - toolDownX, y - toolDownY) > 30f * s) toolId = -1   // slid away: not a tap
     }
 
     fun touchUp(id: Int, x: Float, y: Float) {
+        if (id == g.joy.id) g.joy.up(id)
         if (id == g.swipe.id) g.swipe.up(id, x, y)
         if (id == jumpId) { jumpId = -1; g.input.jumpHeld = false }
         if (id == toolId) {
@@ -156,6 +165,7 @@ class Hud(val g: Game) {
     /** The system took the touch away (e.g. a gesture or dialog): release everything, trigger nothing. */
     fun touchCancel(id: Int) {
         g.swipe.cancel(id)
+        g.joy.up(id)
         if (id == jumpId) { jumpId = -1; g.input.jumpHeld = false }
         if (id == toolId) toolId = -1
     }
@@ -397,7 +407,15 @@ class Hud(val g: Game) {
         // the arrow of the last recognised swipe lights up briefly; before the first move the forward arrow breathes
         val sw = g.swipe
         val idle = if (!g.movedYet && g.state == GS.PLAY && g.playT > 1.5f) 0.5f * pulse(g.t, 2.2f) else 0f
-        fun lit(dir: Int) = max(if (sw.lastSwipeDir == dir) sw.swipeFlash else 0f, if (dir == 2) idle else 0f)
+        fun lit(dir: Int): Float {
+            if (g.joystickMode) {
+                // the stick lights the way it is pushed
+                val j = g.joy
+                val v = when (dir) { 2 -> -j.y; -2 -> j.y; -1 -> -j.x; else -> j.x }
+                return max(clamp01(v * 1.6f - 0.25f), if (dir == 2) idle else 0f)
+            }
+            return max(if (sw.lastSwipeDir == dir) sw.swipeFlash else 0f, if (dir == 2) idle else 0f)
+        }
         arrow(gr, x, y - 104f * s, 0f, lit(2)); arrow(gr, x, y + 104f * s, 180f, lit(-2))
         arrow(gr, x - 104f * s, y, -90f, lit(-1)); arrow(gr, x + 104f * s, y, 90f, lit(1))
         val kx = x + knobX * 78f * s; val ky = y + knobY * 78f * s

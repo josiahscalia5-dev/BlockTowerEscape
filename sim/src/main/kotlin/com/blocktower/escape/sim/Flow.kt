@@ -287,10 +287,31 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         tapId(Menus.RESET_NO)
         check("CANCEL keeps everything", app.popup == Pop.SETTINGS && pr.unlocked == Levels.count + 1 && pr.totalStars > 0)
         tapId(Menus.CLOSE)
+        // the joystick: chosen in SETTINGS, it replaces the swipes in the next level
+        tapHome(4); tapId(Menus.CTRL0 + 1)
+        check("Controls: JOYSTICK chosen", pr.controls == 1)
+        shot("19b-settings-joystick")
+        tapId(Menus.CLOSE)
+        tapHome(0); tapLevel(2); tapId(Menus.PLAY); settle()
+        val jg = app.game
+        check("a level started after choosing JOYSTICK uses the joystick", jg != null && jg.joystickMode && jg.joy.sensitivity == App.SENSITIVITY[2])
+        if (jg != null) {
+            jg.hud.layout(w, h)
+            val ap = Autopilot(assets, out, mapOf("scenario" to "clear"), external = jg, stepper = { app.update(it); frame++ }, frameHook = { record(false) })
+            val done = ap.playLevel(420)
+            step(30); shot("19c-joystick-results", 1.5f)
+            check("Level 2 played start to finish with the joystick", done && jg.results != null, "${jg.results?.stars} stars")
+            val m = jg.hud.overlayButtonCentre(2); tap(m[0], m[1]); settle()
+        }
+        app.back(); settle()
+        check("... and back Home through the level map", app.screen == Scr.HOME)
+        tapHome(4); tapId(Menus.CTRL0)
+        check("Controls: back to SWIPE", pr.controls == 0)
+        tapId(Menus.CLOSE)
         // the new sensitivity is used by the next level
         tapHome(0); tapLevel(2); tapId(Menus.PLAY); settle()
         val g = app.game
-        check("a replayed level uses the HIGH swipe sensitivity", g != null && g.spec.number == 2 && g.swipe.sensitivity == App.SENSITIVITY[2])
+        check("a replayed level uses the HIGH swipe sensitivity", g != null && g.spec.number == 2 && !g.joystickMode && g.swipe.sensitivity == App.SENSITIVITY[2])
         // the app goes to the background mid-level: the game pauses and progress is saved
         var i = 0
         while (g != null && g.state != GS.PLAY && i < 600) { step(1); i++ }
@@ -311,7 +332,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         val same = a.unlocked == b.unlocked && a.stars.contentEquals(b.stars) && a.best.contentEquals(b.best) && a.relics.contentEquals(b.relics) &&
             a.coins == b.coins && a.gems == b.gems && a.missionClaimed.contentEquals(b.missionClaimed) && a.chestOpened.contentEquals(b.chestOpened) &&
             a.dailyIndex == b.dailyIndex && a.lastClaimDay == b.lastClaimDay && a.sound == b.sound && a.vibration == b.vibration &&
-            a.sensitivity == b.sensitivity && a.levelsDone == b.levelsDone && a.totalBlue == b.totalBlue && a.chases == b.chases && a.xp == b.xp
+            a.sensitivity == b.sensitivity && a.controls == b.controls && a.levelsDone == b.levelsDone && a.totalBlue == b.totalBlue && a.chases == b.chases && a.xp == b.xp
         check("reopening the app restores everything", same, "unlocked ${b.unlocked}, stars ${b.totalStars}, ${b.coins} coins, ${b.gems} gems, sensitivity ${b.sensitivity}")
     }
 

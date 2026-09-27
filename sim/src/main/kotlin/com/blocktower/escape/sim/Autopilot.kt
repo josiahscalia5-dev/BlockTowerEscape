@@ -31,6 +31,7 @@ import kotlin.math.sqrt
  *   play video=out.mp4 ffmpeg=/path/to/ffmpeg   also record (30 fps)
  *   play frames=dir every=30  also write every Nth frame as PNG
  *   play scenario=hearts      keep falling until GAME OVER, then CONTINUE
+ *   play controls=joystick    play with the joystick (SETTINGS → Controls) instead of swipes
  */
 class Autopilot(
     val assets: File, val out: File, val opts: Map<String, String>,
@@ -127,6 +128,12 @@ class Autopilot(
 
     /** Just play through: no deliberate falls, captures or movement tests (the flow test). */
     private val clear = scenario == "clear" || external != null
+    /** Plays with the joystick (SETTINGS → Controls) instead of swipes: the thumb holds the stick all the time. */
+    private val joyMode = external?.joystickMode ?: (opts["controls"] == "joystick")
+    private var jx = 0f; private var jy = 0f
+    private var steerTarget = Float.NaN
+    private var steering = false
+    private var leanFrames = 0
 
     /** Plays the level inside the app until its results are on screen. Returns true when it was completed. */
     fun playLevel(maxSeconds: Int = 600): Boolean {
@@ -248,6 +255,7 @@ class Autopilot(
     }
 
     private fun fingersStep() {
+        if (joyMode) joyStep()
         thumbQ.removeFirstOrNull()?.let { a ->
             when (a.kind) { -1 -> {}; 0 -> g.touchDown(THUMB, a.x, a.y); 1 -> g.touchMove(THUMB, a.x, a.y); else -> g.touchUp(THUMB, a.x, a.y) }
         }
@@ -289,7 +297,7 @@ class Autopilot(
         }
         if (p.state != PS.NORMAL) { wantRun = true; return }
         if (scenario == "hearts" && !seen.contains("continue")) { if (thumbFree && p.grounded && g.playT > 0.5f) leapOffTheSide(); return }
-        if (startStep < 99) { startTests(); return }
+        if (startStep < 99) { if (joyMode) joyStartTests() else startTests(); return }
         val z = p.z
 
         // --- scripted tests along the way
@@ -324,7 +332,8 @@ class Autopilot(
         val ground = p.ground
         val onMover = ground != null && ground.type == BT.MOVING
         if (onMover) tx = g.steerX
-        if (thumbFree && frame - lastSteerFrame > 14 && abs(tx - g.steerX) > 0.15f) { steerSwipe(max(-2.5f, min(2.5f, tx - g.steerX))); return }
+        if (joyMode) steerTarget = tx
+        else if (thumbFree && frame - lastSteerFrame > 14 && abs(tx - g.steerX) > 0.15f) { steerSwipe(max(-2.5f, min(2.5f, tx - g.steerX))); return }
 
         if (!p.grounded) { keepPace(); return }
         // --- look ahead: gaps, steps, hazards
@@ -388,6 +397,7 @@ class Autopilot(
 
     /** Swipe up to keep running (or down to stop) when the pace is not what we want. */
     private fun keepPace() {
+        if (joyMode) { jy = if (wantRun) -1f else 0f; return }
         if (!thumbFree) return
         if (wantRun && g.swipe.cruise < 0.85f) { flickUp(); return }
         if (!wantRun && g.swipe.cruise > 0f) swipeDown(90f)
@@ -395,9 +405,59 @@ class Autopilot(
 
     /** Jump, then swipe hard to the side while in the air (steering on the ground never leaves the path). */
     private fun leapOffTheSide(): Boolean {
+        if (joyMode) {
+            if (jumpHoldF > 0) return false
+            pressJump(); leanFrames = 150; return true
+        }
         if (jumpHoldF > 0 || !thumbFree) return false
         pressJump(); thumbQ.add(Act(-1, 0f, 0f)); swipe(baseX() + 60f * s, baseY(), -300f * s, 0f, 9)
         return true
+    }
+
+    /** Joystick mode: the thumb stays on the stick; each frame it is pushed toward the steering target and up to run. */
+    private var joyDown = false
+    private fun joyStep() {
+        if (!g.joy.holding) joyDown = false
+        if (g.state != GS.PLAY && g.state != GS.INTRO) { jx = 0f; jy = 0f }
+        var x = 0f
+        if (leanFrames > 0) {
+            // leaning off the path on purpose (the fall test): hop sideways until the path is gone from under him
+            leanFrames--; x = -1f
+            if (p.grounded && p.state == PS.NORMAL && jumpHoldF == 0 && leanFrames < 44) pressJump()
+            if (p.state != PS.NORMAL) leanFrames = 0
+        }
+        else if (!steerTarget.isNaN() && p.state == PS.NORMAL) {
+            val err = steerTarget - g.steerX
+            if (abs(err) > 0.12f) steering = true
+            if (abs(err) < 0.04f) steering = false
+            if (steering) x = (if (err < 0f) -1f else 1f) * min(1f, 0.32f + abs(err) * 1.2f)
+        }
+        jx = x
+        val r = 100f * g.hud.s
+        val px = g.hud.joyX() + jx * r; val py = g.hud.joyY() + jy * r
+        if (!joyDown) { g.touchDown(THUMB, px, py); joyDown = true } else g.touchMove(THUMB, px, py)
+    }
+
+    /** Joystick mode at the start line: steer one block right, back again, then push up and run. */
+    private fun joyStartTests() {
+        if (frame < stepAt) return
+        when (startStep) {
+            0 -> { if (g.playT > 0.4f) { mark0 = p.x; steerTarget = mark0 + 1f; startStep = 1; stepAt = frame + 60 } }
+            1 -> {
+                result("joystick right: one block, gliding", abs(p.x - (mark0 + 1f)) < 0.15f, "x ${"%.2f".format(mark0)} -> ${"%.2f".format(p.x)}")
+                steerTarget = mark0; startStep = 2; stepAt = frame + 60
+            }
+            2 -> {
+                result("joystick left: back again", abs(p.x - mark0) < 0.15f, "back to x=${"%.2f".format(p.x)}")
+                jy = -1f; runStartFrame = frame; startStep = 3; stepAt = frame + 48
+            }
+            3 -> {
+                val sp = p.vz
+                result("joystick up: runs, accelerates smoothly", sp > 0.85f * Tune.RUN && maxDvz <= 16f * dt * 1.05f + 1e-3f,
+                    "speed ${"%.2f".format(sp)} after 0.8 s, max speed change per frame ${"%.3f".format(maxDvz)} (limit ${"%.3f".format(16f * dt)})")
+                startStep = 99
+            }
+        }
     }
 
     /** At the start line: stray touches, swipes over the tool buttons, then the first swipe forward. */
@@ -632,7 +692,7 @@ class Autopilot(
         // ---- movement tests
         val box = trapBox()
         val jumpsNeeded = if (level == 1) 3 else 5
-        result("5 jump while moving", jumpsWhileMoving >= jumpsNeeded && (clear || flickJumps >= 1),
+        result("5 jump while moving", jumpsWhileMoving >= jumpsNeeded && (clear || joyMode || flickJumps >= 1),
             "$jumpsWhileMoving running jumps landed (button + $flickJumps context flick jumps)")
         if (level == 4) {
             result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the right-hand path: $forkRight, steered back to the main path: $forkRejoined")
@@ -667,5 +727,7 @@ class Autopilot(
     // runs last, after every property above has its initial value
     init {
         if (clear) { startStep = 99; fallTestDone = true; steerTest = 99; captureTestDone = true; flatTest = 2; flickJumpTest = 3 }
+        // the swipe-only tests (swipe gestures, context flicks) do not apply to the joystick
+        if (joyMode) { steerTest = 99; flatTest = 2; flickJumpTest = 3; if (external == null) g.joystickMode = true }
     }
 }

@@ -75,6 +75,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     val tools = arrayOf(Tool(TK.MAGNET, 3, 8f, 3f), Tool(TK.SHIELD, 2, 10f, 3f), Tool(TK.SPEED, 3, 6f, 3f), Tool(TK.BLOCK, 3, 0f, 1.5f))
     val ev = Events(this)
     val swipe = SwipeControl(this)
+    /** The optional thumb stick (SETTINGS → Controls); swipes are the default. */
+    val joy = JoystickControl(this)
+    var joystickMode = false
     val rig = PlayerRig(this)
     val view = WorldRenderer(this)
     val hud = Hud(this)
@@ -178,7 +181,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         camInit = false; camYaw = 0f; camCyK = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
         combo = 0; lastTargetT = -9f
         kickY = 0f; kickV = 0f; camLead = 0f; camRoll = 0f; camFov = 1f
-        swipe.reset(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f; movedYet = false
+        swipe.reset(); joy.release(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f; movedYet = false
         logT = 0f
         markSpawnContacts()
     }
@@ -238,7 +241,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (state == GS.RESULTS || state == GS.FAILED || state == GS.COMPLETE) return
         paused = !paused
         // pausing lets go of the movement swipe and stops running, so resuming never runs off by itself
-        if (paused) { swipe.cancel(swipe.id); swipe.stop() }
+        if (paused) { swipe.cancel(swipe.id); swipe.stop(); joy.release() }
         platform.sound(Sfx.CLICK)
     }
 
@@ -267,6 +270,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         }
 
         swipe.update(dt)
+        joy.update(dt)
         updateTools(sdt)
         updateBlocks(sdt)
         updateLogs(sdt)
@@ -630,13 +634,15 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         var drive = 0f
         val steerIn = swipe.takeSteer()
         if (controllable) {
-            drive = swipe.drive
+            drive = if (joystickMode) joy.drive else swipe.drive
             val ky = input.keyY()
             if (ky != 0f) drive = if (ky > 0f) 1f else -0.45f
             // ---- sideways: move the steering target; he glides after it (never snaps)
             steerX += steerIn
             val kx = input.keyX()
             if (kx != 0f) { steerX += kx * 4.5f * dt; swipe.laneChange = true }
+            val jr = if (joystickMode) joy.steerRate() else 0f
+            if (jr != 0f) { steerX += jr * dt; swipe.laneChange = true }
             val gb = p.ground
             if (p.grounded && gb != null && gb.type == BT.MOVING) steerX += gb.dxFrame
             if (p.grounded) {
@@ -644,7 +650,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
                 val lo = pathLo; val hi = pathHi
                 if (lo < hi) { val c = clamp(steerX, lo, hi); swipe.absorb(steerX - c); steerX = c }
                 // settle onto the middle of a block once the thumb stops steering
-                if (swipe.steerIdle > 0.18f && kx == 0f && swipe.laneChange) {
+                if (swipe.steerIdle > 0.18f && joy.steerIdle > 0.18f && kx == 0f && swipe.laneChange) {
                     val cx = nearestBlockCentre(steerX)
                     if (!cx.isNaN()) steerX = lerp(steerX, cx, damp(7f, dt))
                 }
@@ -1424,13 +1430,17 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             Ev.FORK -> fx.banner("CHOOSE YOUR PATH!", "LEFT: SAFE  •  RIGHT: TREASURE", 0xFFFFE14A.toInt(), 2.0f)
             Ev.TRAPS -> { fx.banner("DANGER ZONE!", "TIME YOUR STEPS — OR JUMP THE SPIKES", 0xFFFF8A5A.toInt(), 2.2f, true); platform.sound(Sfx.WARNING, 0.5f, 1.2f) }
             Ev.ZONE -> fx.toast(tr.text, tr.text2, 0xFFFFE14A.toInt())
-            Ev.TUT -> { hint = ""; hintT = 0f; queueHint(tr.text, tr.text2.toIntOrNull() ?: 7) }
+            Ev.TUT -> { hint = ""; hintT = 0f; queueHint(tutText(tr.text), tr.text2.toIntOrNull() ?: 7) }
             else -> ev.fire(tr.event)
         }
     }
 
     private var sealedMsgT = -9f
     private fun queueHint(s: String, kind: Int) { pendingHint = s; pendingHintKind = kind }
+    /** Tutorial tips are written for swipes; with the joystick they say the same thing for the stick. */
+    private fun tutText(s: String) = if (!joystickMode) s else s
+        .replace("Swipe UP to run!", "Push the stick UP to run!")
+        .replace("Swipe LEFT or RIGHT to steer", "Push the stick LEFT or RIGHT to steer")
 
     private var endPortal: Portal? = null
     private var rainLeft = 0
