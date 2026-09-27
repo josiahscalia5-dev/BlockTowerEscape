@@ -762,10 +762,18 @@ class Hud(val g: Game) {
         // why: the star goals, so the rating is never a mystery
         if (t > rStars + 0.9f) {
             val a = clamp01((t - rStars - 0.9f) / 0.3f)
-            val line = "Coins ${r.coinsCollected}/${r.coinGoal}" + (if (r.coinGoalMet) " ✔" else "") +
-                "   •   ${r.timeLeft}s left (${g.spec.timeStar}s)" + (if (r.timeGoalMet) " ✔" else "") +
-                "   •   " + (if (r.noGameOver) "No game over ✔" else "Game over used")
-            gr.text(line.replace("✔", "+"), cxp, top + 462f * s, 24f * s, Font.UI, Col.withA(0xFF9FB4E0.toInt(), a))
+            // three goals side by side, each with a drawn check mark when it was met
+            val parts = arrayOf("Coins ${r.coinsCollected}/${r.coinGoal}", "${r.timeLeft}s left (${g.spec.timeStar}s)", if (r.noGameOver) "No game over" else "Game over used")
+            val met = booleanArrayOf(r.coinGoalMet, r.timeGoalMet, r.noGameOver)
+            val ts = 24f * s; val mark = 24f * s; val gap = 34f * s
+            val widths = FloatArray(3) { gr.textWidth(parts[it], ts, Font.UI) + (if (met[it]) mark else 0f) }
+            var x = cxp - (widths.sum() + gap * 2f) * 0.5f
+            val y = top + 462f * s
+            for (i in 0..2) {
+                gr.text(parts[i], x, y, ts, Font.UI, Col.withA(if (met[i]) 0xFFCFE0FF.toInt() else 0xFF8090B0.toInt(), a), Align.LEFT)
+                if (met[i]) check(gr, x + widths[i] - mark * 0.4f, y, 8f * s, 0xFF7CFFA8.toInt(), a)
+                x += widths[i] + gap
+            }
         }
         // score counts up
         val su = clamp01((t - rScore) / rScoreDur)

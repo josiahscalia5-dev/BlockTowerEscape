@@ -21,6 +21,8 @@ class LevelMap(private val app: App) {
     private var newT = 0f
     private val poly = FloatArray(16)
     private val q = FloatArray(8)
+    /** The sky world behind the trail: the sky tower plate, softened (design/map/make_map_bg.py). */
+    private val bg by lazy { app.pf.loadImage("img/map_bg.jpg") }
 
     private val s get() = app.s
     private val spacing get() = 260f * s
@@ -54,16 +56,14 @@ class LevelMap(private val app: App) {
         val w = app.w; val h = app.h
         val art = app.baseArt
         val t = app.t
-        // the sky world behind, drifting slowly with the scroll
-        val bg = art.bg
-        // only the artwork part of the plate (its outer margins are soft fill), a little larger than the screen
-        val k = max(w / art.artW, h / art.artH) * 1.12f
+        // the sky world behind, a little larger than the screen, drifting slowly with the scroll
+        val k = max(w / bg.w, h / bg.h) * 1.12f
         val par = clamp(scroll / max(1f, maxScroll), 0f, 1f)
-        val left = w * 0.5f - (art.bgArtX + art.artW * 0.5f) * k
-        val topY = -art.bgArtY * k + (h - art.artH * k) * (1f - par)
+        val left = (w - bg.w * k) * 0.5f
+        val topY = (h - bg.h * k) * (1f - par)
         gr.fillRect(0f, 0f, w, h, 0xFF1C5FC8.toInt())
         gr.image(bg, left, topY, bg.w * k, bg.h * k)
-        gr.fillRectGradient(0f, 0f, w, h, 0x220A1440, 0x550A1440)
+        gr.fillRectGradient(0f, 0f, w, h, 0x110A1440, 0x440A1440)
         // the trail of stepping stones between levels
         val pr = app.progress
         val current = app.currentLevel()
@@ -124,9 +124,11 @@ class LevelMap(private val app: App) {
             gr.fillCircle(cx, cy - size * 0.55f, size * 0.45f, 0x33000010)
             gr.image(img, cx - bw * 0.5f, cy - size * 0.62f - bh - bob, bw, bh)
         }
-        // header
+        // header: a dark band the trail scrolls under, fading out below the wallet
         val top = app.topInset
-        gr.fillRectGradient(0f, 0f, w, top + 250f * s, 0xF00A1438.toInt(), 0x000A1438)
+        val band = top + 175f * s
+        gr.fillRectGradient(0f, 0f, w, band, 0xF20A1438.toInt(), 0xD80A1438.toInt())
+        gr.fillRectGradient(0f, band, w, band + 110f * s, 0xD80A1438.toInt(), 0x000A1438)
         app.ui.backButton(gr, 1, 70f * s, top + 70f * s)
         app.ui.title(gr, "SELECT LEVEL", w * 0.5f, top + 70f * s, 64f)
         app.ui.star(gr, w * 0.5f - 60f * s, top + 140f * s, 24f * s, true)

@@ -34,6 +34,8 @@ class Ui(private val app: App) {
     /** Returns the tapped button id, or -1. */
     fun up(x: Float, y: Float): Int { val p = pressed; pressed = -1; return if (p >= 0 && find(x, y) == p) p else -1 }
     fun cancel() { pressed = -1 }
+    /** Tests: the centre of button [id] as it was drawn in the last frame, or null when it is not on screen. */
+    fun centreOf(id: Int): FloatArray? = hits.lastOrNull { it.id == id }?.let { floatArrayOf((it.l + it.r) * 0.5f, (it.t + it.b) * 0.5f) }
 
     // ---- shapes
     private val path = VPath()
@@ -145,8 +147,8 @@ class Ui(private val app: App) {
         val h = 62f * s
         val gw = 150f * s; val cw = 200f * s
         val gl = rightX - gw; val cl = gl - 8f * s - cw
-        gr.fillRoundRect(cl, cy - h / 2, cl + cw, cy + h / 2, 16f * s, 0xD90A1438.toInt())
-        gr.fillRoundRect(gl, cy - h / 2, rightX, cy + h / 2, 16f * s, 0xD90A1438.toInt())
+        gr.fillRoundRect(cl, cy - h / 2, cl + cw, cy + h / 2, 16f * s, 0xF50A1438.toInt())
+        gr.fillRoundRect(gl, cy - h / 2, rightX, cy + h / 2, 16f * s, 0xF50A1438.toInt())
         val ci = art.coinIcon; val gi = art.gem
         val isz = 52f * s
         gr.image(ci, cl + 10f * s, cy - isz * 0.5f * ci.h / ci.w, isz, isz * ci.h / ci.w)

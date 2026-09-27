@@ -12,9 +12,10 @@ class Menus(private val app: App) {
     private val ui get() = app.ui
     private val s get() = app.s
     private val pr get() = app.progress
+    /** The pictures of the Home screen's menu buttons, cut out (design/home/cut_icons.py). */
     private val headerIcons by lazy {
-        arrayOf(app.pf.loadImage("home/btn_daily.png"), app.pf.loadImage("home/btn_missions.png"),
-            app.pf.loadImage("home/btn_vault.png"), app.pf.loadImage("home/btn_settings.png"))
+        arrayOf(app.pf.loadImage("home/icon_daily.png"), app.pf.loadImage("home/icon_missions.png"),
+            app.pf.loadImage("home/icon_vault.png"), app.pf.loadImage("home/icon_settings.png"))
     }
     private val guardian by lazy { app.pf.loadImage("l5/guardian.png") }
     private var claimFlash = 0f
@@ -49,12 +50,11 @@ class Menus(private val app: App) {
         ui.panel(gr, l, t, r, b)
         if (u < 0.9f) return floatArrayOf(l, t, r, b)
         if (icon >= 0) {
+            // the menu's picture sits on the top edge of the panel
             val img = headerIcons[icon]
-            // only the picture part of the button (not its caption)
-            val v1 = img.h * 0.56f
-            val ih = 130f * s; val iw = ih * img.w / v1
-            val q = floatArrayOf(cx - iw / 2, t - ih * 0.62f, cx + iw / 2, t - ih * 0.62f, cx + iw / 2, t + ih * 0.38f, cx - iw / 2, t + ih * 0.38f)
-            gr.imageQuad(img, 0f, 0f, img.w.toFloat(), v1, q, 1f)
+            val ih = 120f * s; val iw = ih * img.w / img.h
+            gr.setAdditive(true); gr.glow(cx, t, iw * 0.85f, Col.withA(0xFF60A8FF.toInt(), 0.35f)); gr.setAdditive(false)
+            gr.image(img, cx - iw / 2, t - ih * 0.62f, iw, ih)
         }
         ui.title(gr, title, cx, t + (if (icon >= 0) 110f else 70f) * s, 58f)
         ui.closeButton(gr, CLOSE, r - 20f * s, t + 20f * s)
@@ -63,7 +63,7 @@ class Menus(private val app: App) {
 
     // ---- DAILY REWARDS
     private fun daily(gr: Gfx, u: Float) {
-        val f = frame(gr, u, 560f, "DAILY REWARDS", 0)
+        val f = frame(gr, u, 470f, "DAILY REWARDS", 0)
         if (u < 0.9f) return
         val cx = app.w * 0.5f
         val today = app.today()
@@ -139,7 +139,7 @@ class Menus(private val app: App) {
 
     // ---- PRIZE VAULT
     private fun vault(gr: Gfx, u: Float) {
-        val f = frame(gr, u, 600f, "PRIZE VAULT", 2)
+        val f = frame(gr, u, 530f, "PRIZE VAULT", 2)
         if (u < 0.9f) return
         val cx = app.w * 0.5f
         ui.label(gr, "RELICS  •  one for every level you finish", cx, f[1] + 172f * s, 28f, 0xFFCFE0FF.toInt())
@@ -168,11 +168,10 @@ class Menus(private val app: App) {
             val x0 = cx - 430f * s + i * 290f * s; val y0 = f[1] + 495f * s
             val opened = pr.chestOpened[i]; val ready = pr.chestReady(i)
             ui.card(gr, x0, y0, x0 + 280f * s, y0 + 360f * s, ready)
-            val v1 = chest.h * 0.56f
-            val ih = 130f * s; val iw = ih * chest.w / v1
+            val ih = 118f * s; val iw = ih * chest.w / chest.h
             val icx = x0 + 140f * s
-            val q = floatArrayOf(icx - iw / 2, y0 + 20f * s, icx + iw / 2, y0 + 20f * s, icx + iw / 2, y0 + 20f * s + ih, icx - iw / 2, y0 + 20f * s + ih)
-            gr.imageQuad(chest, 0f, 0f, chest.w.toFloat(), v1, q, if (opened) 0.45f else 1f)
+            if (ready) { gr.setAdditive(true); gr.glow(icx, y0 + 26f * s + ih * 0.5f, iw * 0.9f, Col.withA(0xFFFFE070.toInt(), 0.25f + 0.15f * pulse(app.t, 3f))); gr.setAdditive(false) }
+            gr.image(chest, icx - iw / 2, y0 + 26f * s, iw, ih, if (opened) 0.45f else 1f)
             ui.star(gr, icx - 40f * s, y0 + 180f * s, 20f * s, true)
             gr.text("${min(pr.totalStars, c[0])}/${c[0]}", icx - 12f * s, y0 + 180f * s, 30f * s, Font.TITLE, Col.WHITE, Align.LEFT, 4f * s, 0xFF10205A.toInt())
             gr.text(Ui.fmt(c[1]) + " coins + ${c[2]} gems", icx, y0 + 230f * s, 23f * s, Font.UI, 0xFFFFE14A.toInt())
@@ -259,7 +258,7 @@ class Menus(private val app: App) {
     private fun levelCard(gr: Gfx, u: Float) {
         val n = app.popupLevel
         val sp = Levels.get(n)
-        val f = frame(gr, u, 560f, "LEVEL $n", -1)
+        val f = frame(gr, u, 485f, "LEVEL $n", -1)
         if (u < 0.9f) return
         val cx = app.w * 0.5f
         val l = f[0] + 60f * s
@@ -280,14 +279,15 @@ class Menus(private val app: App) {
         }
         // what is new
         if (sp.newThings.isNotEmpty()) {
-            y += 70f * s
-            gr.text("NEW:  " + sp.newThings.joinToString("  •  "), cx, y, 26f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 4f * s, 0xFF10205A.toInt())
+            y += 64f * s
+            gr.text("NEW IN THIS LEVEL", cx, y, 26f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 4f * s, 0xFF10205A.toInt())
+            for (line in sp.newThings.chunked(2)) { y += 38f * s; ui.label(gr, line.joinToString("  •  "), cx, y, 28f, 0xFFFFF0B8.toInt()) }
         }
-        // star goals
-        y = f[1] + 560f * s
+        // star goals (below whatever the level introduces)
+        y = max(f[1] + 560f * s, y + 135f * s)
         gr.text("STAR GOALS", cx, y - 62f * s, 28f * s, Font.TITLE, 0xFFCFE0FF.toInt(), Align.CENTER, 4f * s, 0xFF10205A.toInt())
         val coins = app.coinTotal(n)
-        val goals = arrayOf("Reach the portal", "Collect ${sp.coinGoal(coins)} of ${coins} coins", "Finish with ${sp.timeStar}s left, no game over")
+        val goals = arrayOf("Reach the ${sp.gateName}", "Collect ${sp.coinGoal(coins)} of ${coins} coins", "Finish with ${sp.timeStar}s left, no game over")
         val best = pr.stars[n]
         for (i in 0..2) {
             val yy = y + i * 56f * s

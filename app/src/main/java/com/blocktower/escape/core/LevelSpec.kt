@@ -68,7 +68,7 @@ object Levels {
         guardName = "", gateName = "Sky Portal",
         camDist = 4.4f, camHeight = 3.6f, camPitch = 0.30f, camFocal = 1.0f,
         bigGate = false,
-        newThings = listOf("NEW TOOL: Magnet", "Moving blocks", "Mystery blocks"),
+        newThings = listOf("The Magnet tool", "Moving blocks", "Mystery blocks"),
         coinStar = 0.5f, timeStar = 40, rewardCoins = 140, rewardGems = 3,
     ) { Levels123.level2() }
 
@@ -78,7 +78,7 @@ object Levels {
         guardName = "", gateName = "Sky Portal",
         camDist = 4.4f, camHeight = 3.6f, camPitch = 0.30f, camFocal = 1.0f,
         bigGate = false, extraObjective = "Survive the hazards",
-        newThings = listOf("NEW TOOL: Shield", "Vanishing and cracked blocks", "Spikes", "Treasure route"),
+        newThings = listOf("The Shield tool", "Vanishing and cracked blocks", "Spikes", "Treasure route"),
         coinStar = 0.55f, timeStar = 45, rewardCoins = 180, rewardGems = 4,
     ) { Levels123.level3() }
 
@@ -89,7 +89,7 @@ object Levels {
         guardName = "TOWER GUARD", gateName = "Ancient Gate",
         camDist = 4.4f, camHeight = 3.6f, camPitch = 0.30f, camFocal = 1.0f,
         extraObjective = "Survive the chase",
-        newThings = listOf("NEW TOOLS: Lightning and Block", "Tower Guard chase", "Rising lava"),
+        newThings = listOf("Lightning and Block tools", "Tower Guard chase", "Rising lava"),
         coinStar = 0.55f, timeStar = 20, rewardCoins = 250, rewardGems = 6,
     ) { Level.build() }
 
