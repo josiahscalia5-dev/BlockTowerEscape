@@ -23,6 +23,7 @@ fun main(args: Array<String>) {
         }
         "poses" -> posesSheet(assets, out)
         "play" -> Autopilot(assets, out, opts).run()
+        "profile" -> profile(assets)
         else -> error("unknown mode ${args[0]}")
     }
 }
@@ -61,4 +62,20 @@ private fun posesSheet(assets: File, out: File) {
     }
     ImageIO.write(gfx.image, "png", File(out, "poses.png"))
     println("wrote poses.png")
+}
+
+/** Times rendering of a few frames (for keeping the video recorder fast). */
+fun profile(assets: File) {
+    val game = Game(SimPlatform(assets))
+    val gfx = J2DGfx(assets, 540, 1170)
+    game.hud.layout(540, 1170)
+    for (i in 0 until 240) game.update(1f / 60f)
+    game.input.joyY = 1f
+    for (i in 0 until 60) game.update(1f / 60f)
+    for (i in 0 until 40) { game.update(1f / 60f); gfx.clear(); game.render(gfx) }
+    gfx.profileReset()
+    val t0 = System.nanoTime()
+    for (i in 0 until 10) { game.update(1f / 60f); gfx.clear(); game.render(gfx) }
+    println("ms/frame: " + (System.nanoTime() - t0) / 1e7)
+    gfx.profileDump()
 }

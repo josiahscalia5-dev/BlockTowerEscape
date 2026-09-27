@@ -1130,8 +1130,10 @@ class Game(val platform: Platform) {
 
     /** Puts the course back the way it was after the checkpoint so the player can retry that part. */
     private fun restoreFrom(cpZ: Float) {
+        // rows from a little behind the checkpoint on (the checkpoint's own platform may have crumbled)
+        val from = floor(cpZ).toInt() - 4
         for (b in world.blocks) {
-            if (b.row <= cpZ) continue
+            if (b.row < from) continue
             if (b.eventTag != 0 && b.destroyed) { b.destroyed = false; b.visible = true; b.y = b.origY; b.vy = 0f; b.alpha = 1f; b.shake = 0f }
             when (b.type) {
                 BT.DISAPPEAR, BT.FALLING, BT.CRACKED -> if (b.state != 0) { b.state = 0; b.visible = true; b.alpha = 1f; b.y = b.origY; b.vy = 0f; b.damage = 0f; b.timer = 0f }

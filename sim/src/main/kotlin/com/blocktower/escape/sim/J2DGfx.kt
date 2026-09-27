@@ -86,6 +86,16 @@ class J2DGfx(assets: File, override val width: Int, override val height: Int) : 
     private val stack = ArrayDeque<Pair<AffineTransform, Shape?>>()
     private val tinted = HashMap<Long, BufferedImage>()
 
+    private val soft = SoftRaster(image)
+    /** Current transform and clip, for the software rasterizer. */
+    fun currentTransform(): AffineTransform = g.transform
+    fun currentClip(): Shape? = g.clip
+
+    private val prof = HashMap<String, LongArray>()
+    private inline fun <T> timed(k: String, f: () -> T): T { val t0 = System.nanoTime(); val r = f(); val a = prof.getOrPut(k) { LongArray(2) }; a[0] += System.nanoTime() - t0; a[1]++; return r }
+    fun profileReset() = prof.clear()
+    fun profileDump() { for ((k, v) in prof.entries.sortedByDescending { it.value[0] }) println("%-12s %8.1f ms  %6d calls".format(k, v[0] / 1e6 / 10, v[1] / 10)) }
+
     fun clear() { g.transform = AffineTransform(); g.clip = null; g.composite = AlphaComposite.SrcOver; g.color = Color.BLACK; g.fillRect(0, 0, width, height); additive = false; stack.clear() }
 
     private fun comp(alpha: Float): Composite =
@@ -106,8 +116,12 @@ class J2DGfx(assets: File, override val width: Int, override val height: Int) : 
 
     private fun bi(img: Img) = img.native as BufferedImage
 
-    override fun image(img: Img, x: Float, y: Float, w: Float, h: Float, alpha: Float) {
+    override fun image(img: Img, x: Float, y: Float, w: Float, h: Float, alpha: Float) = timed("image") { image0(img, x, y, w, h, alpha) }
+        private val iq = FloatArray(8)
+    private fun image0(img: Img, x: Float, y: Float, w: Float, h: Float, alpha: Float) {
         if (alpha <= 0.004f || w == 0f || h == 0f) return
+        iq[0] = x; iq[1] = y; iq[2] = x + w; iq[3] = y; iq[4] = x + w; iq[5] = y + h; iq[6] = x; iq[7] = y + h
+        if (soft.quad(this, img, 0f, 0f, img.w.toFloat(), img.h.toFloat(), iq, alpha, 1f, 0, 0f, additive)) return
         g.composite = comp(alpha)
         val b = bi(img)
         val at = AffineTransform(w.toDouble() / b.width, 0.0, 0.0, h.toDouble() / b.height, x.toDouble(), y.toDouble())
@@ -158,8 +172,11 @@ class J2DGfx(assets: File, override val width: Int, override val height: Int) : 
     }
 
     override fun imageQuad(img: Img, u0: Float, v0: Float, u1: Float, v1: Float, q: FloatArray,
+                           alpha: Float, mul: Float, addColor: Int, addAmt: Float) = timed(if (additive) "quadAdd" else "quad") { imageQuad0(img, u0, v0, u1, v1, q, alpha, mul, addColor, addAmt) }
+        private fun imageQuad0(img: Img, u0: Float, v0: Float, u1: Float, v1: Float, q: FloatArray,
                            alpha: Float, mul: Float, addColor: Int, addAmt: Float) {
         if (alpha <= 0.004f) return
+        if (soft.quad(this, img, u0, v0, u1, v1, q, alpha, mul, addColor, addAmt, additive)) return
         var b = bi(img)
         val k = mul * (1f - addAmt)
         val opaque = b.transparency == java.awt.Transparency.OPAQUE
@@ -251,7 +268,8 @@ class J2DGfx(assets: File, override val width: Int, override val height: Int) : 
             Array(f.colors.size) { color(f.colors[it]) }).also { f.native = it }
     }
 
-    override fun fillPath(p: VPath, f: Fill, alpha: Float) {
+    override fun fillPath(p: VPath, f: Fill, alpha: Float) = timed("fillPath") { fillPath0(p, f, alpha) }
+        private fun fillPath0(p: VPath, f: Fill, alpha: Float) {
         g.composite = comp(alpha); g.paint = paintOf(f); g.fill(pathOf(p)); g.composite = AlphaComposite.SrcOver
     }
 
@@ -270,7 +288,12 @@ class J2DGfx(assets: File, override val width: Int, override val height: Int) : 
 
     private fun solid(c: Int) { g.composite = comp(1f); g.paint = color(c) }
 
-    override fun fillPoly(xy: FloatArray, n: Int, color: Int) { if (n < 3) return; solid(color); g.fill(polyOf(xy, n, true)) }
+    override fun fillPoly(xy: FloatArray, n: Int, color: Int) = timed("fillPoly") { fillPoly0(xy, n, color) }
+    private fun fillPoly0(xy: FloatArray, n: Int, color: Int) {
+        if (n < 3) return
+        if (soft.poly(this, xy, n, color, additive)) return
+        solid(color); g.fill(polyOf(xy, n, true))
+    }
 
     override fun fillPolyGradient(xy: FloatArray, n: Int, x0: Float, y0: Float, x1: Float, y1: Float, c0: Int, c1: Int) {
         if (n < 3) return
@@ -292,7 +315,9 @@ class J2DGfx(assets: File, override val width: Int, override val height: Int) : 
     }
 
     private val glowStops = floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
-    override fun glow(cx: Float, cy: Float, r: Float, color: Int) {
+    override fun glow(cx: Float, cy: Float, r: Float, color: Int) = timed("glow") { glow0(cx, cy, r, color) }
+        private fun glow0(cx: Float, cy: Float, r: Float, color: Int) {
+        if (soft.glow(this, cx, cy, r, color, additive)) return
         if (r < 1f || (color ushr 24) == 0) return
         val a = (color ushr 24) / 255f
         val cols = Array(5) { color(color or -0x1000000, a * (1f - glowStops[it]) * (1f - glowStops[it])) }
@@ -333,7 +358,8 @@ class J2DGfx(assets: File, override val width: Int, override val height: Int) : 
         solid(color); g.fill(Arc2D.Float(cx - r, cy - r, 2 * r, 2 * r, -startDeg, -sweepDeg, Arc2D.PIE))
     }
 
-    override fun text(s: String, x: Float, y: Float, size: Float, font: Int, color: Int, align: Int, strokeW: Float, strokeColor: Int, alpha: Float) {
+    override fun text(s: String, x: Float, y: Float, size: Float, font: Int, color: Int, align: Int, strokeW: Float, strokeColor: Int, alpha: Float) = timed("text") { text0(s, x, y, size, font, color, align, strokeW, strokeColor, alpha) }
+        private fun text0(s: String, x: Float, y: Float, size: Float, font: Int, color: Int, align: Int, strokeW: Float, strokeColor: Int, alpha: Float) {
         if (s.isEmpty() || size < 1f || alpha <= 0.004f) return
         val f = fonts[font].deriveFont(size)
         val tl = TextLayout(s, f, g.fontRenderContext)
