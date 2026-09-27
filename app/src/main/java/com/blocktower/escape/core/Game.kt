@@ -1436,7 +1436,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     private var rainLeft = 0
     private var rainT = 0f
     private var gemRainLeft = 0
-    /** The level-exit sequence: slow motion, camera pull-back, gate activates, boy steps in, rewards fly. */
+    /** Reward coins and gems already sent flying to the HUD (the rest is paid when the results open). */
+    private var rainCoinsSent = 0
+    private var rainGemsSent = 0
     private var completeReported = false
 
     /** Coins and gems picked up in this level so far (including rewards still flying to the HUD). */
@@ -1446,6 +1448,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     /** Tools unlock as the levels go on (Magnet in Level 2, Shield in Level 3, Lightning and Block in Level 4). */
     fun toolLocked(k: Int) = spec.number < Levels.toolUnlock[k]
 
+    /** The level-exit sequence: slow motion, camera pull-back, gate activates, boy steps in, rewards fly. */
     private fun beginComplete(po: Portal) {
         state = GS.COMPLETE; stateT = 0f; endPortal = po
         val p = player
@@ -1453,7 +1456,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         slowTarget = 0.55f; slowHold = 1.6f
         platform.sound(Sfx.PORTAL)
         results = Results.compute(this)
-        rainLeft = 20; rainT = 1.8f; gemRainLeft = results!!.gemReward
+        rainLeft = 20; rainT = 0f; gemRainLeft = results!!.gemReward; rainCoinsSent = 0; rainGemsSent = 0
         for (tl in tools) tl.active = 0f
         hintT = 0f; pendingHint = ""
     }
@@ -1489,15 +1492,22 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             rainT -= dt
             if (rainT <= 0f && (rainLeft > 0 || gemRainLeft > 0) && cam.project(po.x, po.y + 1.9f, po.z)) {
                 rainT = 0.06f
+                val r = results!!
                 if (rainLeft > 0) {
                     rainLeft--
-                    fx.fly(FK.COIN, cam.sx + fx.rng.f(-40f, 40f) * hud.s, cam.sy, hud.coinIconX(), hud.coinIconY(), results!!.rewardCoins / 20, 0f, 0.65f)
+                    // the last coin carries what does not divide evenly
+                    val v = if (rainLeft == 0) r.rewardCoins - rainCoinsSent else r.rewardCoins / 20
+                    rainCoinsSent += v
+                    fx.fly(FK.COIN, cam.sx + fx.rng.f(-40f, 40f) * hud.s, cam.sy, hud.coinIconX(), hud.coinIconY(), v, 0f, 0.65f)
                     platform.sound(Sfx.COIN, 0.45f, 1.1f + (rainLeft % 5) * 0.05f)
                 }
-                if (gemRainLeft > 0) { gemRainLeft--; fx.fly(FK.GEM, cam.sx, cam.sy, hud.gemIconX(), hud.gemIconY(), 1, 0.03f, 0.7f) }
+                if (gemRainLeft > 0) { gemRainLeft--; rainGemsSent++; fx.fly(FK.GEM, cam.sx, cam.sy, hud.gemIconX(), hud.gemIconY(), 1, 0.03f, 0.7f) }
             }
         }
         if (st > 3.5f) {
+            // whatever reward did not get to fly (the gate left the view) goes straight to the wallet
+            results?.let { r -> coins += r.rewardCoins - rainCoinsSent; gems += r.gemReward - rainGemsSent }
+            rainCoinsSent = results?.rewardCoins ?: 0; rainGemsSent = results?.gemReward ?: 0; rainLeft = 0; gemRainLeft = 0
             state = GS.RESULTS; stateT = 0f; hud.resultsStarted()
             if (!completeReported) { completeReported = true; results?.let { host?.onLevelComplete(this, it) } }
         }
