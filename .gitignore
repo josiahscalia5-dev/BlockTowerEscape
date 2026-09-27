@@ -13,3 +13,4 @@
 /sim/build/
 .kotlin/
 *.mp4
+/sim-out/

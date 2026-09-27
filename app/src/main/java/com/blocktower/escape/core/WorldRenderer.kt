@@ -583,9 +583,9 @@ class WorldRenderer(val g: Game) {
                 drawShadow(gr, p.x, p.z, gy, clamp01(1f - hgt / 6f) * p.portalScale, 0.36f * (1f + hgt * 0.05f), 0.26f * (1f + hgt * 0.05f))
             }
         }
-        // invulnerability after a hit: flicker (half-transparent, never invisible)
+        // invulnerability after a hit: flicker with a pale flash (never see-through, so the overlapping
+        // rig parts at the hips and shoulders can't show through each other)
         val blink = p.invuln > 0f && p.state == PS.NORMAL && ((t * 14f).toInt() and 1) == 1
-        val alpha = if (blink) 0.4f else 1f
         // sprite metrics: the boy is ~1.95 world units tall at the camera's framing distance
         val worldH = g.spec.boyH
         if (!cam.project(p.x, p.y, p.z)) return
@@ -603,7 +603,8 @@ class WorldRenderer(val g: Game) {
             }
         }
         val hurt = p.hurtFlash
-        g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, alpha, if (hurt > 0f) 0xFFFF3030.toInt() else 0, if (hurt > 0f) hurt * 0.55f else 0f)
+        if (hurt > 0f) g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, 1f, 0xFFFF3030.toInt(), hurt * 0.55f)
+        else g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, 1f, if (blink) 0xFFFFFFFF.toInt() else 0, if (blink) 0.42f else 0f)
         val midX = fx0; val midY = fy0 - hPx * 0.45f
         if (g.shieldOn) {
             val tl = g.tools[TK.SHIELD]

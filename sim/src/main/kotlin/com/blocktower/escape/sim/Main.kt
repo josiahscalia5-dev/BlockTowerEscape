@@ -24,7 +24,7 @@ fun main(args: Array<String>) {
             val c = game.cam
             println("cam e=(%.2f, %.2f, %.2f) yaw=%.3f pitch=%.3f f=%.1f cy=%.1f  player=(%.2f, %.2f, %.2f)".format(c.ex, c.ey, c.ez, c.yaw, c.pitch, c.f, c.cy, game.player.x, game.player.y, game.player.z))
         }
-        "poses" -> posesSheet(assets, out)
+        "poses" -> posesSheet(assets, out, opts["pose"] ?: "")
         "play" -> Autopilot(assets, out, opts).run()
         "profile" -> profile(assets)
         "finish" -> finishFrames(assets, out, (opts["level"] ?: "5").toInt())
@@ -36,40 +36,89 @@ fun main(args: Array<String>) {
     }
 }
 
-/** Renders the animation rig in its key poses side by side (for reviewing the character animation). */
-private fun posesSheet(assets: File, out: File) {
+/**
+ * Renders the animation rig for review: every key pose at close range (poses.png), the hips of each
+ * pose magnified (poses_hips.png) and a full run cycle, a jump arc and a landing at gameplay size
+ * (poses_cycle.png). Used to check that legs, hips, torso and shoes stay one connected body.
+ */
+private fun posesSheet(assets: File, out: File, one: String) {
     val game = Game(SimPlatform(assets))
     val cellW = 300; val cellH = 470
-    val names = listOf("rest", "run A", "run B", "run pass", "jump up", "fall", "land", "turn", "collect", "hurt", "celebrate", "rescue", "caught", "win")
-    val gfx = J2DGfx(assets, cellW * 7, cellH * 2)
-    gfx.clear()
-    gfx.fillRect(0f, 0f, cellW * 7f, cellH * 2f, 0xFF5F86C8.toInt())
+    val names = listOf("rest", "run A", "run B", "run pass", "run pass B", "sprint/boost", "jump up",
+        "jump top", "fall", "land", "land hard", "turn L", "turn R", "skid", "collect", "cast",
+        "hurt", "celebrate", "rescue", "ride", "caught", "win")
+    val cols = 8
+    val rows = (names.size + cols - 1) / cols
+    val gfx = J2DGfx(assets, cellW * cols, cellH * rows)
+    val hips = J2DGfx(assets, 260 * cols, 260 * rows)
+    gfx.clear(); hips.clear()
+    gfx.fillRect(0f, 0f, cellW * cols.toFloat(), cellH * rows.toFloat(), 0xFF5F86C8.toInt())
+    hips.fillRect(0f, 0f, 260f * cols, 260f * rows, 0xFF7FA6D8.toInt())
     val p = game.player
-    for ((i, n) in names.withIndex()) {
+    fun setup(n: String) {
         p.reset(0f, 0f, 0f)
         game.t = 1.3f
         when (n) {
             "run A" -> { p.vz = 5f; p.runW = 1f; p.runPhase = 0.5f }
             "run B" -> { p.vz = 5f; p.runW = 1f; p.runPhase = 1.5f }
             "run pass" -> { p.vz = 5f; p.runW = 1f; p.runPhase = 1.02f }
+            "run pass B" -> { p.vz = 5f; p.runW = 1f; p.runPhase = 1.98f }
+            "sprint/boost" -> { p.vz = 9f; p.runW = 1f; p.runPhase = 1.35f; p.lean = 0.2f }
             "jump up" -> { p.grounded = false; p.airW = 1f; p.vy = 8f; p.jumpT = 0.05f }
-            "fall" -> { p.grounded = false; p.airW = 1f; p.vy = -12f }
+            "jump top" -> { p.grounded = false; p.airW = 1f; p.vy = 0.5f; p.runPhase = 1.3f }
+            "fall" -> { p.grounded = false; p.airW = 1f; p.vy = -12f; game.t = 1.45f }
             "land" -> { p.landT = 0.05f; p.landAmt = 1f }
-            "turn" -> { p.vx = 4f; p.lean = 0.9f; p.runW = 1f; p.runPhase = 0.5f; p.skidT = 0.1f; p.skidDir = 1f }
+            "land hard" -> { p.landT = 0.02f; p.landAmt = 1.4f; p.runPhase = 1.3f }
+            "turn L" -> { p.vx = -4f; p.lean = -0.9f; p.runW = 1f; p.runPhase = 1.5f }
+            "turn R" -> { p.vx = 4f; p.lean = 0.9f; p.runW = 1f; p.runPhase = 0.5f }
+            "skid" -> { p.vx = 4f; p.lean = 0.9f; p.runW = 1f; p.runPhase = 0.5f; p.skidT = 0.1f; p.skidDir = 1f }
             "collect" -> { p.collectT = 0.17f }
+            "cast" -> { p.castT = 0.2f }
             "hurt" -> { p.hurtT = 0.1f }
             "celebrate" -> { p.celebrateT = 0.3f }
-            "rescue" -> { p.state = PS.RESCUE_FALL; p.grounded = false; p.airW = 1f }
+            "rescue" -> { p.state = PS.RESCUE_FALL; p.grounded = false; p.airW = 1f; game.t = 1.36f }
+            "ride" -> { p.state = PS.RESCUE_RIDE }
             "caught" -> p.state = PS.CAUGHT
             "win" -> { p.state = PS.WIN; p.stateT = 1f }
         }
+    }
+    for ((i, n) in names.withIndex()) {
+        setup(n)
         val pose = game.rig.computePose(p)
-        val cx = (i % 7) * cellW + cellW / 2f; val cy = (i / 7) * cellH + cellH - 40f
+        val cx = (i % cols) * cellW + cellW / 2f; val cy = (i / cols) * cellH + cellH - 40f
         game.rig.draw(gfx, game.art.rig, pose, cx, cy, 400f, 1f, 0, 0f)
-        gfx.text(n, cx, (i / 7) * cellH + 22f, 26f, 0, -1, 1, 3f, 0xFF000000.toInt(), 1f)
+        gfx.text(n, cx, (i / cols) * cellH + 22f, 26f, 0, -1, 1, 3f, 0xFF000000.toInt(), 1f)
+        // hips close-up: the boy drawn 2x the sprite's size, centred on the hip joint (sprite 106, 272;
+        // the feet anchor is at 121, 401), so the tile shows the waist, the pants and the tops of the shoes
+        val hx = (i % cols) * 260f; val hy = (i / cols) * 260f
+        hips.save(); hips.clipRect(hx + 2f, hy + 2f, hx + 258f, hy + 258f)
+        game.rig.draw(hips, game.art.rig, pose, hx + 130f + 15f * 2f, hy + 110f + 129f * 2f, 840f, 1f, 0, 0f)
+        hips.restore()
+        if (n.replace(" ", "_") == one) {
+            val one = J2DGfx(assets, 700, 700); one.clear(); one.fillRect(0f, 0f, 700f, 700f, 0xFF7FA6D8.toInt())
+            game.rig.draw(one, game.art.rig, pose, 350f + 15f * 3f, 300f + 129f * 3f, 1260f, 1f, 0, 0f)
+            ImageIO.write(one.image, "png", File(out, "pose_one.png"))
+        }
+        hips.text(n, hx + 130f, hy + 22f, 22f, 0, -1, 1, 3f, 0xFF000000.toInt(), 1f)
     }
     ImageIO.write(gfx.image, "png", File(out, "poses.png"))
-    println("wrote poses.png")
+    ImageIO.write(hips.image, "png", File(out, "poses_hips.png"))
+    // gameplay size (the boy is ~150 px tall on a 1080-wide phone at the camera's framing distance):
+    // one full run cycle (two steps), a jump arc and a landing, frame by frame
+    val cw = 90; val ch = 190; val n = 16
+    val cyc = J2DGfx(assets, cw * n, ch * 3)
+    cyc.clear(); cyc.fillRect(0f, 0f, cw * n.toFloat(), ch * 3f, 0xFF5F86C8.toInt())
+    for (k in 0 until n) {
+        p.reset(0f, 0f, 0f); game.t = 1.3f + k / 60f
+        p.vz = 6f; p.runW = 1f; p.runPhase = k * 2f / n
+        game.rig.draw(cyc, game.art.rig, game.rig.computePose(p), k * cw + cw / 2f, ch - 12f, 150f, 1f, 0, 0f)
+        p.reset(0f, 0f, 0f); p.grounded = false; p.airW = 1f; p.vy = 9f - k * 18f / (n - 1); p.jumpT = k / 60f
+        game.rig.draw(cyc, game.art.rig, game.rig.computePose(p), k * cw + cw / 2f, 2 * ch - 12f, 150f, 1f, 0, 0f)
+        p.reset(0f, 0f, 0f); p.landT = k * 0.3f / n; p.landAmt = 1.2f; p.vz = 5f; p.runW = 1f; p.runPhase = 1f + k * 0.5f / n
+        game.rig.draw(cyc, game.art.rig, game.rig.computePose(p), k * cw + cw / 2f, 3 * ch - 12f, 150f, 1f, 0, 0f)
+    }
+    ImageIO.write(cyc.image, "png", File(out, "poses_cycle.png"))
+    println("wrote poses.png, poses_hips.png, poses_cycle.png")
 }
 
 /** Times rendering of a few frames (for keeping the video recorder fast). */

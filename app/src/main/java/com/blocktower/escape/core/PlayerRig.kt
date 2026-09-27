@@ -16,14 +16,29 @@ class RigPart(val img: Img, val x0: Float, val y0: Float, val pivotX: Float, val
 
 /**
  * The approved boy sprite (242 x 420, back view, mid-stride) cut into legs, body and two arms.
- * Nothing is repainted: every part keeps the original pixels, and the cuts overlap with feathered
- * alpha on the torso side so the rest pose composites back to exactly the original sprite.
+ * Nothing is repainted: every part keeps the original pixels.
+ *
+ * The legs swap sides every step (they are mirrored about the centre of the pants seat), so the
+ * join between body and legs is cut where the sprite is left/right symmetric: the seat of the
+ * pants (rows 264-290 run from x 56 to 156, centred on [HIP_X]). Across that band both the body
+ * and the top of the legs are trimmed to the symmetric part of the outline, so whichever way the
+ * legs face, the hips have the same outline and no strip of the other pose shows beside them.
+ * The body fades out above the raised shoe's heel (which starts at row 281 and belongs to the
+ * legs); the legs run up under the opaque body so the seat is always covered.
  */
 class BoyRig(val legs: RigPart, val body: RigPart, val armL: RigPart, val armR: RigPart, val w: Int, val h: Int) {
     companion object {
-        /** Mirror axis of the legs (centre of the hips) and hip joint height, in sprite pixels. */
-        const val HIP_X = 107f
-        const val HIP_Y = 262f
+        /** Mirror axis of the legs (centre of the pants seat), in sprite pixels. */
+        const val HIP_X = 106f
+        /** Hip joint: legs swing, squash and mirror about (HIP_X, HIP_Y); the body leans about it too. */
+        const val HIP_Y = 272f
+        /** The body fades out over these rows (top of the seat, above the raised heel). */
+        private const val BODY_FADE0 = 266
+        private const val BODY_FADE1 = 280
+        /** The legs start under the body here, trimmed to the symmetric outline down to the crotch. */
+        private const val LEGS_TOP = 250
+        private const val SYM0 = 288
+        private const val SYM1 = 298
 
         fun build(p: Platform, src: Pixels): BoyRig {
             val w = src.w; val h = src.h
@@ -44,14 +59,27 @@ class BoyRig(val legs: RigPart, val body: RigPart, val armL: RigPart, val armR: 
             }
             fun inL(x: Int, y: Int) = inside(polyL, x + 0.5f, y + 0.5f)
             fun inR(x: Int, y: Int) = inside(polyR, x + 0.5f, y + 0.5f)
+            /** Is (x, y) part of the lower body (not an arm)? */
+            fun lower(x: Int, y: Int) = x in 0..176 && !inR(x, y) && !inL(x, y)
+            /** Opacity of the pixel mirrored across HIP_X (0 outside the lower body): the symmetric outline. */
+            fun mirrorA(x: Int, y: Int): Float {
+                val mx = (2f * HIP_X - x - 1f).toInt()
+                if (mx < 0 || mx >= w || !lower(mx, y)) return 0f
+                return (src.argb[y * w + mx] ushr 24) / 255f
+            }
             fun armLAlpha(x: Int, y: Int): Float = if (!inL(x, y)) 0f else if (x < 54) 1f else clamp01((65 - x) / 11f)
             fun armRAlpha(x: Int, y: Int): Float = if (!inR(x, y)) 0f else if (x >= 172) 1f else clamp01((x - 160) / 12f)
-            fun legsAlpha(x: Int, y: Int): Float = if (y < 258 || x > 176) 0f else min(1f, (y - 258) / 12f)
+            fun legsAlpha(x: Int, y: Int): Float {
+                if (y < LEGS_TOP || !lower(x, y)) return 0f
+                val full = clamp01((y - SYM0).toFloat() / (SYM1 - SYM0))
+                return lerp(mirrorA(x, y), 1f, full)
+            }
             fun bodyAlpha(x: Int, y: Int): Float {
-                if (y >= 294) return 0f
+                if (y >= BODY_FADE1) return 0f
                 if (x < 54 && inL(x, y)) return 0f
                 if (x >= 172 && inR(x, y)) return 0f
-                return if (y > 278) (294 - y) / 16f else 1f
+                if (y < BODY_FADE0) return 1f
+                return (BODY_FADE1 - y).toFloat() / (BODY_FADE1 - BODY_FADE0) * mirrorA(x, y)
             }
             fun part(l: Int, t: Int, r: Int, b: Int, px: Float, py: Float, alpha: (Int, Int) -> Float): RigPart {
                 val pw = r - l; val ph = b - t
@@ -65,8 +93,8 @@ class BoyRig(val legs: RigPart, val body: RigPart, val armL: RigPart, val armR: 
                 return RigPart(p.createImage(Pixels(pw, ph, out)), l.toFloat(), t.toFloat(), px, py)
             }
             return BoyRig(
-                legs = part(0, 258, 178, h, HIP_X, HIP_Y, ::legsAlpha),
-                body = part(0, 0, w, 294, HIP_X, HIP_Y, ::bodyAlpha),
+                legs = part(0, LEGS_TOP, 178, h, HIP_X, HIP_Y, ::legsAlpha),
+                body = part(0, 0, w, BODY_FADE1, HIP_X, HIP_Y, ::bodyAlpha),
                 armL = part(0, 145, 68, 236, 60f, 176f, ::armLAlpha),
                 armR = part(156, 150, w, 272, 170f, 180f, ::armRAlpha),
                 w = w, h = h
@@ -75,15 +103,19 @@ class BoyRig(val legs: RigPart, val body: RigPart, val armL: RigPart, val armR: 
     }
 }
 
-/** A pose for the rig. Angles in degrees (screen space, clockwise), offsets in sprite pixels. */
+/**
+ * A pose for the rig. Angles in degrees (screen space, clockwise), offsets in sprite pixels.
+ * The legs always hang from the hip joint: [bodyDy] and [bodyRot] move the hips (and so the legs)
+ * with the body, and the legs only add their own swing, squash and mirror about that joint.
+ */
 class Pose {
     var rot = 0f; var sx = 1f; var sy = 1f; var dy = 0f; var spin = 1f
     var bodyDy = 0f; var bodyRot = 0f
-    var legsMirror = false; var legsSx = 1f; var legsSy = 1f; var legsDy = 0f; var legsRot = 0f
+    var legsMirror = false; var legsSx = 1f; var legsSy = 1f; var legsRot = 0f
     var armL = 0f; var armR = 0f; var armLS = 1f; var armRS = 1f
     fun reset() {
         rot = 0f; sx = 1f; sy = 1f; dy = 0f; spin = 1f; bodyDy = 0f; bodyRot = 0f
-        legsMirror = false; legsSx = 1f; legsSy = 1f; legsDy = 0f; legsRot = 0f
+        legsMirror = false; legsSx = 1f; legsSy = 1f; legsRot = 0f
         armL = 0f; armR = 0f; armLS = 1f; armRS = 1f
     }
 }
@@ -112,10 +144,10 @@ class PlayerRig(val g: Game) {
         val swing = sin(ph * PI.toFloat())
         o.legsMirror = (floor(ph).toInt() and 1) == 1
         val ground = 1f - airW
+        // the whole boy rises at mid-stride (flight phase); at the step change the legs gather under the hips
         o.bodyDy += ground * (-runW * (2f + stride * 7f) + (1f - runW) * sin(t * 2.4f) * 1.4f)
-        o.legsSy *= 1f - ground * runW * 0.14f * (1f - stride)
-        o.legsDy += ground * runW * (1f - stride) * 3f
-        o.legsRot += ground * runW * (if (o.legsMirror) -4f else 4f) * stride
+        o.legsSy *= 1f - ground * runW * 0.12f * (1f - stride)
+        o.legsRot += ground * runW * (if (o.legsMirror) -3.5f else 3.5f) * stride
         o.armL += ground * (runW * (20f * swing - 4f) + (1f - runW) * sin(t * 2.4f) * 2f)
         o.armR += ground * (runW * (20f * swing + 4f) - (1f - runW) * sin(t * 2.4f) * 2f)
         o.armLS = 1f - ground * runW * 0.07f * swing
@@ -125,8 +157,7 @@ class PlayerRig(val g: Game) {
         if (airW > 0f) {
             val rising = clamp01(p.vy / 6f)
             val falling = clamp01(-p.vy / 10f)
-            o.legsSy *= 1f - airW * (0.16f * rising + 0.02f)
-            o.legsDy -= airW * 10f * rising
+            o.legsSy *= 1f - airW * (0.2f * rising + 0.02f)
             o.armL += airW * (26f + 16f * falling + falling * 7f * sin(t * 17f))
             o.armR -= airW * (26f + 16f * falling + falling * 7f * sin(t * 17f + 1.3f))
             o.sy *= 1f + airW * 0.04f * rising
@@ -199,6 +230,11 @@ class PlayerRig(val g: Game) {
             PS.DEAD -> { o.armL = 50f + 20f * sin(t * 19f); o.armR = -50f - 20f * sin(t * 19f + 1f); o.legsMirror = ((t * 8f).toInt() and 1) == 1 }
         }
         if (speed < 0.01f && airW < 0.01f && p.state == PS.NORMAL) o.legsRot = 0f
+        // on the ground the feet stay planted: when the hips dip (landing, skid) the legs bend to
+        // absorb it instead of pushing the feet through the floor; a rising body half-lifts them
+        val reach = anchorY - BoyRig.HIP_Y
+        val lock = (1f - airW) * (if (o.bodyDy > 0f) 1f else 0.5f)
+        o.legsSy *= (reach - o.bodyDy * lock) / reach
         return o
     }
 
@@ -220,11 +256,12 @@ class PlayerRig(val g: Game) {
 
     /** kind: 0 legs, 1 body, 2 left arm, 3 right arm */
     private fun drawPart(gr: Gfx, part: RigPart, o: Pose, kind: Int, alpha: Float, addColor: Int, addAmt: Float) {
-        val mirror = kind == 0 && o.legsMirror
-        corner(part, o, kind, if (mirror) part.x1 else part.x0, part.y0, 0)
-        corner(part, o, kind, if (mirror) part.x0 else part.x1, part.y0, 1)
-        corner(part, o, kind, if (mirror) part.x0 else part.x1, part.y1, 2)
-        corner(part, o, kind, if (mirror) part.x1 else part.x0, part.y1, 3)
+        // q[0..3] are the image's corners (left-top, right-top, right-bottom, left-bottom); for the
+        // mirrored stride corner() reflects each one across the hip axis, which flips the image
+        corner(part, o, kind, part.x0, part.y0, 0)
+        corner(part, o, kind, part.x1, part.y0, 1)
+        corner(part, o, kind, part.x1, part.y1, 2)
+        corner(part, o, kind, part.x0, part.y1, 3)
         gr.imageQuad(part.img, 0f, 0f, part.img.w.toFloat(), part.img.h.toFloat(), q, alpha, 1f, addColor, addAmt)
     }
 
@@ -233,10 +270,11 @@ class PlayerRig(val g: Game) {
         var x = sxIn; var y = syIn
         when (kind) {
             0 -> {
-                // legs: mirrored stride, stretch and swing about the hips
+                // legs: mirrored stride, stretch and swing about the hip joint, which moves and leans
+                // with the body so the pants never separate from the torso
                 if (o.legsMirror) x = 2f * BoyRig.HIP_X - x
-                rotScale(x - BoyRig.HIP_X, y - BoyRig.HIP_Y, o.legsRot, o.legsSx, o.legsSy)
-                x = BoyRig.HIP_X + ox; y = BoyRig.HIP_Y + oy + o.legsDy
+                rotScale(x - BoyRig.HIP_X, y - BoyRig.HIP_Y, o.legsRot + o.bodyRot, o.legsSx, o.legsSy)
+                x = BoyRig.HIP_X + ox; y = BoyRig.HIP_Y + oy + o.bodyDy
             }
             else -> {
                 if (kind >= 2) {
