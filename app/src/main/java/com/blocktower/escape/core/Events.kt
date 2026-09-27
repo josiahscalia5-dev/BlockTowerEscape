@@ -152,7 +152,7 @@ class Events(val g: Game) {
                 finalOn = true; finalT = 0f
                 val c = finalCollapse
                 c.on = true; c.z = p.z - 6f; c.speed = 3.0f; c.maxSpeed = 5.0f; c.accel = 0.4f
-                c.endZ = g.world.portals.firstOrNull()?.let { it.z - 5f } ?: (p.z + 12f)
+                c.endZ = g.world.finalSafeZ - 0.5f
                 g.fx.banner("FINAL ESCAPE!", "THE TOWER IS FALLING — RUN TO THE GATE!", 0xFFFFB04A.toInt(), 2.4f, true)
                 g.platform.sound(Sfx.CRUMBLE); g.platform.sound(Sfx.WARNING, 0.7f); g.platform.haptic(true)
                 g.shake = max(g.shake, 0.6f)

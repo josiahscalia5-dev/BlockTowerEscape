@@ -221,7 +221,7 @@ class Game(val platform: Platform) {
                 tickT -= sdt
                 if (tickT <= 0f) { tickT = 1f; platform.sound(Sfx.TICK, 0.6f) }
             }
-            if (time <= 0f) { time = 0f; fail("TIME'S UP!") }
+            if (time <= 0f) timeUp()
         }
 
         updateTools(sdt)
@@ -245,6 +245,19 @@ class Game(val platform: Platform) {
         if (hintT > 0f) hintT -= dt
         input.jumpPressed = false
         for (i in 0..3) input.toolTap[i] = false
+    }
+
+    /** The timer never ends the level by itself: running out costs a heart and buys 20 more seconds. */
+    private fun timeUp() {
+        time = 0f
+        hearts--
+        hud.bumpHearts()
+        flashRed = 0.8f; shake = max(shake, 0.4f)
+        platform.sound(Sfx.HIT); platform.haptic(true)
+        fx.popupScreen("-1", hud.heartX(max(0, hearts)), hud.heartY() + 50f * hud.s, 0xFFFF6070.toInt(), 44f)
+        if (hearts <= 0) { fail("OUT OF TIME AND HEARTS!"); return }
+        time = 20f; tickT = 0f
+        fx.banner("TIME'S UP!", "-1 HEART  •  +20 SECONDS", 0xFFFF8A5A.toInt(), 1.8f, true)
     }
 
     private fun updateIntro(dt: Float) {
@@ -808,7 +821,7 @@ class Game(val platform: Platform) {
         platform.haptic(false)
         player.collectT = 0f
         if (target == Tune.TARGET_NEED) {
-            fx.banner("TARGET COMPLETE!", "NOW REACH THE ANCIENT GATE", 0xFF7FFFA0.toInt(), 2.4f)
+            fx.banner("TARGET COMPLETE!", "THE ANCIENT GATE IS OPEN", 0xFF7FFFA0.toInt(), 2.2f)
             platform.sound(Sfx.WIN, 0.7f, 1.2f)
             hud.objectiveDone()
         }
@@ -1158,7 +1171,18 @@ class Game(val platform: Platform) {
             if (!cp.active && abs(p.z - cp.z) < 0.9f && abs(p.x - cp.x) < 1.9f && abs(p.y - cp.y) < 1.2f) activateCheckpoint(cp.id)
         }
         for (po in world.portals) {
-            if (abs(p.x - po.x) < 1.75f && abs(p.z - po.z) < 0.6f && p.y > po.y - 0.5f && p.y < po.y + 2.8f) { beginComplete(po); break }
+            if (abs(p.x - po.x) < 1.75f && abs(p.z - po.z) < 0.6f && p.y > po.y - 0.5f && p.y < po.y + 2.8f) {
+                if (target >= Tune.TARGET_NEED) { beginComplete(po); break }
+                // sealed until the objective is complete: the barrier pushes the player back
+                p.z = po.z - 0.62f; if (p.vz > 0f) p.vz = -4f
+                if (t - sealedMsgT > 2.2f) {
+                    sealedMsgT = t
+                    fx.toast("THE GATE IS SEALED", "COLLECT ${Tune.TARGET_NEED - target} MORE BLUE BLOCKS", 0xFF9FDBFF.toInt(), 2.4f)
+                    platform.sound(Sfx.WRONG); platform.sound(Sfx.SHIELD, 0.5f, 0.6f)
+                    shake = max(shake, 0.2f)
+                    if (cam.project(po.x, po.y + 1.2f, po.z)) fx.ring(cam.sx, cam.sy, 0xFF9FDBFF.toInt(), 30f * hud.s, 220f * hud.s, 0.5f, 10f * hud.s)
+                }
+            }
         }
     }
 
@@ -1168,6 +1192,7 @@ class Game(val platform: Platform) {
             Ev.HINT_JUMP -> queueHint("Tap the JUMP button to cross gaps!", 2)
             Ev.HINT_TOOLS -> queueHint("Tap a TOOL to use it!", 3)
             Ev.HINT_BLOCK -> queueHint("BLOCK tool bridges gaps!", 4)
+            Ev.HINT_MAGNET -> queueHint("MAGNET pulls in blocks out of reach!", 5)
             Ev.FORK -> fx.banner("CHOOSE YOUR PATH!", "LEFT: SAFE  •  RIGHT: TREASURE", 0xFFFFE14A.toInt(), 2.0f)
             Ev.TRAPS -> { fx.banner("DANGER ZONE!", "TIME YOUR STEPS — OR JUMP THE SPIKES", 0xFFFF8A5A.toInt(), 2.2f, true); platform.sound(Sfx.WARNING, 0.5f, 1.2f) }
             Ev.ZONE -> fx.toast(tr.text, tr.text2, 0xFFFFE14A.toInt())
@@ -1175,6 +1200,7 @@ class Game(val platform: Platform) {
         }
     }
 
+    private var sealedMsgT = -9f
     private fun queueHint(s: String, kind: Int) { pendingHint = s; pendingHintKind = kind }
 
     private var endPortal: Portal? = null

@@ -391,37 +391,37 @@ class WorldRenderer(val g: Game) {
 
     private fun toolImg(k: Int) = when (k) { TK.MAGNET -> art.magnet; TK.SHIELD -> art.shield; TK.SPEED -> art.lightning; else -> art.blockTool }
 
-    /** Gold coil spring standing on a spring pad; squashes when used. */
+    /** Gold coil spring standing on a spring pad (thick hollow rings, as in the design); squashes when used. */
     private fun drawSpring(gr: Gfx, b: Block, top: Float) {
         val sq = if (b.squash > 0f) sin(b.squash * Math.PI.toFloat()) else 0f
-        val coilH = 0.36f * (1f - 0.55f * sq)
+        val coilH = 0.42f * (1f - 0.55f * sq)
         val cx = b.x; val cz = b.z + b.sz * 0.5f
+        if (!cam.project(cx, top + coilH * 0.5f, cz)) return
+        val sc = cam.scaleAt(cam.depth)
+        if (sc * 0.3f < 2f) return
+        gr.setAdditive(true)
+        gr.glow(cam.sx, cam.sy, 0.55f * sc, Col.withA(0xFFFFB030.toInt(), 0.22f + 0.1f * pulse(g.t, 4f)))
+        gr.setAdditive(false)
         val rings = 4
-        for (k in 0..rings) {
-            val yy = top + 0.03f + coilH * k / rings
-            val rr = 0.3f - 0.02f * (k % 2)
+        for (k in 0 until rings) {
+            val yy = top + 0.06f + coilH * (k + 0.5f) / rings
+            val rr = if (k == 0 || k == rings - 1) 0.26f else 0.3f
             var m = 0
-            for (i in 0 until 14) {
-                val a = i / 14f * TAU
-                if (!cam.project(cx + cos(a) * rr, yy, cz + sin(a) * rr * 0.9f)) return
+            for (i in 0 until 18) {
+                val a = i / 18f * TAU
+                if (!cam.project(cx + cos(a) * rr, yy, cz + sin(a) * rr)) return
                 poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
             }
-            val sc = cam.scaleAt(cam.depth)
-            gr.strokePoly(poly, m, max(1.5f, 0.075f * sc), 0xFF8A5A10.toInt())
-            gr.strokePoly(poly, m, max(1f, 0.05f * sc), if (k == rings) 0xFFFFE27A.toInt() else 0xFFF0B838.toInt())
-        }
-        // top cap
-        var m = 0
-        for (i in 0 until 14) {
-            val a = i / 14f * TAU
-            if (!cam.project(cx + cos(a) * 0.22f, top + 0.05f + coilH, cz + sin(a) * 0.2f)) return
-            poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
-        }
-        gr.fillPoly(poly, m, 0xFFFFD050.toInt())
-        if (cam.project(cx, top + 0.3f, cz)) {
-            gr.setAdditive(true)
-            gr.glow(cam.sx, cam.sy, 0.5f * cam.scaleAt(cam.depth), Col.withA(0xFFFFC040.toInt(), 0.25f + 0.1f * pulse(g.t, 4f)))
-            gr.setAdditive(false)
+            // thick tube: dark rim, gold body, bright highlight on the near side
+            gr.strokePoly(poly, m, 0.13f * sc, 0xFF7A4608.toInt())
+            gr.strokePoly(poly, m, 0.095f * sc, 0xFFE8A824.toInt())
+            var h = 0
+            for (i in 2..7) {
+                val a = i / 18f * TAU
+                if (!cam.project(cx + cos(a) * rr, yy + 0.015f, cz + sin(a) * rr)) return
+                poly[h * 2] = cam.sx; poly[h * 2 + 1] = cam.sy; h++
+            }
+            gr.strokePoly(poly, h, 0.035f * sc, 0xFFFFF0A8.toInt(), false)
         }
     }
 

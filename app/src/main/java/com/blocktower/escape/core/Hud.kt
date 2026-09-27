@@ -417,6 +417,7 @@ class Hud(val g: Game) {
             1 -> { bx = ax(800f) - bw; by = ayT(200f); tipX = bx + bw; tipY = by + bh * 0.5f }
             2 -> { bx = jumpCX() - bw + 60f * s; by = jumpCY() - 190f * s; tipX = jumpCX(); tipY = by + bh }
             3 -> { bx = ax(862f) - bw; by = toolY(1) - bh * 0.5f; tipX = bx + bw; tipY = toolY(1) }
+            5 -> { bx = ax(862f) - bw; by = toolY(0) - bh * 0.5f; tipX = bx + bw; tipY = toolY(0) }
             else -> { bx = ax(862f) - bw; by = toolY(3) - bh * 0.5f; tipX = bx + bw; tipY = toolY(3) }
         }
         bx = max(bx, 10f * s)
