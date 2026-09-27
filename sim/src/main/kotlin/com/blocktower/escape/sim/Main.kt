@@ -127,4 +127,11 @@ fun appShots(assets: File, out: File, w: Int, h: Int) {
     val n1 = app.map.nodeCentre(1); tap(n1[0], n1[1]); step(20); shot("levelcard.png")
     // the other level cards (opened directly: those levels are still locked)
     for (n in 2..com.blocktower.escape.core.Levels.count) { app.openPopup(com.blocktower.escape.core.Pop.LEVEL, n); step(30); shot("levelcard$n.png") }
+    // Level 1 finished: back on the map, Level 2's padlock shakes, pops off and the block colours in
+    app.closePopup()
+    app.progress.recordLevel(1, 3, 5000, 0, 0, 5, 20, 0, false, 0, true); app.justUnlocked = 2
+    app.openHome(); step(30); app.openMap(); step(26)
+    for (k in 0 until 6) { step(10); shot("unlock$k.png") }
+    // a locked level says what opens it
+    val n3 = app.map.nodeCentre(3); tap(n3[0], n3[1]); step(10); shot("locked.png")
 }

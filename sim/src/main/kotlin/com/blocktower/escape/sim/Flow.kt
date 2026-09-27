@@ -156,6 +156,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         val wrong = sim.soundCounts[Sfx.WRONG]
         tapLevel(2)
         check("a locked level stays shut", app.popup == Pop.NONE && sim.soundCounts[Sfx.WRONG] > wrong)
+        check("... and says what opens it", app.map.lockedMessage() == "Finish Level 1 to unlock", "\"${app.map.lockedMessage()}\"")
         tapLevel(1)
         check("Level 1 opens its level card", app.popup == Pop.LEVEL && app.popupLevel == 1)
         shot("05-level1-card")

@@ -19,8 +19,18 @@ class LevelMap(private val app: App) {
     private var pressedNode = -1
     private var shakeNode = 0; private var shakeT = 0f
     private var newT = 0f
+    /** The unlock animation of a newly opened level: seconds since the map finished fading in. */
+    private var unlockAge = -1f
+    private var unlockBurst = false
+    /** "Finish Level N to unlock" after tapping a locked level. */
+    private var lockedMsg = ""
+    private var lockedMsgT = 0f
+    private var lockedNode = 0
     private val poly = FloatArray(16)
     private val q = FloatArray(8)
+    // where each level's block was drawn this frame (the labels are drawn after the boy)
+    private val lx = FloatArray(slots + 1); private val ly = FloatArray(slots + 1); private val lsize = FloatArray(slots + 1)
+    private val lopen = BooleanArray(slots + 1); private val lpop = FloatArray(slots + 1)
     /** The sky world behind the trail: the sky tower plate, softened (design/map/make_map_bg.py). */
     private val bg by lazy { app.pf.loadImage("img/map_bg.jpg") }
 
@@ -37,7 +47,8 @@ class LevelMap(private val app: App) {
         val y = nodeY(n)
         scroll = clamp(app.h * 0.58f - y, 0f, maxScroll)
         vel = 0f
-        if (app.justUnlocked > 0) newT = 3.5f
+        if (app.justUnlocked > 0) { newT = 4.5f; unlockAge = 0f; unlockBurst = false }
+        lockedMsgT = 0f
     }
 
     fun update(dt: Float) {
@@ -48,7 +59,19 @@ class LevelMap(private val app: App) {
             if (scroll > maxScroll) { scroll = lerp(scroll, maxScroll, damp(12f, dt)); vel = 0f }
         }
         if (shakeT > 0f) shakeT -= dt
-        if (newT > 0f) { newT -= dt; if (newT <= 0f) app.justUnlocked = 0 }
+        if (lockedMsgT > 0f) lockedMsgT -= dt
+        // the unlock plays once the map is fully on screen
+        if (unlockAge >= 0f && !app.fading) {
+            unlockAge += dt
+            val n = app.justUnlocked
+            if (!unlockBurst && unlockAge >= UNLOCK_POP && n > 0) {
+                unlockBurst = true
+                app.burst(nodeX(n), nodeY(n), 36, 0xFFFFE070.toInt(), confetti = true)
+                app.pf.sound(Sfx.CRUMBLE, 0.5f, 1.4f); app.pf.sound(Sfx.STAR, 0.9f); app.pf.haptic(false)
+            }
+            if (unlockAge > 6f) unlockAge = -1f
+        }
+        if (newT > 0f && (unlockAge < 0f || unlockAge > UNLOCK_POP)) { newT -= dt; if (newT <= 0f) app.justUnlocked = 0 }
     }
 
     // ------------------------------------------------------------------ drawing
@@ -87,42 +110,84 @@ class LevelMap(private val app: App) {
             val exists = i <= Levels.count
             val unlocked = exists && i <= pr.unlocked
             val isCurrent = i == current && unlocked
-            val size = 78f * s * (if (pressedNode == i) 0.94f else 1f)
-            if (isCurrent) {
+            // a level that has just opened: still locked, the padlock shakes, then pops off and the block colours in
+            val unlocking = i == app.justUnlocked && unlockAge >= 0f
+            val popU = if (unlocking) clamp01((unlockAge - UNLOCK_POP) / 0.6f) else 1f
+            val shownUnlocked = unlocked && (!unlocking || unlockAge >= UNLOCK_POP)
+            val size = 78f * s * (if (pressedNode == i) 0.94f else 1f) * (1f + (if (unlocking && popU < 1f) 0.18f * sin(popU * 3.14159f) else 0f))
+            if (isCurrent && shownUnlocked) {
                 gr.setAdditive(true)
                 gr.glow(cx, cy, size * 2.4f, Col.withA(0xFFFFE070.toInt(), 0.25f + 0.2f * pulse(t, 3f)))
                 gr.setAdditive(false)
             }
-            val col = if (!unlocked) BC.STONE else when (i) { 1 -> BC.GREEN; 2 -> BC.YELLOW; 3 -> BC.PURPLE; 4 -> BC.RED; 5 -> BC.GOLD; else -> BC.BLUE }
-            cube(gr, cx, cy, size, col, i % 3, if (unlocked) 1f else 0.75f)
-            if (unlocked) {
-                gr.text(i.toString(), cx, cy + size * 0.28f, size * 1.0f, Font.TITLE, Col.WHITE, Align.CENTER, size * 0.1f, 0xFF1A0A20.toInt())
+            val col = when (i) { 1 -> BC.GREEN; 2 -> BC.YELLOW; 3 -> BC.PURPLE; 4 -> BC.RED; 5 -> BC.GOLD; else -> BC.BLUE }
+            if (shownUnlocked) {
+                cube(gr, cx, cy, size, col, i % 3, 1f)
+                if (popU < 1f) cube(gr, cx, cy, size, BC.STONE, i % 3, 0.75f, 1f - popU)
+            } else cube(gr, cx, cy, size, BC.STONE, i % 3, 0.75f)
+            if (unlocking && popU > 0f && popU < 1f) {
+                // a ring of light spreads from the block
+                gr.strokeCircle(cx, cy, size * (1.1f + 1.6f * popU), 8f * s * (1f - popU), Col.withA(0xFFFFE070.toInt(), 1f - popU))
+            }
+            if (shownUnlocked) {
+                gr.text(i.toString(), cx, cy + size * 0.28f, size * 1.0f, Font.TITLE, Col.WHITE, Align.CENTER, size * 0.1f, 0xFF1A0A20.toInt(), popU)
                 // stars earned
                 val st = pr.stars[i]
                 for (j in 0..2) app.ui.star(gr, cx + (j - 1) * size * 0.62f, cy + size * 1.32f - (if (j == 1) size * 0.1f else 0f), size * 0.27f, j < st)
-                val name = Levels.get(i).name
-                gr.text(name, cx, cy + size * 1.78f, 26f * s, Font.TITLE, Col.WHITE, Align.CENTER, 4f * s, 0xFF10205A.toInt())
             } else {
-                app.ui.padlock(gr, cx, cy + size * 0.25f, size * 0.42f)
-                gr.text(if (exists) "LEVEL $i" else "SOON", cx, cy + size * 1.35f, 26f * s, Font.TITLE, 0xFFD0D8EC.toInt(), Align.CENTER, 4f * s, 0xFF10205A.toInt())
+                val shake = if (unlocking) sin(unlockAge * 40f) * 7f * s * clamp01(unlockAge / UNLOCK_POP) else 0f
+                app.ui.padlock(gr, cx + shake, cy + size * 0.25f, size * 0.42f)
             }
-            if (i == app.justUnlocked && newT > 0f) {
-                val a = clamp01(newT / 0.5f)
-                val bob = sin(t * 6f) * 6f * s
-                gr.text("NEW!", cx + size * 1.05f, cy - size * 0.9f + bob, 40f * s, Font.TITLE, Col.withA(0xFFFFE14A.toInt(), a), Align.CENTER, 6f * s, Col.withA(0xFF1A0A20.toInt(), a))
+            lx[i] = cx; ly[i] = cy; lsize[i] = size; lopen[i] = shownUnlocked; lpop[i] = popU
+            if (unlocking && popU > 0f && popU < 1f) {
+                // the padlock flies off
+                val py = cy + size * 0.25f - popU * 150f * s
+                app.ui.padlock(gr, cx + popU * 40f * s, py, size * 0.42f * (1f - popU))
             }
             if (interactive) app.ui.hit(100 + i, cx - size * 1.3f, cy - size * 1.6f, cx + size * 1.3f, cy + size * 1.6f)
         }
-        // the boy stands on the level you are up to
+        // the boy stands on the level you are up to; after an unlock he waits on the level he finished,
+        // then hops across once the new level's padlock has popped
         run {
-            val i = current
-            val cx = nodeX(i); val cy = nodeY(i)
+            val n = app.justUnlocked
+            val hopU = if (n > 1 && unlockAge >= 0f) clamp01((unlockAge - UNLOCK_POP - 0.25f) / 0.55f) else 1f
+            val from = if (hopU < 1f) n - 1 else current
+            val to = if (hopU < 1f) n else current
+            val e = smooth(hopU)
+            val cx = lerp(nodeX(from), nodeX(to), e); val cy = lerp(nodeY(from), nodeY(to), e)
             val size = 78f * s
             val img = art.boy
             val bh = size * 2.3f; val bw = bh * img.w / img.h
-            val bob = abs(sin(t * 3f)) * 12f * s
+            val hop = if (hopU > 0f && hopU < 1f) sin(hopU * 3.14159f) * 90f * s else abs(sin(t * 3f)) * 12f * s
             gr.fillCircle(cx, cy - size * 0.55f, size * 0.45f, 0x33000010)
-            gr.image(img, cx - bw * 0.5f, cy - size * 0.62f - bh - bob, bw, bh)
+            gr.image(img, cx - bw * 0.5f, cy - size * 0.62f - bh - hop, bw, bh)
+        }
+        // labels last, so the boy never hides one: level names, what opens the next level, NEW!, the locked message
+        for (i in slots downTo 1) {
+            if (nodeY(i) < -200f * s || nodeY(i) > h + 200f * s) continue      // (as the blocks above: not drawn)
+            val cx = lx[i]; val cy = ly[i]; val size = lsize[i]
+            val exists = i <= Levels.count
+            val shownUnlocked = lopen[i]; val popU = lpop[i]
+            if (shownUnlocked) {
+                gr.text(Levels.get(i).name, cx, cy + size * 1.78f, 26f * s, Font.TITLE, Col.WHITE, Align.CENTER, 4f * s, 0xFF10205A.toInt())
+            } else {
+                gr.text(if (exists) "LEVEL $i" else "SOON", cx, cy + size * 1.35f, 26f * s, Font.TITLE, 0xFFD0D8EC.toInt(), Align.CENTER, 4f * s, 0xFF10205A.toInt())
+                if (exists && i == pr.unlocked + 1)
+                    gr.text("Finish Level ${i - 1}", cx, cy + size * 1.72f, 22f * s, Font.UI, 0xFFFFE9A8.toInt(), Align.CENTER, 3f * s, 0xFF10205A.toInt())
+            }
+            if (i == app.justUnlocked && newT > 0f && shownUnlocked) {
+                val a = clamp01(newT / 0.5f) * clamp01(popU * 2f)
+                val bob = sin(t * 6f) * 6f * s
+                gr.text("NEW!", cx + size * 1.05f, cy - size * 0.9f + bob, 40f * s, Font.TITLE, Col.withA(0xFFFFE14A.toInt(), a), Align.CENTER, 6f * s, Col.withA(0xFF1A0A20.toInt(), a))
+            }
+            if (i == lockedNode && lockedMsgT > 0f) {
+                val a = clamp01(lockedMsgT / 0.4f)
+                val tw = gr.textWidth(lockedMsg, 28f * s, Font.UI) + 36f * s
+                val my = cy - size * 1.35f
+                gr.fillRoundRect(cx - tw / 2, my - 26f * s, cx + tw / 2, my + 26f * s, 22f * s, Col.withA(0xFF0A1438.toInt(), 0.92f * a))
+                gr.strokeRoundRect(cx - tw / 2, my - 26f * s, cx + tw / 2, my + 26f * s, 22f * s, 2.5f * s, Col.withA(0xFFFFE14A.toInt(), a))
+                gr.text(lockedMsg, cx, my, 28f * s, Font.UI, Col.withA(Col.WHITE, a), Align.CENTER)
+            }
         }
         // header: a dark band the trail scrolls under, fading out below the wallet
         val top = app.topInset
@@ -137,20 +202,25 @@ class LevelMap(private val app: App) {
     }
 
     /** A chunky block seen from the front and a little above, textured like the game's blocks. */
-    private fun cube(gr: Gfx, cx: Float, cy: Float, a: Float, color: Int, variant: Int, light: Float) {
+    private fun cube(gr: Gfx, cx: Float, cy: Float, a: Float, color: Int, variant: Int, light: Float, alpha: Float = 1f) {
         val art = app.baseArt
         val topD = a * 0.55f
         val l = cx - a; val r = cx + a; val tp = cy - a * 0.55f; val b = cy + a * 0.95f
         // shadow
-        gr.fillRoundRect(l + a * 0.1f, b - a * 0.05f, r + a * 0.2f, b + a * 0.22f, a * 0.2f, 0x40000010)
+        if (alpha >= 1f) gr.fillRoundRect(l + a * 0.1f, b - a * 0.05f, r + a * 0.2f, b + a * 0.22f, a * 0.2f, 0x40000010)
         // front face
         q[0] = l; q[1] = tp; q[2] = r; q[3] = tp; q[4] = r; q[5] = b; q[6] = l; q[7] = b
         val side = art.side[color][variant]; val topI = art.top[color][variant]
-        gr.imageQuad(side, 0f, 0f, side.w.toFloat(), side.h.toFloat(), q, 1f, 0.86f * light)
+        gr.imageQuad(side, 0f, 0f, side.w.toFloat(), side.h.toFloat(), q, alpha, 0.86f * light)
         // top face (a little narrower at the back)
         q[0] = l + a * 0.18f; q[1] = tp - topD; q[2] = r - a * 0.18f; q[3] = tp - topD; q[4] = r; q[5] = tp; q[6] = l; q[7] = tp
-        gr.imageQuad(topI, 0f, 0f, topI.w.toFloat(), topI.h.toFloat(), q, 1f, 1.06f * light)
-        gr.line(l, tp, r, tp, max(1.5f, a * 0.03f), 0x55FFFFFF)
+        gr.imageQuad(topI, 0f, 0f, topI.w.toFloat(), topI.h.toFloat(), q, alpha, 1.06f * light)
+        gr.line(l, tp, r, tp, max(1.5f, a * 0.03f), Col.withA(0x55FFFFFF, alpha * 0.33f))
+    }
+
+    companion object {
+        /** The newly opened level's padlock shakes this long before it pops off. */
+        const val UNLOCK_POP = 0.7f
     }
 
     // ------------------------------------------------------------------ input
@@ -189,11 +259,16 @@ class LevelMap(private val app: App) {
             n > Levels.count -> app.openPopup(Pop.SOON)
             n > pr.unlocked -> {
                 shakeNode = n; shakeT = 0.4f
+                lockedNode = n; lockedMsgT = 2.2f
+                lockedMsg = if (n == pr.unlocked + 1) "Finish Level ${n - 1} to unlock" else "Finish Levels ${pr.unlocked}-${n - 1} to unlock"
                 app.pf.sound(Sfx.WRONG, 0.6f)
             }
             else -> app.openPopup(Pop.LEVEL, n)
         }
     }
+
+    /** Tests: the message shown after tapping a locked level ("" when none). */
+    fun lockedMessage() = if (lockedMsgT > 0f) lockedMsg else ""
 
     /** Tests: where level [n]'s block is on screen. */
     fun nodeCentre(n: Int) = floatArrayOf(nodeX(n), nodeY(n))

@@ -35,7 +35,9 @@ No third-party libraries: rendering uses `android.graphics` on a hardware-accele
   PLAY breathes, the portal pulses, coins twinkle and the monster's eyes glow. Back on the Home screen closes the app.
 - **Player level**: finishing a level gives XP (30 + 20 per star, replays too); every 100 XP is a new player level.
 - **Level map**: tap a level for its card (objective, what the level introduces, the three star goals, best score)
-  and PLAY. A level opens when the one before it is finished; a newly opened level says **NEW!**.
+  and PLAY. Finished levels show their stars, the next locked level says which level opens it, and tapping a locked
+  level explains the same. A level opens when the one before it is finished: back on the map, its padlock shakes and
+  bursts off, the block colours in with a ring of light and **NEW!**, and the boy hops across to it.
 - **Stars**: 1 for finishing (the portal only opens once the blue-block objective is done), 2 for also collecting the
   level's coin goal, 3 for also finishing with the level's time goal left and no game over. The results screen shows
   which goals were met. Replaying never lowers your best stars.
