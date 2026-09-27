@@ -23,6 +23,7 @@ import javax.imageio.ImageIO
  *
  *   flow            run and print a pass/fail checklist (also written to flow-report.txt)
  *   flow shots=1    also save a screenshot of each screen on the way (flow-*.png)
+ *   flow video=tour.mp4 ffmpeg=/path/to/ffmpeg   also record it all as a video (30 fps), lingering on each screen
  */
 class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
     private val w = (opts["w"] ?: "540").toInt()
@@ -32,6 +33,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
     private val app = App(sim)
     private val gfx = J2DGfx(assets, w, h)
     private val shots = opts["shots"] != null
+    private val video = opts["video"]?.let { VideoWriter(File(it), w, h, opts["ffmpeg"] ?: "ffmpeg", (opts["crf"] ?: "28").toInt()) }
     private val dt = 1f / 60f
     private var frame = 0
     private val log = ArrayList<String>()
@@ -45,11 +47,19 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
 
     // ------------------------------------------------------------------ fingers
     private fun render() { gfx.clear(); app.render(gfx) }
+    /** Every other frame goes into the video (60 fps game, 30 fps video). */
+    private fun record(drawn: Boolean) { val v = video ?: return; if (frame % 2 == 0) { if (!drawn) render(); v.write(gfx.image) } }
     /** Runs the app for [n] frames, drawing each one (menu buttons register where they are drawn). */
-    private fun step(n: Int) = repeat(n) { app.update(dt); frame++; render() }
+    private fun step(n: Int) = repeat(n) { app.update(dt); frame++; render(); record(true) }
+    /** When recording, stays on the screen for [seconds] so it can be seen. */
+    private fun linger(seconds: Float) { if (video != null) step((seconds * 60f).toInt()) }
     /** Waits for a screen change to fade through and the new screen to settle. */
     private fun settle() { var i = 0; while (app.fading && i < 300) { step(1); i++ }; step(24) }
-    private fun shot(name: String) { if (!shots) return; render(); ImageIO.write(gfx.image, "png", File(out, "flow-$name.png")) }
+    private fun shot(name: String, hold: Float = 1.8f) {
+        linger(hold)
+        if (!shots) return
+        render(); ImageIO.write(gfx.image, "png", File(out, "flow-$name.png"))
+    }
     private fun tap(x: Float, y: Float) { app.touchDown(0, x, y); step(2); app.touchUp(0, x, y); step(2) }
     /** Taps a menu button where it was drawn in the last frame. */
     private fun tapId(id: Int): Boolean {
@@ -80,6 +90,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         settings()
         reopenTheApp()
         resetProgress()
+        video?.let { it.close(); note("video: ${it.frames} frames (${"%.0f".format(it.frames / 30f)} s) -> ${opts["video"]}") }
         report()
     }
 
@@ -151,11 +162,11 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         val expected = (0..3).filter { n >= Levels.toolUnlock[it] }.map { g.toolName(it) }
         check("Level $n: tools available: ${open.joinToString().ifEmpty { "none" }}", open == expected)
         g.hud.layout(w, h)
-        val ap = Autopilot(assets, out, mapOf("scenario" to "clear"), external = g, stepper = { app.update(it); frame++ })
+        val ap = Autopilot(assets, out, mapOf("scenario" to "clear"), external = g, stepper = { app.update(it); frame++ }, frameHook = { record(false) })
         val done = ap.playLevel(420)
         val r = g.results
         step(30)
-        shot("%02d-level$n-results".format(6 + n))
+        shot("%02d-level$n-results".format(6 + n), 2.5f)
         if (!done || r == null) { check("Level $n played to LEVEL COMPLETE", false, "state ${g.state}"); return }
         check("Level $n played to LEVEL COMPLETE", true, "${r.stars} stars, ${r.targetGot}/${g.spec.targetNeed} blue, ${r.coinsCollected}/${r.coinTotal} coins, ${r.timeLeft}s left")
         check("Level $n: stars, best score and relic saved; Level ${n + 1} unlocked",

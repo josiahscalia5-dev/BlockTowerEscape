@@ -153,6 +153,7 @@ rewards, settings and the saved progress, and prints a pass/fail checklist.
 ./gradlew :sim:run --args="play level=5 out=sim-out"                          # one level (1-5; Level 4 by default)
 ./gradlew :sim:run --args="play out=sim-out video=sim-out/run.mp4 ffmpeg=ffmpeg"  # also record a video
 ./gradlew :sim:run --args="flow out=sim-out shots=1"                          # the whole app, a screenshot of each screen
+./gradlew :sim:run --args="flow w=720 h=1560 out=sim-out video=sim-out/tour.mp4 ffmpeg=ffmpeg"  # the whole app as a video tour
 ./gradlew :sim:run --args="app out=sim-out"                                   # Home, map, popups and level cards
 ./gradlew :sim:run --args="shot level=4 out=sim-out frames=240"               # one frame
 ./gradlew :sim:run --args="poses out=sim-out"                                 # the character animation poses

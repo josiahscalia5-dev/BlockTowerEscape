@@ -10,7 +10,6 @@ import com.blocktower.escape.core.PS
 import com.blocktower.escape.core.TK
 import com.blocktower.escape.core.Tune
 import java.io.File
-import java.io.OutputStream
 import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlin.math.floor
@@ -115,8 +114,7 @@ class Autopilot(
     /** "hearts": keep falling off the path until every heart is gone, then continue and stop. */
     private val scenario = opts["scenario"] ?: "full"
     private var heartsGameOver = false
-    private var ffmpeg: Process? = null
-    private var videoOut: OutputStream? = null
+    private var video: VideoWriter? = null
     private var gfx: J2DGfx? = null
 
     // ---- movement test results
@@ -148,10 +146,10 @@ class Autopilot(
     fun run() {
         val w = (opts["w"] ?: "540").toInt(); val h = (opts["h"] ?: "1170").toInt()
         val every = (opts["every"] ?: "0").toInt()
-        val video = opts["video"]
-        if (video != null || every > 0) gfx = J2DGfx(assets, w, h)
+        val videoFile = opts["video"]
+        if (videoFile != null || every > 0) gfx = J2DGfx(assets, w, h)
         g.hud.layout(w, h)
-        if (video != null) startVideo(File(video), w, h, opts["ffmpeg"] ?: "ffmpeg")
+        if (videoFile != null) video = VideoWriter(File(videoFile), w, h, opts["ffmpeg"] ?: "ffmpeg")
         val frameDir = opts["frames"]?.let { File(it).apply { mkdirs() } }
         var lastState = -1; var lastHearts = g.hearts; var lastTarget = 0; var lastCp = 0; var lastChase = Chase.NONE; var lastPs = PS.NORMAL
         val maxFrames = 60 * 60 * 6
@@ -176,9 +174,9 @@ class Autopilot(
             // render
             val gr = gfx
             if (gr != null && (frame % 2 == 0)) {
-                if (videoOut != null || (every > 0 && frame % every == 0)) {
+                if (video != null || (every > 0 && frame % every == 0)) {
                     gr.clear(); g.render(gr)
-                    videoOut?.let { writeFrame(it, gr) }
+                    video?.write(gr.image)
                     if (frameDir != null && every > 0 && frame % every == 0) ImageIO.write(gr.image, "png", File(frameDir, "f%05d.png".format(frame)))
                 }
             }
@@ -189,7 +187,7 @@ class Autopilot(
             }
             if (doneAt >= 0 && frame - doneAt > 60 * 7) break
         }
-        stopVideo()
+        video?.close()
         report()
     }
 
@@ -665,32 +663,6 @@ class Autopilot(
     private fun chaseName(c: Int) = when (c) { Chase.NONE -> "NONE"; Chase.WARNING -> "WARNING"; Chase.REVEAL -> "REVEAL"; Chase.RUN -> "RUN"; Chase.ESCAPED -> "ESCAPED"; Chase.CAUGHT -> "CAUGHT"; else -> "$c" }
     private fun psName(s: Int) = when (s) { PS.NORMAL -> "NORMAL"; PS.RESCUE_FALL -> "RESCUE_FALL"; PS.RESCUE_RIDE -> "RESCUE_RIDE"; PS.CAUGHT -> "CAUGHT"; PS.WIN -> "WIN"; PS.DEAD -> "DEAD"; else -> "$s" }
     private fun len2(x: Float, y: Float) = sqrt(x * x + y * y)
-
-    // ------------------------------------------------------------------ video
-    private fun startVideo(f: File, w: Int, h: Int, ffmpegPath: String) {
-        val pb = ProcessBuilder(ffmpegPath, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "${w}x$h", "-r", "30", "-i", "-",
-            "-c:v", "libx264", "-preset", "medium", "-crf", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart", f.absolutePath)
-        pb.redirectErrorStream(true)
-        pb.redirectOutput(ProcessBuilder.Redirect.INHERIT)
-        val proc = pb.start()
-        ffmpeg = proc; videoOut = proc.outputStream.buffered(1 shl 20)
-    }
-
-    private var rgbBuf: ByteArray? = null
-    private fun writeFrame(o: OutputStream, gr: J2DGfx) {
-        val img = gr.image
-        val w = img.width; val h = img.height
-        val px = (img.raster.dataBuffer as java.awt.image.DataBufferInt).data
-        val buf = rgbBuf ?: ByteArray(w * h * 3).also { rgbBuf = it }
-        var j = 0
-        for (i in 0 until w * h) { val c = px[i]; buf[j++] = (c shr 16).toByte(); buf[j++] = (c shr 8).toByte(); buf[j++] = c.toByte() }
-        o.write(buf)
-    }
-
-    private fun stopVideo() {
-        videoOut?.close()
-        ffmpeg?.waitFor()
-    }
 
     // runs last, after every property above has its initial value
     init {

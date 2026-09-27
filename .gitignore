@@ -12,3 +12,4 @@
 *.aab
 /sim/build/
 .kotlin/
+*.mp4
