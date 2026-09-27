@@ -39,6 +39,8 @@ class Player {
     /** On the loop: which loop, how far round (0..1), speed along the track, offset across it, hop in from it. */
     var loop: Loop? = null
     var loopU = 0f; var loopV = 0f; var loopLat = 0f; var loopHop = 0f; var loopHopV = 0f
+    /** How the boy is turned on screen (degrees) to stand on the loop's track: followed smoothly, never snapped. */
+    var loopRot = 0f
     var portalScale = 1f
     var spin = 0f
     var sortKey = 0f
@@ -58,7 +60,7 @@ class Player {
         grounded = true; ground = null; lastGroundY = y0; coyote = 0f; jumpBuffer = 0f; jumping = false
         state = PS.NORMAL; stateT = 0f; lean = 0f; invuln = 0f; hurtFlash = 0f
         portalScale = 1f; spin = 0f; airTime = 0f; boostT = 0f; dashT = 0f; runW = 0f; airW = 0f
-        loop = null; loopU = 0f; loopV = 0f; loopLat = 0f; loopHop = 0f; loopHopV = 0f
+        loop = null; loopU = 0f; loopV = 0f; loopLat = 0f; loopHop = 0f; loopHopV = 0f; loopRot = 0f
         landT = 9f; jumpT = 9f; skidT = 9f; collectT = 9f; castT = 9f; hurtT = 9f; celebrateT = 9f
         safeX = x0; safeY = y0; safeZ = z0; safeBlock = null
     }

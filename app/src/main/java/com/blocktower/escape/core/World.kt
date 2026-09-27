@@ -78,6 +78,11 @@ class Loop(@JvmField val x0: Float, @JvmField val y0: Float, @JvmField val z0: F
     @JvmField val width = 3f
     /** Spike plates on the track: u, lane offset from the track's centre (steer round them, or hop over). */
     val spikes = ArrayList<FloatArray>()
+    /** Speed pads across the whole track (u of each): running over one gives a burst of pace. */
+    val pads = ArrayList<Float>()
+    /** The track's up direction at [u] (toward the ring's centre): the boy's feet point the other way. */
+    fun upY(u: Float) = kotlin.math.cos(angle(u))
+    fun upZ(u: Float) = -kotlin.math.sin(angle(u))
     fun cx(u: Float) = x0 + shift * smooth(u)
     fun angle(u: Float) = u * TAU
     /** Height and depth of the running surface at [u], [hop] units in from the track (toward the centre). */

@@ -170,6 +170,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
             val lat = if (i % 4 == 1) -1f else if (i % 4 == 3) 1f else 0f
             w.coins.add(Coin(loop.cx(u) + lat, loop.sy(u, 0.85f), loop.sz(u, 0.85f))); w.coinTotal++
         }
+        loop.pads.add(0.1f)
         loop.spikes.add(floatArrayOf(0.34f, -1f)); loop.spikes.add(floatArrayOf(0.5f, 1f)); loop.spikes.add(floatArrayOf(0.7f, 0f))
         w.pillars.add(Pillar(ox, 12f + zo, lo - 1f - 0.9f, 3.4f, 2.2f))
         w.pillars.add(Pillar(ox + 3f, 12f + zo, lo - 1f - 0.9f, 3.4f, 2.2f))

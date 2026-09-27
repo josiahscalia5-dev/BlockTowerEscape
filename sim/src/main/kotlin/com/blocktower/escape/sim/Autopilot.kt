@@ -183,6 +183,16 @@ class Autopilot(
             }
             if (g.ev.lavaOn) seen.add("lava")
             if (g.ev.finalOn) seen.add("final escape")
+            // round the loop: the stride keeps going, the turn follows the track smoothly, feet stay on it
+            if (p.state == PS.LOOP) {
+                if (!inLoop) { inLoop = true; loopRot0 = p.loopRot; lastLoopRot = p.loopRot; loopPhase0 = p.runPhase; loopFrames = 0; loopCoins0 = g.coinsCollected; loopTurn = 0f }
+                var d = p.loopRot - lastLoopRot; while (d > 180f) d -= 360f; while (d < -180f) d += 360f
+                if (loopFrames > 0) { loopMaxStep = max(loopMaxStep, abs(d)); loopTurn += d }
+                lastLoopRot = p.loopRot; loopFrames++
+                if (p.loopHop <= 0.01f) loopOnTrack++ else loopHopFrames++
+                loopMinV = min(loopMinV, p.loopV); loopStride = p.runPhase - loopPhase0
+                loopCoins = g.coinsCollected - loopCoins0
+            } else inLoop = false
             val rs = g.relic.state
             if (rs != lastRelic) {
                 when (rs) {
@@ -339,6 +349,7 @@ class Autopilot(
 
         wantRun = true
         // --- a swinging log will be in the way when we get there: wait for it to swing clear
+        if (opts["trace"] != null && z in 176f..181f && frame % 3 == 0) { val l = g.world.logs.minByOrNull { abs(it.pz - z) }!!; println("TRACE f=$frame z=${"%.2f".format(z)} vz=${"%.2f".format(p.vz)} x=${"%.2f".format(p.x)} ball=(${"%.2f".format(l.cx)},${"%.2f".format(l.cy)}) way=${logInWay()} cruise=${g.swipe.cruise} dash=${p.dashT}") }
         if (logInWay()) {
             if (!logWaitNoted) { note("waiting for the swinging mace"); logWaitNoted = true; logWaits++ }
             wantRun = false; keepPace(); return
@@ -406,6 +417,8 @@ class Autopilot(
         if (abs(sp[1] - p.loopLat) < 0.7f) {
             val free = floatArrayOf(0f, -1f, 1f).filter { l -> lp.spikes.none { s2 -> s2[0] > p.loopU && (s2[0] - p.loopU) * lp.length < 3.2f && abs(s2[1] - l) < 0.7f } }
             val dist = (sp[0] - p.loopU) * lp.length
+            // "loop=hop": jump every spike plate instead of steering round it (tests the hop on the loop)
+            if (opts["loop"] == "hop") { if (dist < 1.3f && p.loopHop <= 0.01f) { pressJump(); note("loop: hopping a spike plate") }; return }
             if (free.isNotEmpty() && dist > 1.2f && thumbFree && frame - lastSteerFrame > 10) {
                 val l = free.minByOrNull { abs(it - p.loopLat) }!!
                 steerSwipe(l - p.loopLat); note("loop: steering round a spike plate")
@@ -413,18 +426,26 @@ class Autopilot(
         }
     }
 
+    private var inLoop = false
+    private var loopRot0 = 0f; private var lastLoopRot = 0f; private var loopMaxStep = 0f; private var loopTurn = 0f
+    private var loopFrames = 0; private var loopOnTrack = 0; private var loopHopFrames = 0; private var loopMinV = 99f
+    private var loopPhase0 = 0f; private var loopStride = 0f; private var loopCoins0 = 0; private var loopCoins = 0
+
     private var logWaitNoted = false
     private var logWaits = 0
     /** Predicts whether a swinging mace sweeps through our lane while we pass under it. */
     private fun logInWay(): Boolean {
         for (l in g.world.logs) {
             val dz = l.pz - p.z
-            if (dz < 1.0f || dz > 3.4f || abs(p.y - (l.py - l.len)) > 3f) continue
-            val sp = max(3.2f, p.vz)
-            val t0 = g.logT + dz / sp
+            if (dz < 1.0f || dz > 3.4f + max(0f, p.vz - Tune.RUN) * 1.2f || abs(p.y - (l.py - l.len)) > 3f) continue
+            // arrival time from here, speeding up from the current pace to a full run (16 u/s² as in the game)
+            val v0 = max(0f, p.vz); val vm = max(v0, if (g.speedOn) Tune.RUN_FAST else Tune.RUN)
+            val ta = (vm - v0) / 16f; val da = (v0 + vm) * 0.5f * ta
+            val t0 = g.logT + (if (dz <= da) dz / max(1f, (v0 + vm) * 0.5f) else ta + (dz - da) / vm)
             val w = com.blocktower.escape.core.TAU / l.period
-            var k = -2
-            while (k <= 4) {
+            // from a little before we arrive until we are through (about 0.6 s under the swing)
+            var k = -3
+            while (k <= 7) {
                 val a = l.amp * sin(w * (t0 + k * 0.1f) + l.phase)
                 val cx = l.px + sin(a) * l.len; val cy = l.py - kotlin.math.cos(a) * l.len
                 if (abs(p.x - cx) < l.radius + 0.7f && cy - l.radius < p.y + Tune.HEIGHT + 0.25f) return true
@@ -612,8 +633,8 @@ class Autopilot(
         // hits (spikes, traps) — the fall and capture tests are counted separately
         if (p.hurtFlash > lastHurt + 0.5f && normal) {
             hurts++; if (p.z in plan.trapZ0..plan.trapZ1) trapHurts++
-            if (g.world.logs.any { abs(it.pz - p.z) < 1.6f }) logHits++
-            note("hit (hurt flash) at z=${"%.1f".format(p.z)}")
+            if (g.lastHurt == "mace") logHits++
+            note("hit (hurt flash) at z=${"%.1f".format(p.z)}: ${g.lastHurt}")
         }
         lastHurt = p.hurtFlash
         // jumps while running
@@ -750,6 +771,12 @@ class Autopilot(
         val toolsNeeded = min(3, usesTool.count { it })
         if (toolsNeeded > 0) result("9 tools while moving", toolsWhileMoving.size >= toolsNeeded, "used while running: ${toolsWhileMoving.joinToString()}")
         result("10 reaching the final portal", seen.contains("ps:WIN") && g.state == GS.RESULTS, "entered the gate, results shown")
+        if (g.world.loops.isNotEmpty()) {
+            val secs = loopFrames / 60f
+            result("loop: runs round on the track", seen.contains("loop done") && loopStride > secs * 5f && abs(abs(loopTurn) - 360f) < 60f,
+                "${"%.1f".format(secs)} s round, ${"%.1f".format(loopStride)} strides (legs keep alternating), turned ${"%.0f".format(loopTurn)} degrees with the track, feet on the blocks ${loopOnTrack} frames (+$loopHopFrames hopping), slowest ${"%.1f".format(loopMinV)}/s, $loopCoins coins")
+            result("loop: turning is smooth (no snapping)", loopMaxStep < 12f, "largest turn in one frame ${"%.1f".format(loopMaxStep)} degrees")
+        }
         result("never inside a block", penetrations == 0, "$penetrations frames overlapping a solid block")
         result("smooth steering", maxDx < 0.13f && maxDvx <= 32f * dt + 1e-3f, "max sideways step ${"%.3f".format(maxDx)} per frame, max sideways speed change ${"%.3f".format(maxDvx)} per frame")
         result("camera turn response stays gentle", maxYaw <= 0.046f && maxRoll <= 0.013f, "max turn yaw ${"%.3f".format(maxYaw)} rad, roll ${"%.3f".format(maxRoll)} rad")

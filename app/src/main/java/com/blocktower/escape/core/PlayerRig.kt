@@ -230,6 +230,8 @@ class PlayerRig(val g: Game) {
             PS.DEAD -> { o.armL = 50f + 20f * sin(t * 19f); o.armR = -50f - 20f * sin(t * 19f + 1f); o.legsMirror = ((t * 8f).toInt() and 1) == 1 }
         }
         if (speed < 0.01f && airW < 0.01f && p.state == PS.NORMAL) o.legsRot = 0f
+        // round the loop the boy is turned to stand on the track (see WorldRenderer.drawPlayer)
+        if (p.state == PS.LOOP) o.rot += p.loopRot
         // on the ground the feet stay planted: when the hips dip (landing, skid) the legs bend to
         // absorb it instead of pushing the feet through the floor; a rising body half-lifts them
         val reach = anchorY - BoyRig.HIP_Y

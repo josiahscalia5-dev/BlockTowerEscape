@@ -400,7 +400,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
 
     fun activateTool(k: Int) {
         if (state != GS.PLAY) return
-        if (player.state != PS.NORMAL || ev.revealing) return
+        // tools work on the loop too (except the block tool: there is no gap to bridge there)
+        if ((player.state != PS.NORMAL && !(player.state == PS.LOOP && k != TK.BLOCK)) || ev.revealing) return
         val tl = tools[k]
         if (toolLocked(k)) {
             hud.denied(k); platform.sound(Sfx.WRONG, 0.5f)
@@ -856,7 +857,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         } else swipe.takeSteer()
         val a = lp.angle(p.loopU)
         p.loopV += (-8.5f * sin(a) + max(0f, drive) * 5f - 1.5f) * dt
-        p.loopV = clamp(p.loopV, Tune.LOOP_MIN, Tune.LOOP_MAX)
+        // speed pads on the track and the lightning tool add pace, as on the ground
+        val top = Tune.LOOP_MAX + (if (speedOn) 2f else 0f) + (if (p.dashT > 0f) 2f else 0f)
+        p.loopV = clamp(p.loopV, Tune.LOOP_MIN, top)
         p.loopLat = approach(p.loopLat, loopSteer, 5.5f * dt)
         if (p.loopHop > 0f || p.loopHopV > 0f) {
             p.loopHop += p.loopHopV * dt; p.loopHopV -= 24f * dt
@@ -864,6 +867,11 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         }
         val before = p.loopU
         p.loopU += p.loopV * dt / lp.length
+        for (pu in lp.pads) if (before < pu && p.loopU >= pu && p.loopHop < 0.3f) {
+            p.dashT = Tune.DASH_T; p.loopV = min(p.loopV + 3.5f, Tune.LOOP_MAX + 2f)
+            platform.sound(Sfx.SPEED, 0.9f, 1.4f); kickV += 0.8f
+            fx.popupWorld("SPEED!", p.x, p.y + 1.6f * lp.upY(p.loopU), p.z + 1.6f * lp.upZ(p.loopU), 0xFF9AF0FF.toInt(), 42f)
+        }
         p.x = lp.cx(p.loopU) + p.loopLat
         p.y = lp.sy(p.loopU, p.loopHop); p.z = lp.sz(p.loopU, p.loopHop)
         val an = lp.angle(p.loopU)
@@ -889,7 +897,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
 
     private fun exitLoop(lp: Loop) {
         val p = player
-        p.state = PS.NORMAL; p.stateT = 0f; p.loop = null
+        p.state = PS.NORMAL; p.stateT = 0f; p.loop = null; p.loopRot = 0f
         p.x = lp.cx(1f) + p.loopLat; p.y = lp.y0; p.z = lp.z0 + 0.15f
         p.vz = min(p.loopV, Tune.RUN_DASH); p.vy = 0f; p.vx = 0f
         p.boostT = 0.5f; p.grounded = false; p.lastGroundY = lp.y0; p.airTime = 0f
@@ -1189,7 +1197,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             c.phase += dt
             val dx = px - c.x; val dy = py - c.y; val dz = pz - c.z
             val d = len3(dx, dy, dz)
-            if (magR > 0f && d < magR && p.state == PS.NORMAL) c.pulled = true
+            if (magR > 0f && d < magR && (p.state == PS.NORMAL || p.state == PS.LOOP)) c.pulled = true
             if (c.pulled) {
                 val k = min(1f, 15f * dt / max(d, 0.001f))
                 c.x += dx * k; c.y += dy * k; c.z += dz * k
@@ -1349,9 +1357,14 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         p.invuln = 1f
     }
 
+    /** What hurt the boy last ("spikes", "mace", "debris", ...), for the playtest log. */
+    var lastHurt = ""
+        private set
+
     fun hurt(reason: String, src: Block?) {
         val p = player
         if (p.invuln > 0f || (p.state != PS.NORMAL && p.state != PS.LOOP) || state != GS.PLAY) return
+        lastHurt = reason
         if (shieldOn) {
             breakShield()
             fx.popupWorld("BLOCKED!", p.x, p.y + 2.3f, p.z, 0xFF9FE8FF.toInt(), 44f)
@@ -1692,8 +1705,11 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         }
         val lp = p.loop
         if (lp != null && p.state == PS.LOOP) {
-            // round the loop: stand back and to the left and watch the boy run the whole ring
-            dist = lp.r * 2.2f + 3.2f; height = 0.6f; pitch = 0.04f; yaw = 0.62f; fov = 0.92f
+            // round the loop: the camera follows the boy, swinging out to the left as he climbs (so the ring and
+            // the track ahead of him stay in view) and back behind him as he comes down; wider lens for speed
+            val sw = sin(p.loopU * Math.PI.toFloat())
+            dist = lp.r * (0.95f + 0.35f * sw) + 2.9f; height = 0.9f + 0.5f * sw; pitch = 0.1f - 0.06f * sw
+            yaw = 0.22f + 0.4f * sw; fov = 0.9f
         }
         if (state == GS.COMPLETE || state == GS.RESULTS) {
             cyToCentre = if (state == GS.RESULTS) 1f else smooth(stateT / 1.2f)
@@ -1723,7 +1739,12 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         }
         var tz = p.z + camLead
         // on the loop the camera looks at the whole ring, not at the boy running round it
-        if (lp != null && p.state == PS.LOOP) { tx = lp.cx(0.5f); groundish = lp.y0 + lp.r * 0.95f; tz = lp.z0 }
+        if (lp != null && p.state == PS.LOOP) {
+            // look between the boy's body and the ring's centre: he stays the focus, the ring stays in frame
+            val u = p.loopU
+            val by = p.y + 0.8f * lp.upY(u); val bz = p.z + 0.8f * lp.upZ(u)
+            tx = lerp(lp.cx(0.5f), p.x, 0.6f); groundish = lerp(lp.y0 + lp.r * 0.9f, by, 0.55f) - 1f; tz = lerp(lp.z0, bz, 0.55f)
+        }
         val kz = if (p.state == PS.LOOP || p.stateT < 0.8f && lp == null && camLoopT > 0f) 3f else 14f
         camLoopT = if (p.state == PS.LOOP) 1.2f else max(0f, camLoopT - dt)
         if (!camInit) { camX = tx; camY = groundish; camZ = tz; camInit = true; kickY = 0f; kickV = 0f }
@@ -1754,6 +1775,28 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         cam.roll = camRoll + tr * tr * 0.035f * noise(t * 21f + 3f)
         ev.applyCamera(this)
         cam.update()
+        if (p.state == PS.LOOP) turnOnLoop(p, dt)
+    }
+
+    /**
+     * Round the loop the boy is turned to stand on the track: his up is the track's normal (toward the ring's
+     * centre) and his feet are on its surface. Seen through the camera that up is a screen angle; he turns to it
+     * smoothly (never snapping), more gently where his up points at the camera and the angle is hard to read.
+     */
+    private fun turnOnLoop(p: Player, dt: Float) {
+        val lp = p.loop ?: return
+        val u = p.loopU
+        if (!cam.project(p.x, p.y, p.z)) return
+        val fx = cam.sx; val fy = cam.sy; val sc = cam.scaleAt(cam.depth)
+        if (!cam.project(p.x, p.y + 1.4f * lp.upY(u), p.z + 1.4f * lp.upZ(u))) return
+        val dx = cam.sx - fx; val dy = cam.sy - fy
+        if (dx * dx + dy * dy < 1f) return
+        val want = Math.toDegrees(kotlin.math.atan2(dx.toDouble(), (-dy).toDouble())).toFloat()
+        var diff = want - p.loopRot
+        while (diff > 180f) diff -= 360f
+        while (diff < -180f) diff += 360f
+        val clear = clamp01(len2(dx, dy) / (1.4f * sc) - 0.2f)
+        p.loopRot += diff * min(1f, dt * (12f + 18f * clear))
     }
 
     /** Seconds the camera keeps easing back after the loop. */

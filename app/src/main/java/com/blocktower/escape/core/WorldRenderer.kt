@@ -142,7 +142,12 @@ class WorldRenderer(val g: Game) {
             if (d < 0.5f || d > maxDepth) continue
             push(K.BEACON, cp, cam.dist2(cp.x, cp.y + 2.2f, cp.z - 0.2f))
         }
-        if (p.state != PS.DEAD || p.y > p.lastGroundY - 20f) push(K.PLAYER, p, cam.dist2(p.x, p.y + 0.5f, p.z - 0.55f))
+        val plp = p.loop
+        if (plp != null && p.state == PS.LOOP) {
+            // on the loop: the body's middle, in from the track (drawn over the block he runs on)
+            val u = p.loopU
+            push(K.PLAYER, p, cam.dist2(p.x, p.y + 0.7f * plp.upY(u), p.z + 0.7f * plp.upZ(u)) - 0.6f)
+        } else if (p.state != PS.DEAD || p.y > p.lastGroundY - 20f) push(K.PLAYER, p, cam.dist2(p.x, p.y + 0.5f, p.z - 0.55f))
         if (p.state == PS.RESCUE_RIDE) push(K.RIDE, p, cam.dist2(p.x, p.y - 0.1f, p.z) + 0.5f)
         val gd = g.ev.guard
         if (gd.on) push(K.GUARD, gd, cam.dist2(gd.x, gd.y + 2f, gd.z - 0.3f))
@@ -595,6 +600,8 @@ class WorldRenderer(val g: Game) {
         val blink = p.invuln > 0f && p.state == PS.NORMAL && ((t * 14f).toInt() and 1) == 1
         // sprite metrics: the boy is ~1.95 world units tall at the camera's framing distance
         val worldH = g.spec.boyH
+        val lp = p.loop
+        if (lp != null && p.state == PS.LOOP) loopFooting(gr, p, lp)
         if (!cam.project(p.x, p.y, p.z)) return
         val fx0 = cam.sx; val fy0 = cam.sy
         val scale = cam.scaleAt(cam.depth)
@@ -612,7 +619,8 @@ class WorldRenderer(val g: Game) {
         val hurt = p.hurtFlash
         if (hurt > 0f) g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, 1f, 0xFFFF3030.toInt(), hurt * 0.55f)
         else g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, 1f, if (blink) 0xFFFFFFFF.toInt() else 0, if (blink) 0.42f else 0f)
-        val midX = fx0; val midY = fy0 - hPx * 0.45f
+        var midX = fx0; var midY = fy0 - hPx * 0.45f
+        if (p.state == PS.LOOP) { val r = p.loopRot * Math.PI.toFloat() / 180f; midX = fx0 + sin(r) * hPx * 0.45f; midY = fy0 - cos(r) * hPx * 0.45f }
         if (g.shieldOn) {
             val tl = g.tools[TK.SHIELD]
             val grow = easeOutBack(clamp01((tl.duration - tl.active) / 0.3f))
@@ -1106,9 +1114,12 @@ class WorldRenderer(val g: Game) {
     private fun playerBox() {
         val p = g.player
         pbox[0] = 1e9f; pbox[1] = 1e9f; pbox[2] = -1e9f; pbox[3] = -1e9f; pdepth = 1e9f
-        if (!cam.project(p.x, p.y, p.z)) return
+        val lp = p.loop
+        val my = if (lp != null && p.state == PS.LOOP) p.y + 0.8f * lp.upY(p.loopU) else p.y + 0.8f
+        val mz = if (lp != null && p.state == PS.LOOP) p.z + 0.8f * lp.upZ(p.loopU) else p.z
+        if (!cam.project(p.x, my, mz)) return
         val sc = cam.scaleAt(cam.depth); pdepth = cam.depth
-        pbox[0] = cam.sx - 0.7f * sc; pbox[2] = cam.sx + 0.7f * sc; pbox[1] = cam.sy - 2.2f * sc; pbox[3] = cam.sy + 1.2f * sc
+        pbox[0] = cam.sx - 1.1f * sc; pbox[2] = cam.sx + 1.1f * sc; pbox[1] = cam.sy - 1.3f * sc; pbox[3] = cam.sy + 1.3f * sc
     }
 
     private fun drawLoopSeg(gr: Gfx, sg: LoopSeg) {
@@ -1137,7 +1148,8 @@ class WorldRenderer(val g: Game) {
         // blocks between the camera and the boy turn see-through, so he is never lost behind the ring
         if (depth < pdepth - 0.3f && maxX > pbox[0] && minX < pbox[2] && maxY > pbox[1] && minY < pbox[3]) a *= 0.35f
         if (a <= 0.01f) return
-        val col = loopColors[(sg.i * 2 + sg.j) % loopColors.size]
+        val pad = lp.pads.any { it >= u0 && it < u1 }
+        val col = if (pad) BC.BLUE else loopColors[(sg.i * 2 + sg.j) % loopColors.size]
         val ts = art.texSize.toFloat()
         val haze = hazeFor(depth)
         val um = (u0 + u1) * 0.5f; val am = lp.angle(um)
@@ -1159,9 +1171,34 @@ class WorldRenderer(val g: Game) {
         // the running surface
         if (inner) {
             quad(0, 1, 2, 3); gr.imageQuad(art.top[col][sg.j], 0f, 0f, ts, ts, q, a, 1.04f, skyHaze, haze)
+            if (pad) {
+                // the speed pad's glowing chevrons, pointing on round the loop
+                gr.setAdditive(true)
+                gr.imageQuad(art.frameGlow, 0f, 0f, art.frameGlow.w.toFloat(), art.frameGlow.h.toFloat(), q, a * (0.7f + 0.3f * pulse(g.t, 5f)))
+                gr.setAdditive(false)
+                quad(3, 2, 1, 0)
+                gr.imageQuad(art.chevrons, 0f, 0f, art.chevrons.w.toFloat(), art.chevrons.h.toFloat(), q, a, 1f, 0xFFFFFFFF.toInt(), 0.6f + 0.3f * pulse(g.t * 1.4f, 3f))
+            }
             // spike plates on this block
             for (sp in lp.spikes) if (sp[0] >= u0 && sp[0] < u1 && sp[1] > l0 - 0.01f && sp[1] < l1 + 0.01f) loopSpikes(gr, lp, sp[0], sp[1], a)
         }
+    }
+
+    /** The boy's contact shadow on the loop's track (under his feet), fading while he hops. */
+    private fun loopFooting(gr: Gfx, p: Player, lp: Loop) {
+        val u = p.loopU
+        val uy = lp.upY(u); val uz = lp.upZ(u)
+        val fy = lp.sy(u, 0.03f); val fz = lp.sz(u, 0.03f)
+        val tan0 = kotlin.math.sin(lp.angle(u)); val tan1 = kotlin.math.cos(lp.angle(u))
+        var m = 0
+        val k = clamp01(1f - p.loopHop / 1.2f)
+        for (i in 0 until 12) {
+            val an = i / 12f * TAU
+            val ax = cos(an) * 0.34f; val at = sin(an) * 0.26f
+            if (!cam.project(p.x + ax, fy + tan0 * at + 0.01f * uy, fz + tan1 * at + 0.01f * uz)) return
+            poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
+        }
+        if (k > 0.02f) gr.fillPoly(poly, m, Col.withA(0xFF10081A.toInt(), 0.4f * k))
     }
 
     /** Iron spikes standing in from the loop's track (toward the centre). */
