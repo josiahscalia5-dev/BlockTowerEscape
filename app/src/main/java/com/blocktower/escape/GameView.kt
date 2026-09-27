@@ -8,8 +8,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
-import com.blocktower.escape.core.GS
-import com.blocktower.escape.core.Game
+import com.blocktower.escape.core.App
 import com.blocktower.escape.core.Key
 
 /**
@@ -18,7 +17,7 @@ import com.blocktower.escape.core.Key
  */
 class GameView(context: Context) : View(context), Choreographer.FrameCallback {
     private val platform = AndroidPlatform(context, this)
-    private val game = Game(platform)
+    private val app = App(platform)
     private val gfx = AndroidGfx(context.assets)
     private var lastNanos = 0L
     private var running = false
@@ -40,7 +39,7 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
     fun pause() {
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
-        if ((game.state == GS.PLAY || game.state == GS.INTRO) && !game.paused) game.togglePause()
+        app.onPause()
     }
 
     fun release() {
@@ -48,7 +47,8 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         platform.release()
     }
 
-    fun backPressed() { game.togglePause() }
+    /** Returns false when back should leave the app (on the Home screen). */
+    fun backPressed(): Boolean = app.back()
 
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
@@ -62,22 +62,22 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         if (Build.VERSION.SDK_INT >= 28) {
             insets.displayCutout?.let { top = it.safeInsetTop.toFloat(); bottom = it.safeInsetBottom.toFloat() }
         }
-        game.hud.setInsets(top, bottom)
+        app.setInsets(top, bottom)
         return super.onApplyWindowInsets(insets)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        game.hud.layout(w, h)
+        app.layout(w, h)
     }
 
     override fun onDraw(canvas: Canvas) {
         val now = System.nanoTime()
         val dt = if (lastNanos == 0L) 1f / 60f else ((now - lastNanos) / 1e9f).coerceIn(0f, 0.05f)
         lastNanos = now
-        if (running) game.update(dt)
+        if (running) app.update(dt)
         gfx.begin(canvas, width, height)
-        game.render(gfx)
+        app.render(gfx)
         gfx.end()
     }
 
@@ -85,17 +85,17 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val i = e.actionIndex
-                game.touchDown(e.getPointerId(i), e.getX(i), e.getY(i))
+                app.touchDown(e.getPointerId(i), e.getX(i), e.getY(i))
             }
             MotionEvent.ACTION_MOVE -> {
-                for (i in 0 until e.pointerCount) game.touchMove(e.getPointerId(i), e.getX(i), e.getY(i))
+                for (i in 0 until e.pointerCount) app.touchMove(e.getPointerId(i), e.getX(i), e.getY(i))
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val i = e.actionIndex
-                game.touchUp(e.getPointerId(i), e.getX(i), e.getY(i))
+                app.touchUp(e.getPointerId(i), e.getX(i), e.getY(i))
             }
             MotionEvent.ACTION_CANCEL -> {
-                for (i in 0 until e.pointerCount) game.touchCancel(e.getPointerId(i))
+                for (i in 0 until e.pointerCount) app.touchCancel(e.getPointerId(i))
             }
         }
         return true
@@ -119,14 +119,14 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val k = mapKey(keyCode)
         if (k == 0) return false
-        if (event.repeatCount == 0) game.onKey(k, true)
+        if (event.repeatCount == 0) app.onKey(k, true)
         return true
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         val k = mapKey(keyCode)
         if (k == 0) return false
-        game.onKey(k, false)
+        app.onKey(k, false)
         return true
     }
 }

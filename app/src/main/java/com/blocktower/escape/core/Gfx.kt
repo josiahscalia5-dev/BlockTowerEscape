@@ -98,6 +98,9 @@ interface Platform {
     fun createImage(p: Pixels): Img
     fun sound(id: Int, volume: Float = 1f, rate: Float = 1f)
     fun haptic(strong: Boolean)
+    /** Small persistent key-value storage (saved progress). */
+    fun loadText(key: String): String? = null
+    fun saveText(key: String, value: String) {}
 }
 
 class Pixels(val w: Int, val h: Int, val argb: IntArray)

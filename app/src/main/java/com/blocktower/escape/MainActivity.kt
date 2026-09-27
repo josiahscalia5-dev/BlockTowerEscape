@@ -9,7 +9,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 
-/** Hosts Screen 4 (main gameplay) full-screen in portrait. */
+/** Hosts the game (Home, level map, levels) full-screen in portrait. */
 class MainActivity : Activity() {
     private lateinit var gameView: GameView
 
@@ -43,7 +43,7 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK) { gameView.backPressed(); return true }
+        if (keyCode == KeyEvent.KEYCODE_BACK) { if (!gameView.backPressed()) finish(); return true }
         return gameView.onKeyDown(keyCode, event) || super.onKeyDown(keyCode, event)
     }
 

@@ -697,6 +697,7 @@ class WorldRenderer(val g: Game) {
      */
     private fun drawGate(gr: Gfx) {
         val po = g.world.portals.firstOrNull() ?: return
+        if (!g.spec.bigGate) { drawBlockPortal(gr, po); return }
         val fade = clamp01(1f - (abs(cam.yaw) - 0.5f) / 0.5f)
         if (fade <= 0.01f) return
         val img = art.gate
@@ -770,6 +771,50 @@ class WorldRenderer(val g: Game) {
             gr.glow(ax, ay, r * 2.4f, Col.withA(0xFF60A8FF.toInt(), a))
             gr.setAdditive(false)
             gr.strokeCircle(ax, ay, r * 1.5f, gw * 0.008f, Col.withA(0xFFB8E0FF.toInt(), a * 1.6f))
+        }
+    }
+
+    /**
+     * The early levels' portal: a swirl standing inside the gold block arch at the end of the path. It glows
+     * brighter as you approach, is held shut by a blue barrier until the objective is done, and blazes on entry.
+     */
+    private fun drawBlockPortal(gr: Gfx, po: Portal) {
+        val t = g.t
+        val cx = po.x; val cy = po.y + 1.75f; val z = po.z - 0.05f
+        if (!cam.project(cx, cy, z)) return
+        val depth = cam.depth
+        if (depth > maxDepth) return
+        val sc = cam.scaleAt(depth)
+        val sx = cam.sx; val sy = cam.sy
+        val open = g.target >= g.spec.targetNeed
+        val near = clamp01(1f - (po.z - g.player.z) / 30f)
+        val charge = po.charge
+        val a = 1f - smooth((depth - (maxDepth - 10f)) / 10f)
+        gr.setAdditive(true)
+        gr.glow(sx, sy, 2.6f * sc, Col.withA(0xFFB060FF.toInt(), a * (0.25f + 0.2f * near + 0.4f * charge)))
+        val spin = t * (1.4f + 5f * charge)
+        for (layer in 0..1) {
+            val rr = (if (layer == 0) 1.55f else 1.1f) * (1f + 0.04f * sin(t * 3f))
+            val a0 = if (layer == 0) spin else -spin * 1.4f
+            for (i in 0..3) {
+                val an = a0 + i * TAU / 4f + TAU / 8f
+                if (!cam.project(cx + cos(an) * rr * 1.414f * 0.62f, cy + sin(an) * rr * 1.414f, z)) return
+                gq[i * 2] = cam.sx; gq[i * 2 + 1] = cam.sy
+            }
+            gr.imageQuad(art.swirl, 0f, 0f, art.swirl.w.toFloat(), art.swirl.h.toFloat(), gq, a * (if (layer == 0) 0.9f else 0.65f) * (0.7f + 0.3f * near))
+        }
+        gr.glow(sx, sy + 0.3f * sc, (0.9f + 0.8f * charge) * sc, Col.withA(0xFFFFE0FF.toInt(), a * (0.35f + 0.5f * charge)))
+        gr.setAdditive(false)
+        for (i in 0..5) {
+            val ph = fract(t * 0.4f + i / 6f)
+            star4(gr, sx + sin(i * 2.3f + t) * sc * (0.4f + ph), sy + 0.9f * sc - ph * 2.2f * sc, 0.1f * sc * (1f - ph), Col.withA(0xFFFFF0FF.toInt(), a * (1f - ph)))
+        }
+        if (!open && g.state == GS.PLAY) {
+            val k = a * clamp01((24f - (po.z - g.player.z)) / 6f) * (0.35f + 0.15f * pulse(t, 4f))
+            if (k > 0.01f) {
+                gr.setAdditive(true); gr.glow(sx, sy, 1.8f * sc, Col.withA(0xFF60A8FF.toInt(), k)); gr.setAdditive(false)
+                gr.strokeCircle(sx, sy, 1.2f * sc, max(2f, 0.06f * sc), Col.withA(0xFFB8E0FF.toInt(), k * 1.6f))
+            }
         }
     }
 

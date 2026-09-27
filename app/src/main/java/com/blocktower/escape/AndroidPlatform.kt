@@ -50,5 +50,9 @@ class AndroidPlatform(private val context: Context, private val view: View) : Pl
         view.performHapticFeedback(if (strong) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.KEYBOARD_TAP)
     }
 
+    private val prefs = context.getSharedPreferences("block_tower_escape", Context.MODE_PRIVATE)
+    override fun loadText(key: String): String? = prefs.getString(key, null)
+    override fun saveText(key: String, value: String) { prefs.edit().putString(key, value).apply() }
+
     fun release() = sfx.release()
 }

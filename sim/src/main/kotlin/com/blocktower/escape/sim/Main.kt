@@ -28,6 +28,8 @@ fun main(args: Array<String>) {
         "play" -> Autopilot(assets, out, opts).run()
         "profile" -> profile(assets)
         "finish" -> finishFrames(assets, out, (opts["level"] ?: "5").toInt())
+        "app" -> appShots(assets, out, w, h)
+        "flow" -> Flow(assets, out, opts).run()
         else -> error("unknown mode ${args[0]}")
     }
 }
@@ -104,4 +106,21 @@ fun finishFrames(assets: File, out: File, level: Int) {
         ImageIO.write(gfx.image, "png", File(out, "finish$k.png"))
         println("t=${"%.1f".format(game.stateT)} state=${game.state} cam z=${"%.2f".format(game.cam.ez)} y=${"%.2f".format(game.cam.ey)} yaw=${"%.2f".format(game.cam.yaw)} pitch=${"%.2f".format(game.cam.pitch)} f=${"%.0f".format(game.cam.f)}")
     }
+}
+
+/** Screenshots of the Home screen, the level map and every popup, reached by tapping like a player. */
+fun appShots(assets: File, out: File, w: Int, h: Int) {
+    val app = com.blocktower.escape.core.App(SimPlatform(assets))
+    val gfx = J2DGfx(assets, w, h)
+    app.layout(w, h)
+    fun step(n: Int) { for (i in 0 until n) { app.update(1f / 60f); if (i % 4 == 0) { gfx.clear(); app.render(gfx) } } }
+    fun shot(name: String) { gfx.clear(); app.render(gfx); ImageIO.write(gfx.image, "png", File(out, name)); println("wrote $name") }
+    fun tap(x: Float, y: Float) { app.touchDown(0, x, y); step(2); app.touchUp(0, x, y); step(30) }
+    step(40); shot("home.png")
+    val c = app.home.buttonCentre(1, w.toFloat(), h.toFloat()); tap(c[0], c[1]); step(20); shot("daily.png"); app.back(); step(10)
+    val m = app.home.buttonCentre(2, w.toFloat(), h.toFloat()); tap(m[0], m[1]); step(20); shot("missions.png"); app.back(); step(10)
+    val v = app.home.buttonCentre(3, w.toFloat(), h.toFloat()); tap(v[0], v[1]); step(20); shot("vault.png"); app.back(); step(10)
+    val st = app.home.buttonCentre(4, w.toFloat(), h.toFloat()); tap(st[0], st[1]); step(20); shot("settings.png"); app.back(); step(10)
+    val p = app.home.buttonCentre(0, w.toFloat(), h.toFloat()); tap(p[0], p[1]); step(40); shot("map.png")
+    val n1 = app.map.nodeCentre(1); tap(n1[0], n1[1]); step(20); shot("levelcard.png")
 }

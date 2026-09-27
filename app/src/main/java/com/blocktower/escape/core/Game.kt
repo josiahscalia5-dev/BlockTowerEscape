@@ -51,10 +51,22 @@ class Input {
 /** Auto step-up height: half-block stairs can be walked, full blocks need a jump. */
 private const val STEP = 0.56f
 
-class Game(val platform: Platform, levelNumber: Int = 5) {
-    /** The level being played (Level 5 by default; Level 23 is still available). */
+/** The app around a level: the saved wallet, what happens after LEVEL COMPLETE, leaving to the level map. */
+interface GameHost {
+    val walletCoins: Int
+    val walletGems: Int
+    /** Called once when the results screen opens. */
+    fun onLevelComplete(g: Game, r: Results)
+    /** NEXT LEVEL on the results screen. */
+    fun nextLevel(g: Game)
+    /** LEVEL MAP from the pause, game-over or results screen. */
+    fun exitToMap(g: Game)
+}
+
+class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null, val host: GameHost? = null) {
+    /** The level being played. */
     val spec = Levels.get(levelNumber)
-    val art = Art(platform, spec.theme)
+    val art = sharedArt ?: Art(platform, spec.theme)
     var world = spec.build()
     val player = Player()
     val cam = Camera()
@@ -76,8 +88,15 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
     var time = spec.startTime // countdown
     var hearts = spec.startHearts
     val maxHearts = spec.maxHearts
-    var coins = spec.startCoins
-    var gems = spec.startGems
+    var coins = host?.walletCoins ?: Progress.START_COINS
+    var gems = host?.walletGems ?: Progress.START_GEMS
+    /** Wallet when the level started (what the level earned is measured from it). */
+    private var levelStartCoins = coins
+    private var levelStartGems = gems
+    /** Tools used, game overs continued, and whether a heart was ever lost (stars, missions). */
+    var toolUses = 0
+    var continues = 0
+    var heartLost = false
     var target = 0
     var score = 0
     var shownCoins = coins
@@ -147,7 +166,8 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         player.reset(world.spawnX, world.spawnY, world.spawnZ)
         state = GS.INTRO; stateT = 0f; playT = 99f; paused = false; time = spec.startTime
         introCountFrom = 0f; introSwoop = true
-        hearts = spec.startHearts; coins = spec.startCoins; gems = spec.startGems; target = 0; score = 0
+        hearts = spec.startHearts; coins = host?.walletCoins ?: Progress.START_COINS; gems = host?.walletGems ?: Progress.START_GEMS
+        levelStartCoins = coins; levelStartGems = gems; toolUses = 0; continues = 0; heartLost = false; completeReported = false; target = 0; score = 0
         shownCoins = coins; shownGems = gems; shownTarget = 0
         coinsCollected = 0; mysteryOpened = 0; falls = 0; checkpoint = 0
         for (k in 0..3) tools[k].count = spec.toolCounts[k]
@@ -182,6 +202,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         ev.resetAfter(cp.z, cp.y)
         player.reset(cp.x, cp.y, cp.z)
         hearts = maxHearts; hud.bumpHearts()
+        continues++
         time = max(time, 45f)
         for (tl in tools) { tl.active = 0f; tl.cooldown = 0f }
         fx.clear(); results = null; failReason = ""
@@ -257,7 +278,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         updateCamera(dt)
         fx.update(sdt, onArrive)
         updateHudCounters(dt)
-        if (pendingHint.isNotEmpty() && playT > 4.2f && fx.banners.isEmpty()) {
+        if (pendingHint.isNotEmpty() && playT > (if (pendingHintKind >= 6) 0.4f else 4.2f) && fx.banners.isEmpty()) {
             hint = pendingHint; hintKind = pendingHintKind; hintT = 3.8f; pendingHint = ""
         }
 
@@ -366,6 +387,11 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         if (state != GS.PLAY) return
         if (player.state != PS.NORMAL || ev.revealing) return
         val tl = tools[k]
+        if (toolLocked(k)) {
+            hud.denied(k); platform.sound(Sfx.WRONG, 0.5f)
+            fx.toast("${toolName(k)} UNLOCKS IN LEVEL ${Levels.toolUnlock[k]}", "", 0xFFBFD8FF.toInt(), 1.6f)
+            return
+        }
         if (tl.count <= 0) { hud.denied(k); platform.sound(Sfx.WRONG, 0.5f); return }
         if (!tl.ready) { hud.denied(k); platform.sound(Sfx.WRONG, 0.3f, 1.3f); return }
         val p = player
@@ -375,13 +401,13 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
                 fx.popupWorld("NO GAP AHEAD", p.x, p.y + 2.3f, p.z, 0xFFFFD0D0.toInt(), 34f)
                 return
             }
-            tl.count--; tl.cooldown = tl.cooldownDur; tl.anim = 1f
+            tl.count--; tl.cooldown = tl.cooldownDur; tl.anim = 1f; toolUses++
             p.castT = 0f
             hud.toolFx(k)
             platform.sound(Sfx.BLOCK); platform.haptic(false)
             return
         }
-        tl.count--
+        tl.count--; toolUses++
         tl.active = tl.duration
         tl.anim = 1f
         p.castT = 0f
@@ -1098,6 +1124,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
     private fun takeBubble(bb: Bubble) {
         bb.taken = true; bb.pop = 1f
         val k = bb.kind
+        if (toolLocked(k)) { for (i in 0 until 3) fx.fly(FK.COIN, hud.cx(), hud.cy(), hud.coinIconX(), hud.coinIconY(), Tune.COIN_VALUE, i * 0.08f, 0.7f) } else
         tools[k].count++
         score += 50
         platform.sound(Sfx.TOOLGET); platform.sound(Sfx.SHIELD, 0.4f, 1.6f)
@@ -1145,7 +1172,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
             }
             Reward.TOOL_MAGNET, Reward.TOOL_SHIELD, Reward.TOOL_SPEED, Reward.TOOL_BLOCK -> {
                 val k = b.reward - Reward.TOOL_MAGNET
-                tools[k].count++
+                if (!toolLocked(k)) tools[k].count++
                 fx.fly(FK.TOOL, sx, sy, hud.toolX(k), hud.toolY(k), k, 0.1f, 0.8f)
                 fx.popupWorld("+1 ${toolName(k)}", b.x, b.y + 1.8f, b.z + 0.5f, 0xFFB8F2FF.toInt(), 42f)
                 platform.sound(Sfx.TOOLGET)
@@ -1212,7 +1239,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
             if (src != null) { p.vy = 7f; p.grounded = false }
             return
         }
-        hearts--
+        hearts--; heartLost = true
         p.invuln = 1.6f; p.hurtFlash = 1f; p.hurtT = 0f; p.hurtDir = if (p.vx >= 0f) 1f else -1f
         flashRed = 0.8f; shake = max(shake, 0.5f)
         platform.sound(Sfx.HIT); platform.haptic(true)
@@ -1228,7 +1255,21 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         val p = player
         if (p.state != PS.NORMAL || state != GS.PLAY) return
         falls++
-        hearts--
+        if (spec.gentleFalls) {
+            // the tutorial: the safety net catches you for free
+            platform.sound(Sfx.FALL)
+            p.state = PS.RESCUE_FALL; p.stateT = 0f; p.rideT = 0f; p.fallFromY = p.y
+            swipe.stop(); flickJumpT = 0f
+            p.vy = max(p.vy, -9f)
+            val rb0 = Block(p.x, p.y - 2.2f, p.z - 1.1f, BC.ENERGY, BT.RESCUE)
+            rb0.sx = 2.2f; rb0.sy = 0.35f; rb0.sz = 2.2f; rb0.rise = 0f; rb0.flash = 1f; rb0.remember()
+            world.add(rb0); rescueBlock = rb0
+            fx.burst(p.x, rb0.y1, p.z, 26, PK.STAR, 0xFFB8F2FF.toInt(), 5f, 0.16f, 0.8f)
+            fx.popupWorld("SAFETY NET!", p.x, p.y + 1.6f, p.z, 0xFFB8F2FF.toInt(), 46f)
+            platform.sound(Sfx.RESCUE)
+            return
+        }
+        hearts--; heartLost = true
         hud.bumpHearts()
         platform.sound(Sfx.FALL)
         flashRed = 0.6f
@@ -1383,6 +1424,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
             Ev.FORK -> fx.banner("CHOOSE YOUR PATH!", "LEFT: SAFE  •  RIGHT: TREASURE", 0xFFFFE14A.toInt(), 2.0f)
             Ev.TRAPS -> { fx.banner("DANGER ZONE!", "TIME YOUR STEPS — OR JUMP THE SPIKES", 0xFFFF8A5A.toInt(), 2.2f, true); platform.sound(Sfx.WARNING, 0.5f, 1.2f) }
             Ev.ZONE -> fx.toast(tr.text, tr.text2, 0xFFFFE14A.toInt())
+            Ev.TUT -> { hint = ""; hintT = 0f; queueHint(tr.text, tr.text2.toIntOrNull() ?: 7) }
             else -> ev.fire(tr.event)
         }
     }
@@ -1395,6 +1437,15 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
     private var rainT = 0f
     private var gemRainLeft = 0
     /** The level-exit sequence: slow motion, camera pull-back, gate activates, boy steps in, rewards fly. */
+    private var completeReported = false
+
+    /** Coins and gems picked up in this level so far (including rewards still flying to the HUD). */
+    fun earnedCoins(): Int = coins - levelStartCoins + fx.flyers.filter { it.active && it.kind == FK.COIN }.sumOf { it.value }
+    fun earnedGems(): Int = gems - levelStartGems + fx.flyers.filter { it.active && it.kind == FK.GEM }.sumOf { it.value }
+
+    /** Tools unlock as the levels go on (Magnet in Level 2, Shield in Level 3, Lightning and Block in Level 4). */
+    fun toolLocked(k: Int) = spec.number < Levels.toolUnlock[k]
+
     private fun beginComplete(po: Portal) {
         state = GS.COMPLETE; stateT = 0f; endPortal = po
         val p = player
@@ -1446,7 +1497,10 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
                 if (gemRainLeft > 0) { gemRainLeft--; fx.fly(FK.GEM, cam.sx, cam.sy, hud.gemIconX(), hud.gemIconY(), 1, 0.03f, 0.7f) }
             }
         }
-        if (st > 3.5f) { state = GS.RESULTS; stateT = 0f; hud.resultsStarted() }
+        if (st > 3.5f) {
+            state = GS.RESULTS; stateT = 0f; hud.resultsStarted()
+            if (!completeReported) { completeReported = true; results?.let { host?.onLevelComplete(this, it) } }
+        }
     }
 
     // ------------------------------------------------------------------ fail / capture
@@ -1507,7 +1561,8 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
             // pull back until the whole gate is framed, then ease in toward the portal as the boy enters
             val u = if (state == GS.RESULTS) 1f else smooth(stateT / 1.7f)
             val push = if (state == GS.COMPLETE) smooth((stateT - 1.1f) / 1.2f) * 0.22f else 0.22f
-            dist = lerp(baseDist, 15f, u) * (1f - push); height = lerp(baseHeight, 3.4f, u); pitch = lerp(basePitch, 0.13f, u)
+            if (spec.bigGate) { dist = lerp(baseDist, 15f, u) * (1f - push); height = lerp(baseHeight, 3.4f, u); pitch = lerp(basePitch, 0.13f, u) }
+            else { dist = lerp(baseDist, 7.5f, u) * (1f - push * 0.5f); height = lerp(baseHeight, 2.6f, u); pitch = lerp(basePitch, 0.14f, u) }
             yaw = 0.1f * u + (if (state == GS.RESULTS) sin(stateT * 0.35f) * 0.04f else 0f)
         }
         // steering: look a touch into the turn and bank very slightly (never enough to disorient)
@@ -1581,18 +1636,31 @@ class Results(
     val stars: Int, val targetGot: Int, val coinsCollected: Int, val coinTotal: Int,
     val timeLeft: Int, val hearts: Int, val mystery: Int, val mysteryTotal: Int,
     val levelScore: Int, val timeBonus: Int, val heartBonus: Int, val targetBonus: Int,
-    val rewardCoins: Int, val gemReward: Int
+    val rewardCoins: Int, val gemReward: Int,
+    /** Coins and gems picked up during the level (added to the wallet with the rewards). */
+    val earnedCoins: Int = 0, val earnedGems: Int = 0,
+    /** Why each star was (or was not) earned: [coins goal met, time goal met, no game over]. */
+    val coinGoal: Int = 0, val coinGoalMet: Boolean = true, val timeGoalMet: Boolean = true, val noGameOver: Boolean = true,
 ) {
     val totalScore get() = levelScore + timeBonus + heartBonus + targetBonus
     companion object {
+        /**
+         * Stars: 1 for finishing (the objective is needed to open the portal), 2 when enough of the level's coins
+         * were collected as well, 3 when the level was also finished with time to spare and without a game over.
+         */
         fun compute(g: Game): Results {
+            val sp = g.spec
             val tl = kotlin.math.ceil(g.time).toInt()
+            val coinGoal = sp.coinGoal(g.world.coinTotal)
+            val coinsOk = g.coinsCollected >= coinGoal
+            val timeOk = tl >= sp.timeStar
+            val noOver = g.continues == 0
             var stars = 1
-            if (g.target >= g.spec.targetNeed) stars++
-            if (tl >= 20) stars++
+            if (coinsOk) { stars++; if (timeOk && noOver) stars++ }
             return Results(stars, g.target, g.coinsCollected, g.world.coinTotal, tl, g.hearts, g.mysteryOpened, g.world.mysteryTotal,
-                g.score, tl * 20, g.hearts * 250, if (g.target >= g.spec.targetNeed) 1000 else 0,
-                200 + stars * 100, stars * 5)
+                g.score, tl * 20, g.hearts * 250, if (g.target >= sp.targetNeed) 1000 else 0,
+                sp.rewardCoins + stars * 50, sp.rewardGems + stars * 2, g.earnedCoins(), g.earnedGems(),
+                coinGoal, coinsOk, timeOk, noOver)
         }
     }
 }

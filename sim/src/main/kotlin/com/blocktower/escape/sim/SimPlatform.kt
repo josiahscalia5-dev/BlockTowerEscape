@@ -45,4 +45,10 @@ class SimPlatform(private val assets: File) : Platform {
     override fun sound(id: Int, volume: Float, rate: Float) { if (id in soundCounts.indices) soundCounts[id]++ }
 
     override fun haptic(strong: Boolean) { haptics++ }
+
+    /** Saved progress lives in memory (or in [saveFile] when set). */
+    val store = HashMap<String, String>()
+    var saveFile: File? = null
+    override fun loadText(key: String): String? = store[key] ?: saveFile?.takeIf { it.exists() }?.let { f -> f.readLines().firstOrNull { it.startsWith("$key\t") }?.substringAfter('\t') }
+    override fun saveText(key: String, value: String) { store[key] = value; saveFile?.writeText(store.entries.joinToString("\n") { "${it.key}\t${it.value}" }) }
 }

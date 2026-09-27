@@ -20,7 +20,9 @@ import kotlin.math.sign
  * Tiny accidental finger movements are ignored. Distances are in artwork pixels (scaled by the HUD).
  */
 class SwipeControl(private val g: Game) {
-    private val s get() = g.hud.s
+    /** Settings: swipe sensitivity (0.75 low, 1 normal, 1.3 high). Higher = the same swipe does more. */
+    var sensitivity = 1f
+    private val s get() = g.hud.s / sensitivity
 
     // ---- the active movement finger
     var id = -1

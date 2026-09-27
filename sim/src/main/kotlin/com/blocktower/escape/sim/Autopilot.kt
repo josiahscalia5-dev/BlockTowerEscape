@@ -33,9 +33,17 @@ import kotlin.math.sqrt
  *   play frames=dir every=30  also write every Nth frame as PNG
  *   play scenario=hearts      keep falling until GAME OVER, then CONTINUE
  */
-class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) {
+class Autopilot(
+    val assets: File, val out: File, val opts: Map<String, String>,
+    /** Play a game that runs inside the app (the flow test) instead of a standalone one. */
+    external: Game? = null,
+    /** Advances the world one frame (the app's update when playing inside the app). */
+    private val stepper: ((Float) -> Unit)? = null,
+    /** Called after every frame (the flow test records video with it). */
+    private val frameHook: (() -> Unit)? = null,
+) {
     private val sim = SimPlatform(assets)
-    private val g = Game(sim, (opts["level"] ?: "23").toInt())
+    private val g = external ?: Game(sim, (opts["level"] ?: "23").toInt())
     private val p get() = g.player
     private val dt = 1f / 60f
     private var frame = 0
@@ -54,8 +62,21 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         /** "choosing between paths": pass zone A with x in range, then zone B with x in range */
         val pathA: FloatArray, val pathB: FloatArray,
     )
-    private val level = (opts["level"] ?: "23").toInt()
-    private val plan = if (level == 23) Plan(
+    private val level = g.spec.number
+    private val never = floatArrayOf(9999f, 9999f, 0f, 0f)
+    private val plan = if (level == 1) Plan(
+        route = floatArrayOf(-9f, 0f, 5.4f, -2f, 8.7f, 1f, 12.8f, 0f, 35.4f, 1f, 37.4f, 2f, 39.5f, 1f, 40.5f, 0f, 41.5f, -1f, 43.5f, 0f),
+        fallZ = 9999f, steerZ = 9999f, speedZ = 9999f, captureZ = 9999f, magnetZ = 9999f, shieldZ = 9999f,
+        blockZ0 = 9999f, blockZ1 = 9999f, trapZ0 = 9999f, trapZ1 = 9999f, pathA = never, pathB = never,
+    ) else if (level == 2) Plan(
+        route = floatArrayOf(-9f, 0f, 22.4f, -1f, 24.2f, 1f, 26.1f, 0f, 48.6f, -2f, 50.4f, 0f),
+        fallZ = 9999f, steerZ = 9999f, speedZ = 9999f, captureZ = 9999f, magnetZ = 22.2f, shieldZ = 9999f,
+        blockZ0 = 9999f, blockZ1 = 9999f, trapZ0 = 17f, trapZ1 = 69f, pathA = never, pathB = never,
+    ) else if (level == 3) Plan(
+        route = floatArrayOf(-9f, 0f),
+        fallZ = 9999f, steerZ = 9999f, speedZ = 9999f, captureZ = 9999f, magnetZ = 61.5f, shieldZ = 43.2f,
+        blockZ0 = 9999f, blockZ1 = 9999f, trapZ0 = 43f, trapZ1 = 91f, pathA = never, pathB = never,
+    ) else if (level == 4) Plan(
         route = floatArrayOf(
             -9f, 0f, 9.4f, 1f, 13.7f, 0f,
             86.1f, -1f, 86.8f, 0f,                 // step on the shortcut ? block, then take the golden bridge
@@ -104,6 +125,24 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         if (tests.containsKey(name) && tests[name]!!.startsWith("PASS")) return
         tests[name] = (if (pass) "PASS " else "FAIL ") + detail
         note("TEST ${if (pass) "PASS" else "FAIL"}: $name — $detail")
+    }
+
+    /** Just play through: no deliberate falls, captures or movement tests (the flow test). */
+    private val clear = scenario == "clear" || external != null
+
+    /** Plays the level inside the app until its results are on screen. Returns true when it was completed. */
+    fun playLevel(maxSeconds: Int = 600): Boolean {
+        val maxF = maxSeconds * 60
+        var lastState = -1
+        while (frame < maxF) {
+            hands()
+            if (stepper != null) stepper.invoke(dt) else g.update(dt)
+            frame++
+            frameHook?.invoke()
+            if (g.state != lastState) { note("L$level state ${stateName(g.state)}"); lastState = g.state }
+            if (g.state == GS.RESULTS && g.hud.resultsRevealed()) return true
+        }
+        return false
     }
 
     fun run() {
@@ -503,7 +542,7 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
 
     private fun trapBox(): Block? = g.world.blocks.firstOrNull { it.type == BT.MYSTERY && it.reward == com.blocktower.escape.core.Reward.TRAP }
 
-    private fun isHazard(b: Block) = b.type == BT.TRAP && !(g.shieldOn && b.speed == 0f)
+    private fun isHazard(b: Block) = b.type == BT.TRAP && (clear || !(g.shieldOn && b.speed == 0f))
 
     /** Highest standable block at (x, z) near height y. */
     private fun support(x: Float, z: Float, y: Float): Block? {
@@ -626,5 +665,10 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
     private fun stopVideo() {
         videoOut?.close()
         ffmpeg?.waitFor()
+    }
+
+    // runs last, after every property above has its initial value
+    init {
+        if (clear) { startStep = 99; fallTestDone = true; steerTest = 99; captureTestDone = true; flatTest = 2; flickJumpTest = 3 }
     }
 }
