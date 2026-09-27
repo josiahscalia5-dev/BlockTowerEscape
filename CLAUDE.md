@@ -1,9 +1,13 @@
 # Working on Block Tower Escape
 
-## Always save to GitHub
+## Always save to GitHub and hand over the APK (the owner's standing rule)
 - After finishing (or completing a step of) every task: commit and push to the working branch right away,
   then tell the user it was saved to GitHub. Don't wait to be asked.
-- Every push to `main` or a `claude/...` branch builds the APK on GitHub Actions (Releases → latest `preview-N`).
+- Every push to `main` or a `claude/...` branch builds the APK on GitHub Actions (Releases → latest `preview-N`,
+  and the `apk-build` branch). At the end of every task, wait for that build to finish, check it succeeded, then
+  give the user the APK: send the file itself (download it from the `apk-build` branch, `BlockTowerEscape-debug.apk`,
+  after checking its `commit.txt` matches the pushed commit) and the `preview-N` release link for the phone.
+  Don't wait to be asked.
 
 ## Ground rules from the owner
 - Don't start over or redesign. Keep the approved artwork (Home, Level 4 sky tower, Level 5 volcanic sky fortress
