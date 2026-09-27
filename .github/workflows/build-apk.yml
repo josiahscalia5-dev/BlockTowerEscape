@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'claude/**' ]
   workflow_dispatch:
 
 permissions:
@@ -57,7 +57,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: preview-${{ github.run_number }}
-          name: Screen 4 preview build ${{ github.run_number }}
-          body: Debug APK of Screen 4 (main gameplay). Install on Android 7.0+ (allow installing from unknown sources).
+          name: Preview build ${{ github.run_number }}
+          body: "Debug APK built from ${{ github.ref_name }} (${{ github.sha }}): Splash, Home, Select Level and gameplay. Install on Android 7.0+ (allow installing from unknown sources)."
+          target_commitish: ${{ github.sha }}
           files: out/BlockTowerEscape-debug.apk
           make_latest: true

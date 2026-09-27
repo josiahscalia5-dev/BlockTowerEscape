@@ -1,10 +1,21 @@
-# Block Tower Escape — Screen 4 (Main Gameplay)
+# Block Tower Escape
 
-Native Android (Kotlin) build of **Screen 4: Main Gameplay**, built to match the supplied Screen 4 artwork.
-Only this screen is built. Home, World Map, Level Select and the other screens are intentionally not started yet.
+Native Android (Kotlin) portrait game. Screen flow:
+
+**Splash → Home → Select Level → Gameplay**
+
+| Screen | What's on it |
+|---|---|
+| Splash | Logo, the floating-island world with castle and portal, the boy running from the Guardian, loading bar (tracks the real loading of the gameplay) |
+| Home | Level / XP profile, coins, gems, Daily Rewards, Missions, Prize Vault, Settings (sound / vibration), logo, boy and Guardian, **PLAY**, RUN • JUMP • COLLECT • ESCAPE |
+| Select Level | Block path up to the castle and portal. Level 1 (Tutorial Adventure) is active, levels 2–5 unlock one by one, with stars, locks, labels and SOON. The same boy (back view) stands on the current level |
+| Gameplay | The Screen 4 course (unchanged). Pause and the results / fail panels have a **LEVELS** button back to the map |
+
+Progress (stars, unlocked levels, coins, gems, XP, settings) is saved on the phone.
+Levels 2–5 are on the map but their courses are not built yet ("coming soon").
 
 ## Get the APK
-Every push to `main` is built automatically by GitHub Actions (`.github/workflows/build-apk.yml`):
+Every push to `main` or to a `claude/...` branch is built automatically by GitHub Actions (`.github/workflows/build-apk.yml`):
 - **Releases** page → latest `preview-N` → `BlockTowerEscape-debug.apk` (download on your phone, allow "install unknown apps")
 - or the `apk-build` branch, which also holds the build log
 
@@ -14,7 +25,13 @@ Every push to `main` is built automatically by GitHub Actions (`.github/workflow
 
 No third-party libraries: rendering uses `android.graphics` on a hardware-accelerated view; sound effects are synthesized at first launch.
 
-## How to play Level 23
+## Android phone fit
+- Edge to edge: the artwork fills the whole screen (no black or grey bars, nothing stretched). Buttons and text stay inside the **safe area**: status bar, navigation bar (gesture or 3-button), display cutout / notch and rounded display corners.
+- Layouts are responsive, not fixed to one resolution. Short phones shrink the decoration (logo, hero art, sign) first. Buttons never shrink below Android's 48dp touch size. Tall phones show more of the world.
+- The level map zooms out on wider screens (16:9, foldables, tablets) to show more scenery, so the whole path always fits.
+- Checked on 11 screen profiles: 20:9, 19.5:9, 21:9, 22:9, 16:9, 720p, 480×854, Pixel 8 Pro, tablet and foldable, with both gesture and 3-button navigation.
+
+## How to play (Level 1)
 | Control | Action |
 |---|---|
 | Joystick (bottom-left) | Move: up = forward, down = back, left / right |
@@ -23,7 +40,7 @@ No third-party libraries: rendering uses `android.graphics` on a hardware-accele
 | Shield | Bubble that blocks one hit: spikes, debris, traps, the Tower Guard (10 s) |
 | Lightning | Faster running and a stronger jump (6 s) |
 | Block tool (4th) | Creates a safe block in the gap ahead (lasts 8 s) |
-| Pause (top-right) | Pause / resume / restart |
+| Pause (top-right) or Back | Pause / resume / restart / back to the level map |
 
 On an emulator you can use the keyboard: WASD or the arrow keys, Space to jump, 1–4 for the tools, P to pause.
 
@@ -44,8 +61,11 @@ On an emulator you can use the keyboard: WASD or the arrow keys, Space to jump, 
 - **Level end:** the camera pulls back, the portal activates and coins fly in. You then get stars, coins, gems and bonus rewards (time, hearts, target).
 
 ## Project layout
-- `app/src/main/java/com/blocktower/escape/core/`: platform-independent game code (level, physics, events, renderer, HUD)
+- `app/src/main/java/com/blocktower/escape/core/`: platform-independent game code
+  - `App.kt` (screen flow, loading), `SplashScreen.kt`, `HomeScreen.kt`, `LevelSelectScreen.kt`, `Ui.kt` (safe area, buttons, drawing helpers), `Progress.kt`, `MenuArt.kt`
+  - gameplay: level, physics, events, renderer, HUD
 - `app/src/main/java/com/blocktower/escape/`: Android host (Activity, game view and loop, Canvas renderer, sound)
 - `app/src/main/assets/`: artwork taken from the Screen 4 design (background, boy, coins, HUD icons), block textures and fonts
+- `app/src/main/assets/menu/`: Splash / Home / Select Level artwork taken from the approved reference screens (world, level map, logo, the boy from the front and back, the Guardian, the title sign, button icons)
 
 Fonts: Fira Sans Condensed and Lilita One (SIL Open Font License, see `assets/fonts`).
