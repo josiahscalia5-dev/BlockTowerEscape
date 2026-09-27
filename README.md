@@ -1,12 +1,19 @@
-# Block Tower Escape — Screen 4 (Main Gameplay)
+# Block Tower Escape
 
-Native Android (Kotlin) build of **Screen 4: Main Gameplay**. Two levels are built, each to match its approved
-design: **Level 5** (the jungle temple, `design/level5_reference.png`; the app opens this level) and **Level 23**
-(the sky tower, `design/screen4_reference.png`). Home, World Map, Level Select and the other screens are
-intentionally not started yet.
+Native Android (Kotlin) game: a boy climbs floating block towers, collects blue blocks and escapes through the
+portal at the top before time runs out. Built so far:
+
+- **Home screen** from the approved artwork (`design/home_reference.png`), with DAILY REWARDS, MISSIONS, PRIZE VAULT,
+  SETTINGS and PLAY
+- **Level map** (Select Level): a winding trail of blocks, one per level, locked levels with padlocks, stars on the
+  finished ones, the boy standing on the level you are up to
+- **Five levels**: three teaching levels in the sky world, **Level 4** (the sky tower, built to match the Screen 4
+  design `design/screen4_reference.png`) and **Level 5** (the jungle temple, `design/level5_reference.png`)
+- **Saved progress** on the phone: unlocked levels, best stars and scores, the coin and gem wallet, relics,
+  missions, the daily streak and settings
 
 ## Get the APK
-Every push to `main` is built automatically by GitHub Actions (`.github/workflows/build-apk.yml`):
+Every push to `main` or to a `claude/...` working branch is built automatically by GitHub Actions (`.github/workflows/build-apk.yml`):
 - **Releases** page → latest `preview-N` → `BlockTowerEscape-debug.apk` (download on your phone, allow "install unknown apps")
 - or the `apk-build` branch, which also holds the build log
 
@@ -15,6 +22,38 @@ Every push to `main` is built automatically by GitHub Actions (`.github/workflow
 2. Run the `app` configuration on a phone or emulator (portrait).
 
 No third-party libraries: rendering uses `android.graphics` on a hardware-accelerated view; sound effects are synthesized at first launch.
+
+## The app
+- **Home**: the artwork shown whole on every phone shape; PLAY breathes, gems and coins twinkle, the monster's eyes
+  glow. A red badge on a button means something is waiting there (a daily reward, a mission to claim, a chest to open).
+  Back on the Home screen closes the app.
+- **Level map**: tap a level for its card (objective, what the level introduces, the three star goals, best score)
+  and PLAY. A level opens when the one before it is finished; a newly opened level says **NEW!**.
+- **Stars**: 1 for finishing (the portal only opens once the blue-block objective is done), 2 for also collecting the
+  level's coin goal, 3 for also finishing with the level's time goal left and no game over. The results screen shows
+  which goals were met. Replaying never lowers your best stars.
+- **Wallet**: coins and gems picked up in a level plus the level reward (more for more stars) are added to the wallet,
+  which the HUD shows during play.
+- **Tools unlock as you go**: the Magnet in Level 2, the Shield in Level 3, Lightning and the Block tool in Level 4.
+  A locked tool shows a padlock on its button.
+- **DAILY REWARDS**: a 7-day calendar, one claim per day; missing a day starts the streak over.
+- **MISSIONS**: goals across all levels (finish levels, blue blocks, coins, stars, tools, mystery blocks, a flawless
+  level, escaping a chase); CLAIM pays the reward once.
+- **PRIZE VAULT**: a relic for each level you finish, and three treasure chests that open at 5, 10 and 15 stars.
+- **SETTINGS**: sound, vibration, swipe sensitivity (low / normal / high) and RESET PROGRESS (asks first).
+- In a level, **pause**, **game over** and the **results** have a LEVEL MAP button; the results also have
+  **NEXT LEVEL** and REPLAY. After the last level, NEXT LEVEL says more levels are on the way.
+
+## Levels 1–3 — the sky world
+Each ends at a block portal that opens once the blue blocks are collected.
+
+1. **Tutorial Adventure** — tips on screen teach running, steering and jumping on a wide, gentle path with bends,
+   half steps and a checkpoint. Falls are free here: the safety net catches you without costing a heart.
+2. **First Challenge** — wider gaps, slow moving blocks, mystery blocks, the first spikes, and the **Magnet** for blue
+   blocks on islands out of reach.
+3. **Mechanics Begin** — a moving-block ferry, cracked bridges that break if you stop, vanishing stepping stones,
+   spike rows (jump them or use the new **Shield**), timed spikes, a fork with an optional treasure route, and fast
+   moving blocks before the portal.
 
 ## Level 5 — the jungle temple
 **Mission:** collect **10 blue blocks** and reach the **golden portal** at the top of the temple (01:15 on the clock,
@@ -40,10 +79,7 @@ stand in the 3D world where the start camera sees them in the design; the camera
 Swinging logs knock you back and cost a heart (the shield blocks them): watch the swing and pass when it is clear.
 `design/level5/` holds the scripts that cut the Level 5 art out of its design.
 
-## How to play Level 23
-**Mission:** collect **12 blue blocks** and reach the **Ancient Gate**, the glowing gate at the top of the screen.
-The gate is visible from the first second, grows as you climb toward it, and only opens once you have 12/12.
-
+## Controls
 | Control | Action |
 |---|---|
 | Swipe up (lower screen) | Run forward. Short swipe = jog, medium = run, long = sprint. A quick flick keeps him running after you lift your thumb; a held swipe runs while you hold and eases to a stop when you let go |
@@ -69,7 +105,10 @@ To switch to a path across a gap, jump and steer in the air. The camera looks sl
 
 On an emulator you can use the keyboard: WASD or the arrow keys, Space to jump, 1–4 for the tools, P to pause.
 
-## The level
+## Level 4 — the sky tower (the Screen 4 design)
+**Mission:** collect **12 blue blocks** and reach the **Ancient Gate**, the glowing gate at the top of the screen.
+The gate is visible from the first second, grows as you climb toward it, and only opens once you have 12/12.
+
 The start of the level reproduces the Screen 4 design. After **3 · 2 · 1 · GO!** a small mission card appears, then the climb begins:
 
 1. **Easy opening** — the winding path from the design: spring pads, ? blocks, spikes, a lava-cracked block, magnet and shield bubbles
@@ -94,28 +133,38 @@ bounce you back for -2 s. **Time running out** costs a heart and adds 20 s. Only
 HUD, then the results: objectives, stars, score count-up, rewards and **NEXT LEVEL**.
 
 ## Headless playtest (`sim/`)
-`sim` runs the same game code on the desktop JVM with a Java2D renderer and an autopilot that plays the whole level
+`sim` runs the same game code on the desktop JVM with a Java2D renderer and an autopilot that plays a whole level
 with simulated touches (swipes in the movement area, taps on the jump and tool buttons), sent through the game's own
-touch handlers: it falls once on purpose, lets the Tower Guard catch it once, continues from the checkpoint, uses every
-tool and finishes at the gate. On the way it runs the movement tests: swipe forward, left and right, small corrections,
-jumping while running (button and context flick), choosing a path at the fork, steering around obstacles,
-falling and recovery, tools while running, and reaching the gate. It also checks that stray touches and swipes over tool
-buttons do nothing, that a flick on open ground doesn't jump, that the boy never ends up inside a block, and that
-steering stays smooth. It prints a timeline and a pass/fail checklist (`scenario=hearts` tests losing every heart and continuing).
+touch handlers: it falls once on purpose, lets the chaser catch it once, continues from the checkpoint, uses every
+tool the level has and finishes at the portal. On the way it runs the movement tests: swipe forward, left and right,
+small corrections, jumping while running (button and context flick), choosing a path at the fork, steering around
+obstacles, falling and recovery, tools while running, and reaching the portal. It also checks that stray touches and
+swipes over tool buttons do nothing, that a flick on open ground doesn't jump, that the boy never ends up inside a
+block, and that steering stays smooth. It prints a timeline and a pass/fail checklist of what that level contains
+(`scenario=hearts` tests losing every heart and continuing; `scenario=clear` just plays through).
+
+`flow` plays the whole app from a fresh install by tapping the screen: Home, daily rewards (claim, the next day, a
+missed day), the level map (a locked level stays shut), the level card, pause -> LEVEL MAP, Levels 1-5 in a row
+through NEXT LEVEL (the autopilot plays each one), "more levels soon", missions, the vault, settings, the app closed
+and opened again, and RESET. It checks unlocks, stars, the wallet (saved and on the HUD), relics, mission and chest
+rewards, settings and the saved progress, and prints a pass/fail checklist.
 
 ```
-./gradlew :sim:run --args="play level=5 out=sim-out"                          # Level 5 (level=23 for the sky tower)
-./gradlew :sim:run --args="play out=sim-out"                                  # report only (Level 23)
+./gradlew :sim:run --args="play level=5 out=sim-out"                          # one level (1-5; Level 4 by default)
 ./gradlew :sim:run --args="play out=sim-out video=sim-out/run.mp4 ffmpeg=ffmpeg"  # also record a video
-./gradlew :sim:run --args="shot out=sim-out frames=240"                       # one frame
+./gradlew :sim:run --args="flow out=sim-out shots=1"                          # the whole app, a screenshot of each screen
+./gradlew :sim:run --args="app out=sim-out"                                   # Home, map, popups and level cards
+./gradlew :sim:run --args="shot level=4 out=sim-out frames=240"               # one frame
 ./gradlew :sim:run --args="poses out=sim-out"                                 # the character animation poses
 ```
 
 ## Project layout
-- `app/src/main/java/com/blocktower/escape/core/`: platform-independent game code (level, physics, events, renderer, HUD, character rig)
-- `app/src/main/java/com/blocktower/escape/`: Android host (Activity, game view and loop, Canvas renderer, sound)
-- `app/src/main/assets/`: artwork taken from the Screen 4 design (background, gate, boy, coins, HUD icons), block textures and fonts
-- `design/`: the approved Screen 4 reference and the script that cuts the gate out of it (`make_gate_assets.py`)
+- `app/src/main/java/com/blocktower/escape/core/`: platform-independent game code: the app and its screens (`App`,
+  `HomeScreen`, `LevelMap`, `Menus`, `Progress`), the levels (`LevelSpec`, `Levels123`, `Level`, `Level5`), physics,
+  events, renderer, HUD and the character rig
+- `app/src/main/java/com/blocktower/escape/`: Android host (Activity, game view and loop, Canvas renderer, sound, saved progress)
+- `app/src/main/assets/`: artwork taken from the designs (Home screen, backgrounds, gates, boy, coins, HUD icons), block textures and fonts
+- `design/`: the approved references and the scripts that cut the artwork out of them (`home/`, `level5/`, `map/`, `make_gate_assets.py`)
 - `sim/`: desktop playtest harness (not part of the APK)
 
 The boy's animations (run, jump, fall, land, turn, collect, hurt, celebrate, rescue, capture, portal) come from the
