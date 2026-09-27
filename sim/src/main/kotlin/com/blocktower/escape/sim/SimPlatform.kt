@@ -46,6 +46,10 @@ class SimPlatform(private val assets: File) : Platform {
 
     override fun haptic(strong: Boolean) { haptics++ }
 
+    /** The music the game asked for last (tests). */
+    var musicTrack = 0; var musicIntensity = 0f; var musicVolume = 0f
+    override fun music(track: Int, intensity: Float, volume: Float) { musicTrack = track; musicIntensity = intensity; musicVolume = volume }
+
     /** Saved progress lives in memory (or in [saveFile] when set). */
     val store = HashMap<String, String>()
     var saveFile: File? = null

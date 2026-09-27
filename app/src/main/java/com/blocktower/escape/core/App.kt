@@ -9,6 +9,9 @@ object Pop { const val NONE = 0; const val DAILY = 1; const val MISSIONS = 2; co
 private class GatedPlatform(private val p: Platform, private val prog: () -> Progress?) : Platform by p {
     override fun sound(id: Int, volume: Float, rate: Float) { if (prog()?.sound != false) p.sound(id, volume, rate) }
     override fun haptic(strong: Boolean) { if (prog()?.vibration != false) p.haptic(strong) }
+    override fun music(track: Int, intensity: Float, volume: Float) {
+        if (prog()?.music != false) p.music(track, intensity, volume) else p.music(Music.NONE, 0f, 0f)
+    }
 }
 
 /**
@@ -102,6 +105,7 @@ class App(platform: Platform) : GameHost {
             Scr.MAP -> map.update(dt)
         }
         if (popup != Pop.NONE) popupT += dt
+        updateMusic()
         val it = sparks.iterator()
         while (it.hasNext()) {
             val p = it.next()
@@ -109,6 +113,20 @@ class App(platform: Platform) : GameHost {
             p.vy += 900f * s * dt * (if (p.kind == 1) 1f else 0.2f)
             p.x += p.vx * dt; p.y += p.vy * dt
         }
+    }
+
+    /** The Home theme on the menus; in a level its theme, building with the action, quieter while paused. */
+    private fun updateMusic() {
+        val g = game
+        if (screen == Scr.GAME && g != null) {
+            val vol = when {
+                g.paused -> 0.35f
+                g.state == GS.FAILED -> 0.3f
+                g.state == GS.RESULTS -> 0.5f
+                else -> 1f
+            }
+            pf.music(if (g.spec.jungle) Music.JUNGLE else Music.SKY, g.musicIntensity(), vol)
+        } else pf.music(Music.HOME, 0f, if (popup != Pop.NONE) 0.8f else 1f)
     }
 
     private val sparkPoly = FloatArray(16)

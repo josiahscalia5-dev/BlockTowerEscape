@@ -23,7 +23,7 @@ Every push to `main` or to a `claude/...` working branch is built automatically 
 1. File → Open → select this folder, let Gradle sync (AGP 8.7.3, Kotlin 2.0.21, compileSdk 35, minSdk 24).
 2. Run the `app` configuration on a phone or emulator (portrait).
 
-No third-party libraries: rendering uses `android.graphics` on a hardware-accelerated view; sound effects are synthesized at first launch.
+No third-party libraries: rendering uses `android.graphics` on a hardware-accelerated view; sound effects and music are synthesized at first launch.
 
 ## The app
 - **Home**: the artwork is shown whole and undistorted on every display: it spans the full width (nothing at the
@@ -49,7 +49,13 @@ No third-party libraries: rendering uses `android.graphics` on a hardware-accele
 - **MISSIONS**: goals across all levels (finish levels, blue blocks, coins, stars, tools, mystery blocks, a flawless
   level, escaping a chase); CLAIM pays the reward once.
 - **PRIZE VAULT**: a relic for each level you finish, and three treasure chests that open at 5, 10 and 15 stars.
-- **SETTINGS**: sound, vibration, swipe sensitivity (low / normal / high) and RESET PROGRESS (asks first).
+- **SETTINGS**: sound, music, vibration, controls (swipe / joystick), sensitivity (low / normal / high) and
+  RESET PROGRESS (asks first).
+- **Music**: a bright Home theme on the menus, an adventure theme in the sky levels and a marimba-and-toms variant in
+  the jungle temple. A level starts calm; the drums build with the action, and a fast "rush" layer (arpeggios,
+  open hats, fills) joins on the final approach to the portal and runs flat out in chases, rising lava and the final
+  escape. It drops while paused and stops when the app goes to the background. Like the sound effects, it is
+  synthesised on the phone at launch (no audio files).
 - In a level, **pause**, **game over** and the **results** have a LEVEL MAP button; the results also have
   **NEXT LEVEL** and REPLAY. After the last level, NEXT LEVEL says more levels are on the way.
 
@@ -175,6 +181,7 @@ rewards, settings and the saved progress, and prints a pass/fail checklist.
 ./gradlew :sim:run --args="flow w=720 h=1560 out=sim-out video=sim-out/tour.mp4 ffmpeg=ffmpeg"  # the whole app as a video tour
 ./gradlew :sim:run --args="app out=sim-out"                                   # Home, map, popups and level cards
 ./gradlew :sim:run --args="devices out=sim-out"                               # every screen on 8 display shapes (layout audit)
+./gradlew :sim:run --args="music out=sim-out"                                 # the music themes as WAV files (calm and flat out)
 ./gradlew :sim:run --args="shot level=4 out=sim-out frames=240"               # one frame
 ./gradlew :sim:run --args="poses out=sim-out"                                 # the character animation poses
 ```

@@ -1642,6 +1642,21 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     }
 
     /** 0 at the start of the course .. 1 at the Ancient Gate. */
+    /**
+     * How intense the moment is, for the music (0 calm .. 1 flat out): it builds over the final approach to the
+     * portal and runs flat out in a chase, rising lava and the final escape.
+     */
+    fun musicIntensity(): Float {
+        if (state == GS.INTRO) return 0.1f
+        if (state == GS.COMPLETE || state == GS.RESULTS) return 0.5f
+        var i = 0.2f + 0.8f * smooth((gateProgress() - 0.7f) / 0.28f)
+        if (ev.windOn) i = max(i, 0.55f)
+        if (ev.chase == Chase.WARNING || ev.chase == Chase.REVEAL) i = max(i, 0.75f)
+        if (ev.chase == Chase.RUN || ev.finalOn) i = 1f
+        if (ev.lavaOn && !ev.lavaStop) i = max(i, 0.9f)
+        return i
+    }
+
     fun gateProgress(): Float {
         val po = world.portals.firstOrNull() ?: return 0f
         return clamp01((player.z - world.spawnZ) / (po.z - world.spawnZ))

@@ -33,6 +33,7 @@ class Progress(private val p: Platform) {
     val chestOpened = BooleanArray(CHESTS.size)
     // settings
     var sound = true
+    var music = true
     var vibration = true
     /** Swipe / joystick sensitivity: 0 low, 1 normal, 2 high. */
     var sensitivity = 1
@@ -105,7 +106,7 @@ class Progress(private val p: Platform) {
         put("missions", missionClaimed.joinToString(",") { if (it) "1" else "0" })
         put("dailyIndex", dailyIndex); put("lastClaimDay", lastClaimDay)
         put("chests", chestOpened.joinToString(",") { if (it) "1" else "0" })
-        put("sound", if (sound) 1 else 0); put("vibration", if (vibration) 1 else 0); put("sensitivity", sensitivity); put("controls", controls)
+        put("sound", if (sound) 1 else 0); put("music", if (music) 1 else 0); put("vibration", if (vibration) 1 else 0); put("sensitivity", sensitivity); put("controls", controls)
         p.saveText(KEY, sb.toString())
     }
 
@@ -123,7 +124,7 @@ class Progress(private val p: Platform) {
         chases = int("chases", 0); mysteries = int("mysteries", 0); flawless = int("flawless", 0)
         bools("missions", missionClaimed); dailyIndex = int("dailyIndex", 0); lastClaimDay = int("lastClaimDay", -1)
         bools("chests", chestOpened)
-        sound = int("sound", 1) == 1; vibration = int("vibration", 1) == 1; sensitivity = int("sensitivity", 1).coerceIn(0, 2)
+        sound = int("sound", 1) == 1; music = int("music", 1) == 1; vibration = int("vibration", 1) == 1; sensitivity = int("sensitivity", 1).coerceIn(0, 2)
         controls = int("controls", 0).coerceIn(0, 1)
     }
 

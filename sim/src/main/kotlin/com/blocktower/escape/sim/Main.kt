@@ -31,6 +31,7 @@ fun main(args: Array<String>) {
         "app" -> appShots(assets, out, w, h)
         "flow" -> Flow(assets, out, opts).run()
         "devices" -> Devices(assets, out, opts).run()
+        "music" -> musicFiles(out)
         else -> error("unknown mode ${args[0]}")
     }
 }
@@ -134,4 +135,45 @@ fun appShots(assets: File, out: File, w: Int, h: Int) {
     for (k in 0 until 6) { step(10); shot("unlock$k.png") }
     // a locked level says what opens it
     val n3 = app.map.nodeCentre(3); tap(n3[0], n3[1]); step(10); shot("locked.png")
+}
+
+/** Renders every music theme to WAV (calm and flat-out mixes, two loops each) and prints levels and timing. */
+fun musicFiles(out: File) {
+    val names = mapOf(com.blocktower.escape.core.Music.HOME to "home", com.blocktower.escape.core.Music.SKY to "sky", com.blocktower.escape.core.Music.JUNGLE to "jungle")
+    val gains = FloatArray(com.blocktower.escape.core.Music.LAYERS)
+    for ((track, name) in names) {
+        val t0 = System.nanoTime()
+        val layers = com.blocktower.escape.core.MusicSynth().render(track)
+        val ms = (System.nanoTime() - t0) / 1e6
+        val n = layers[0].size
+        for (intensity in floatArrayOf(0.1f, 1f)) {
+            com.blocktower.escape.core.Music.layerGains(track, intensity, gains)
+            val mix = FloatArray(n * 2)
+            var peak = 0f; var sum = 0.0
+            for (i in 0 until n * 2) {
+                var v = 0f
+                for (l in layers.indices) v += layers[l][i % n] * gains[l]
+                mix[i] = v; peak = kotlin.math.max(peak, kotlin.math.abs(v)); sum += v * v
+            }
+            val rms = kotlin.math.sqrt(sum / (n * 2))
+            // the loop seam: the step across the end of the loop, next to the typical step inside it
+            var steps = 0.0
+            for (i in 1 until n) steps += kotlin.math.abs(mix[i] - mix[i - 1])
+            val seam = kotlin.math.abs(mix[n] - mix[n - 1])
+            val f = File(out, "music-$name-${if (intensity < 0.5f) "calm" else "full"}.wav")
+            writeWav(f, mix)
+            println("%-7s %-5s %.1f s loop, rendered in %.0f ms, peak %.2f, rms %.3f, seam step %.4f (average step %.4f) -> %s".format(
+                name, if (intensity < 0.5f) "calm" else "full", n / com.blocktower.escape.core.Music.RATE.toFloat(), ms, peak, rms, seam, steps / n, f.name))
+        }
+    }
+}
+
+private fun writeWav(f: File, data: FloatArray) {
+    val rate = com.blocktower.escape.core.Music.RATE
+    val bb = java.nio.ByteBuffer.allocate(44 + data.size * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    bb.put("RIFF".toByteArray()); bb.putInt(36 + data.size * 2); bb.put("WAVE".toByteArray())
+    bb.put("fmt ".toByteArray()); bb.putInt(16); bb.putShort(1); bb.putShort(1); bb.putInt(rate); bb.putInt(rate * 2); bb.putShort(2); bb.putShort(16)
+    bb.put("data".toByteArray()); bb.putInt(data.size * 2)
+    for (v in data) bb.putShort((v * 32767f).toInt().coerceIn(-32768, 32767).toShort())
+    f.writeBytes(bb.array())
 }

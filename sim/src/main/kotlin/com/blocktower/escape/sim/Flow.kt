@@ -5,6 +5,7 @@ import com.blocktower.escape.core.GS
 import com.blocktower.escape.core.HomeScreen
 import com.blocktower.escape.core.Levels
 import com.blocktower.escape.core.Menus
+import com.blocktower.escape.core.Music
 import com.blocktower.escape.core.Pop
 import com.blocktower.escape.core.Progress
 import com.blocktower.escape.core.Scr
@@ -80,6 +81,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         step(40)
         val pr = app.progress
         shot("01-home")
+        check("the Home theme plays on the Home screen", sim.musicTrack == Music.HOME && sim.musicVolume > 0.9f)
         check("fresh install: Level 1 open, the rest locked, starting wallet",
             pr.unlocked == 1 && pr.totalStars == 0 && pr.coins == Progress.START_COINS && pr.gems == Progress.START_GEMS,
             "unlocked ${pr.unlocked}, ${pr.coins} coins, ${pr.gems} gems")
@@ -190,8 +192,19 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         val expected = (0..3).filter { n >= Levels.toolUnlock[it] }.map { g.toolName(it) }
         check("Level $n: tools available: ${open.joinToString().ifEmpty { "none" }}", open == expected)
         g.hud.layout(w, h)
-        val ap = Autopilot(assets, out, mapOf("scenario" to "clear"), external = g, stepper = { app.update(it); frame++ }, frameHook = { record(false) })
+        var maxI = 0f; var early = -1f; var wrongTrack = 0
+        val theme = if (g.spec.jungle) Music.JUNGLE else Music.SKY
+        val ap = Autopilot(assets, out, mapOf("scenario" to "clear"), external = g, stepper = { app.update(it); frame++ }, frameHook = {
+            record(false)
+            if (g.state == GS.PLAY) {
+                if (sim.musicTrack != theme) wrongTrack++
+                maxI = kotlin.math.max(maxI, sim.musicIntensity)
+                if (early < 0f && g.playT > 2f) early = sim.musicIntensity
+            }
+        })
         val done = ap.playLevel(420)
+        check("Level $n: its theme plays (${if (theme == Music.JUNGLE) "jungle" else "sky"}), calm at first, building to flat out",
+            wrongTrack == 0 && early in 0f..0.3f && maxI >= 0.95f, "start %.2f, peak %.2f".format(early, maxI))
         val r = g.results
         step(30)
         shot("%02d-level$n-results".format(6 + n), 2.5f)
@@ -274,6 +287,10 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         val pr = app.progress
         tapHome(4)
         check("SETTINGS opens from its Home button", app.popup == Pop.SETTINGS)
+        tapId(Menus.MUSIC); step(2)
+        check("Music off: the music stops", !pr.music && sim.musicTrack == Music.NONE)
+        tapId(Menus.MUSIC); step(2)
+        check("Music on again: the Home theme is back", pr.music && sim.musicTrack == Music.HOME)
         tapId(Menus.SOUND)
         val before = sounds()
         tapId(Menus.SENS0 + 2)
@@ -318,6 +335,8 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         while (g != null && g.state != GS.PLAY && i < 600) { step(1); i++ }
         app.onPause()
         check("going to the background pauses the level", g != null && g.paused)
+        step(2)
+        check("the music drops while paused", sim.musicTrack == Music.SKY && sim.musicVolume < 0.5f)
         step(10)   // the pause panel is drawn (its buttons are where it draws them)
         val m = g?.hud?.overlayButtonCentre(2)
         if (m != null) { tap(m[0], m[1]); settle() }
@@ -333,7 +352,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         val same = a.unlocked == b.unlocked && a.stars.contentEquals(b.stars) && a.best.contentEquals(b.best) && a.relics.contentEquals(b.relics) &&
             a.coins == b.coins && a.gems == b.gems && a.missionClaimed.contentEquals(b.missionClaimed) && a.chestOpened.contentEquals(b.chestOpened) &&
             a.dailyIndex == b.dailyIndex && a.lastClaimDay == b.lastClaimDay && a.sound == b.sound && a.vibration == b.vibration &&
-            a.sensitivity == b.sensitivity && a.controls == b.controls && a.levelsDone == b.levelsDone && a.totalBlue == b.totalBlue && a.chases == b.chases && a.xp == b.xp
+            a.sensitivity == b.sensitivity && a.controls == b.controls && a.music == b.music && a.levelsDone == b.levelsDone && a.totalBlue == b.totalBlue && a.chases == b.chases && a.xp == b.xp
         check("reopening the app restores everything", same, "unlocked ${b.unlocked}, stars ${b.totalStars}, ${b.coins} coins, ${b.gems} gems, sensitivity ${b.sensitivity}")
     }
 

@@ -203,7 +203,7 @@ class Menus(private val app: App) {
 
     // ---- SETTINGS
     private fun settings(gr: Gfx, u: Float) {
-        val f = frame(gr, u, 540f, "SETTINGS", 3)
+        val f = frame(gr, u, 545f, "SETTINGS", 3)
         if (u < 0.9f) return
         val l = f[0] + 50f * s; val r = f[2] - 50f * s
         fun row(i: Int, label: String): Float {
@@ -214,21 +214,23 @@ class Menus(private val app: App) {
         }
         var y = row(0, "Sound")
         toggle(gr, SOUND, r - 110f * s, y, pr.sound)
-        y = row(1, "Vibration")
+        y = row(1, "Music")
+        toggle(gr, MUSIC, r - 110f * s, y, pr.music)
+        y = row(2, "Vibration")
         toggle(gr, VIBRATION, r - 110f * s, y, pr.vibration)
-        y = row(2, "Controls")
+        y = row(3, "Controls")
         val modes = arrayOf("SWIPE", "JOYSTICK")
         for (i in 0..1) {
             val bx = r - 368f * s + i * 218f * s
             if (pr.controls == i) ui.green(gr, CTRL0 + i, bx, y, 210f * s, 70f * s, modes[i]) else ui.blue(gr, CTRL0 + i, bx, y, 210f * s, 70f * s, modes[i])
         }
-        y = row(3, "Sensitivity")
+        y = row(4, "Sensitivity")
         val labels = arrayOf("LOW", "NORMAL", "HIGH")
         for (i in 0..2) {
             val bx = r - 440f * s + i * 145f * s
             if (pr.sensitivity == i) ui.green(gr, SENS0 + i, bx, y, 138f * s, 70f * s, labels[i]) else ui.blue(gr, SENS0 + i, bx, y, 138f * s, 70f * s, labels[i])
         }
-        ui.red(gr, RESET, app.w * 0.5f, f[1] + 780f * s, 440f * s, 90f * s, "RESET PROGRESS")
+        ui.red(gr, RESET, app.w * 0.5f, f[1] + 880f * s, 440f * s, 90f * s, "RESET PROGRESS")
         ui.label(gr, "Block Tower Escape  •  progress is saved on this phone", app.w * 0.5f, f[3] - 50f * s, 25f, 0xFF9FB4E0.toInt())
     }
 
@@ -358,6 +360,7 @@ class Menus(private val app: App) {
             PLAY -> { snd.sound(Sfx.GO, 0.7f); app.startLevel(app.popupLevel) }
             SOUND -> { pr.sound = !pr.sound; pr.save(); snd.sound(Sfx.CLICK) }
             VIBRATION -> { pr.vibration = !pr.vibration; pr.save(); snd.sound(Sfx.CLICK); snd.haptic(true) }
+            MUSIC -> { pr.music = !pr.music; pr.save(); snd.sound(Sfx.CLICK) }
             RESET -> app.openPopup(Pop.RESET)
             MORE0 -> app.openPopup(Pop.DAILY)
             MORE0 + 1 -> app.openPopup(Pop.MISSIONS)
@@ -386,6 +389,6 @@ class Menus(private val app: App) {
     companion object {
         const val BLOCK = 9999; const val CLOSE = 1; const val CLAIM = 2; const val PLAY = 3
         const val SOUND = 4; const val VIBRATION = 5; const val RESET = 6; const val RESET_YES = 7; const val RESET_NO = 8
-        const val SENS0 = 10; const val MISSION0 = 20; const val CHEST0 = 40; const val MORE0 = 50; const val CTRL0 = 60
+        const val SENS0 = 10; const val MISSION0 = 20; const val CHEST0 = 40; const val MORE0 = 50; const val CTRL0 = 60; const val MUSIC = 70
     }
 }

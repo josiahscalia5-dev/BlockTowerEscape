@@ -32,6 +32,7 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         if (running) return
         running = true
         lastNanos = 0L
+        platform.resumeAudio()
         Choreographer.getInstance().postFrameCallback(this)
         requestFocus()
     }
@@ -40,6 +41,7 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
         app.onPause()
+        platform.pauseAudio()
     }
 
     fun release() {

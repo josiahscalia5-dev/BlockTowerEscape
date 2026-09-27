@@ -11,6 +11,7 @@ import com.blocktower.escape.core.Platform
 
 class AndroidPlatform(private val context: Context, private val view: View) : Platform {
     private val sfx = SoundFx(context)
+    private val musicPlayer = MusicPlayer()
 
     private fun decode(path: String): Bitmap {
         val opts = BitmapFactory.Options().apply {
@@ -45,6 +46,10 @@ class AndroidPlatform(private val context: Context, private val view: View) : Pl
     }
 
     override fun sound(id: Int, volume: Float, rate: Float) = sfx.play(id, volume, rate)
+    override fun music(track: Int, intensity: Float, volume: Float) = musicPlayer.set(track, intensity, volume)
+    /** The app went to the background / came back: the music stops and starts with it. */
+    fun pauseAudio() = musicPlayer.pause()
+    fun resumeAudio() = musicPlayer.resume()
 
     override fun haptic(strong: Boolean) {
         view.performHapticFeedback(if (strong) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.KEYBOARD_TAP)
@@ -54,5 +59,5 @@ class AndroidPlatform(private val context: Context, private val view: View) : Pl
     override fun loadText(key: String): String? = prefs.getString(key, null)
     override fun saveText(key: String, value: String) { prefs.edit().putString(key, value).apply() }
 
-    fun release() = sfx.release()
+    fun release() { sfx.release(); musicPlayer.release() }
 }
