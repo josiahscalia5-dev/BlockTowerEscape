@@ -112,7 +112,7 @@ fun finishFrames(assets: File, out: File, level: Int) {
 
 /** Screenshots of the Home screen, the level map and every popup, reached by tapping like a player. */
 fun appShots(assets: File, out: File, w: Int, h: Int) {
-    val app = com.blocktower.escape.core.App(SimPlatform(assets))
+    val app = com.blocktower.escape.core.App(SimPlatform(assets), showSplash = false)
     val gfx = J2DGfx(assets, w, h)
     app.layout(w, h)
     fun step(n: Int) { for (i in 0 until n) { app.update(1f / 60f); if (i % 4 == 0) { gfx.clear(); app.render(gfx) } } }

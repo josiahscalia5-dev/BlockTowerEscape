@@ -25,15 +25,21 @@ class Devices(val assets: File, val out: File, val opts: Map<String, String>) {
     class Dev(val name: String, val w: Int, val h: Int, val top: Int, val bottom: Int)
 
     private val devs = listOf(
-        Dev("16:9 phone", 540, 960, 0, 0),
-        Dev("18:9 phone", 540, 1080, 30, 0),
+        Dev("16:9 phone", 540, 960, 12, 0),
+        Dev("16:9 3-button", 540, 960, 12, 24),
+        Dev("18:9 phone", 540, 1080, 30, 12),
         Dev("19.5:9 notch", 540, 1170, 45, 24),
         Dev("20:9 punch-hole", 540, 1200, 50, 24),
+        Dev("20:9 3-button", 540, 1200, 50, 48),
         Dev("21:9 tall", 540, 1260, 40, 24),
-        Dev("16:10 tablet", 600, 960, 0, 24),
-        Dev("4:3 tablet", 720, 960, 0, 24),
-        Dev("foldable", 760, 950, 0, 20),
+        Dev("22:9 extra tall", 540, 1320, 45, 24),
+        Dev("small 480x854", 480, 854, 18, 36),
+        Dev("16:10 tablet", 600, 960, 12, 24),
+        Dev("4:3 tablet", 720, 960, 12, 24),
+        Dev("foldable", 760, 950, 18, 20),
     )
+    /** Layout problems found on every device (printed at the end). */
+    private val problems = ArrayList<String>()
     private val only = opts["only"]
     private val shots = LinkedHashMap<String, MutableList<Pair<Dev, BufferedImage>>>()
 
@@ -47,6 +53,8 @@ class Devices(val assets: File, val out: File, val opts: Map<String, String>) {
             ImageIO.write(sheet(list), "png", File(dir, "$name.png"))
             println("wrote devices/$name.png")
         }
+        println(if (problems.isEmpty()) "LAYOUT: no problems (safe area, overlaps, touch sizes) on ${devs.size} displays"
+                else "LAYOUT: ${problems.size} problems\n  " + problems.joinToString("\n  "))
     }
 
     private fun screens(d: Dev) {
@@ -64,6 +72,12 @@ class Devices(val assets: File, val out: File, val opts: Map<String, String>) {
             img.createGraphics().apply { drawImage(gfx.image, 0, 0, null); dispose() }
             shots.getOrPut(name) { ArrayList() }.add(d to img)
         }
+        // the splash while loading, then on to Home
+        step(60)
+        if (want("splash")) grab("splash")
+        problems += Layout.problems("${d.name} splash", app.splash.layoutRects(), app.safe, setOf("boy"))
+        run { var i = 0; while ((app.screen != Scr.HOME || app.fading) && i < 1200) { step(1); if (!app.ready) Thread.sleep(5); i++ } }
+        problems += Layout.problems("${d.name} home", app.home.layoutRects(), app.safe, setOf("boy"))
         step(40)
         if (want("home")) grab("home")
         for ((p, name) in listOf(Pop.DAILY to "daily", Pop.MISSIONS to "missions", Pop.VAULT to "vault", Pop.SETTINGS to "settings")) {
@@ -73,6 +87,7 @@ class Devices(val assets: File, val out: File, val opts: Map<String, String>) {
         if (want("map") || want("card")) {
             app.openMap(); settle()
             if (want("map")) grab("map")
+            problems += Layout.problems("${d.name} map", app.map.layoutRects(), app.safe, emptySet(), overlapping = { a, b -> a.startsWith("level") && b.startsWith("level") })
             if (want("card")) { app.openPopup(Pop.LEVEL, 4); step(30); grab("card"); app.closePopup() }
         }
         for (n in 1..5) {

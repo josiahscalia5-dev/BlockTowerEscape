@@ -2,7 +2,7 @@ package com.blocktower.escape.core
 
 import kotlin.math.min
 
-object Scr { const val HOME = 0; const val MAP = 1; const val GAME = 2 }
+object Scr { const val HOME = 0; const val MAP = 1; const val GAME = 2; const val SPLASH = 3 }
 object Pop { const val NONE = 0; const val DAILY = 1; const val MISSIONS = 2; const val VAULT = 3; const val SETTINGS = 4; const val LEVEL = 5; const val RESET = 6; const val SOON = 7; const val MORE = 8 }
 
 /** Sound and vibration follow the player's settings. */
@@ -15,26 +15,44 @@ private class GatedPlatform(private val p: Platform, private val prog: () -> Pro
 }
 
 /**
- * The whole game: the Home screen, the level map, the menu popups and the level being played.
+ * The whole game: the splash screen, the Home screen, the level map, the menu popups and the level being played.
  * It keeps the saved progress (unlocked levels, stars, wallet, missions, daily rewards, settings) and
  * moves between screens with a short fade.
+ *
+ * With [showSplash] the splash is shown while the menus and the block textures load on a background thread
+ * (the splash's bar follows that loading); without it (tests) everything loads right away and the app opens on Home.
  */
-class App(platform: Platform) : GameHost {
+class App(platform: Platform, showSplash: Boolean = true) : GameHost {
     private var prog: Progress? = null
     val pf: Platform = GatedPlatform(platform) { prog }
     val progress: Progress = Progress(platform).also { it.load(); prog = it }
 
-    private val arts = HashMap<Int, Art>()
-    fun art(theme: Int) = arts.getOrPut(theme) { Art(pf, theme) }
+    private val arts = java.util.concurrent.ConcurrentHashMap<Int, Art>()
+    fun art(theme: Int): Art = arts.getOrPut(theme) { Art(pf, theme) }
     /** Icons, coins and block textures used by the menus. */
     val baseArt get() = art(Theme.SKY_TOWER)
 
+    /** The safe area and density the menu screens lay out in. */
+    val safe = Safe()
+    /** The splash / Home artwork: the world, the boy, the Guardian and the logo (needed by the first frame). */
+    val menuArt = MenuArt(pf)
     val ui = Ui(this)
-    val home = HomeScreen(this)
-    val map = LevelMap(this)
+    val splash = SplashScreen(this)
+    lateinit var home: HomeScreen
+        private set
+    lateinit var map: LevelMap
+        private set
     val menus = Menus(this)
 
-    var screen = Scr.HOME
+    /** Loading progress 0..1 (the splash's bar), and whether the menus are ready. */
+    @Volatile var loaded = 0f
+        private set
+    @Volatile var loadError: String? = null
+        private set
+    @Volatile var ready = false
+        private set
+
+    var screen = if (showSplash) Scr.SPLASH else Scr.HOME
         private set
     var popup = Pop.NONE
         private set
@@ -50,6 +68,9 @@ class App(platform: Platform) : GameHost {
     /** UI scale: artwork pixels (1024 wide) to screen pixels, same as the HUD. */
     var s = 1f
     var topInset = 0f; var bottomInset = 0f
+    var leftInset = 0f; var rightInset = 0f
+    /** Screen pixels per dp (set by the host; tests use a typical phone's). */
+    var density = 0f
     var t = 0f
         private set
     /** Tests: pretend today is this local day. */
@@ -69,11 +90,32 @@ class App(platform: Platform) : GameHost {
         pending = action; fadeTarget = 1f
     }
 
-    fun setInsets(top: Float, bottom: Float) { topInset = top; bottomInset = bottom; game?.hud?.setInsets(top, bottom) }
+    /** Loads what the menus need: the block textures and icons, the Home screen and the level map. */
+    private fun load() {
+        try {
+            art(Theme.SKY_TOWER); loaded = 0.55f
+            val hs = HomeScreen(this); loaded = 0.8f
+            val lm = LevelMap(this); loaded = 0.95f
+            home = hs; map = lm
+            loaded = 1f; ready = true
+        } catch (e: Throwable) {
+            loadError = e.toString()
+        }
+    }
+
+    /** The splash is done (loading finished): on to the Home screen. */
+    fun splashDone() = transition { screen = Scr.HOME; popup = Pop.NONE }
+
+    fun setInsets(top: Float, bottom: Float, left: Float = 0f, right: Float = 0f) {
+        topInset = top; bottomInset = bottom; leftInset = left; rightInset = right
+        game?.hud?.setInsets(top, bottom)
+    }
 
     fun layout(width: Int, height: Int) {
         w = width.toFloat(); h = height.toFloat()
         s = min(w / 1024f, (h - topInset - bottomInset) / 1450f)
+        val dens = if (density > 0f) density else w / 411f
+        safe.set(w, h, dens, leftInset, topInset, rightInset, bottomInset)
     }
 
     fun today(): Int {
@@ -103,6 +145,7 @@ class App(platform: Platform) : GameHost {
             Scr.GAME -> game?.update(dtIn)
             Scr.HOME -> home.update(dt)
             Scr.MAP -> map.update(dt)
+            Scr.SPLASH -> splash.update(dt)
         }
         if (popup != Pop.NONE) popupT += dt
         updateMusic()
@@ -137,6 +180,7 @@ class App(platform: Platform) : GameHost {
             Scr.GAME -> game?.render(gr)
             Scr.HOME -> home.render(gr, popup == Pop.NONE)
             Scr.MAP -> map.render(gr, popup == Pop.NONE)
+            Scr.SPLASH -> splash.render(gr)
         }
         if (popup != Pop.NONE) menus.render(gr)
         for (p in sparks) {
@@ -202,7 +246,7 @@ class App(platform: Platform) : GameHost {
     private var menuPointer = -1
 
     fun touchDown(id: Int, x: Float, y: Float) {
-        if (fading) return
+        if (fading || screen == Scr.SPLASH) return
         if (screen == Scr.GAME && popup == Pop.NONE) { game?.touchDown(id, x, y); return }
         if (menuPointer >= 0) return
         menuPointer = id
@@ -214,6 +258,7 @@ class App(platform: Platform) : GameHost {
     }
 
     fun touchMove(id: Int, x: Float, y: Float) {
+        if (screen == Scr.SPLASH) return
         if (screen == Scr.GAME && popup == Pop.NONE) { game?.touchMove(id, x, y); return }
         if (id != menuPointer) return
         when {
@@ -224,6 +269,7 @@ class App(platform: Platform) : GameHost {
     }
 
     fun touchUp(id: Int, x: Float, y: Float) {
+        if (screen == Scr.SPLASH) return
         if (screen == Scr.GAME && popup == Pop.NONE) { game?.touchUp(id, x, y); return }
         if (id != menuPointer) return
         menuPointer = -1
@@ -237,7 +283,7 @@ class App(platform: Platform) : GameHost {
 
     fun touchCancel(id: Int) {
         if (screen == Scr.GAME) { game?.touchCancel(id); return }
-        if (id == menuPointer) { menuPointer = -1; ui.cancel(); map.cancel(); home.cancel() }
+        if (id == menuPointer) { menuPointer = -1; ui.cancel(); if (ready) { map.cancel(); home.cancel() } }
     }
 
     fun onKey(code: Int, down: Boolean) {
@@ -250,7 +296,7 @@ class App(platform: Platform) : GameHost {
         if (fading) return true
         if (popup != Pop.NONE) { closePopup(); pf.sound(Sfx.CLICK); return true }
         when (screen) {
-            Scr.HOME -> return false
+            Scr.HOME, Scr.SPLASH -> return false
             Scr.MAP -> openHome()
             Scr.GAME -> {
                 val g = game ?: return true
@@ -288,6 +334,11 @@ class App(platform: Platform) : GameHost {
         val unlockedNow = justUnlocked
         game = null; screen = Scr.MAP; popup = Pop.NONE
         map.focusOn(if (unlockedNow > 0) unlockedNow else currentLevel())
+    }
+
+    // last, so every property above is initialised before loading starts
+    init {
+        if (showSplash) Thread({ load() }, "loader").start() else load()
     }
 
     companion object {

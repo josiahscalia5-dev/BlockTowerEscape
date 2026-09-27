@@ -78,7 +78,14 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         app.setInsets((opts["top"] ?: "0").toFloat(), (opts["bottom"] ?: "0").toFloat())
         app.layout(w, h)
         app.dayOverride = 20_000
-        step(40)
+        // a fresh start opens on the splash; it moves on to Home by itself once loading is done
+        step(10)
+        check("the app opens on the splash screen", app.screen == Scr.SPLASH)
+        shot("00-splash")
+        var n = 0
+        while ((app.screen != Scr.HOME || app.fading) && n < 900) { step(1); n++ }
+        check("... which moves on to the Home screen once loaded", app.screen == Scr.HOME, "after ${n / 60f} s")
+        step(20)
         val pr = app.progress
         shot("01-home")
         check("the Home theme plays on the Home screen", sim.musicTrack == Music.HOME && sim.musicVolume > 0.9f)
@@ -103,11 +110,10 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
     /** The Home screen's layout on this display, and the top bar's buttons. */
     private fun homeTopBar() {
         val pr = app.progress
-        val r = app.home.artRect(w.toFloat(), h.toFloat())
-        check("Home: the whole artwork is on screen, undistorted, full width",
-            r[0] >= -0.5f && r[2] <= w + 0.5f && r[1] >= 0f && r[3] <= h + 0.5f && (r[2] - r[0]) / (r[3] - r[1]) in 0.6660f..0.6674f,
-            "art at %.0f,%.0f-%.0f,%.0f on %dx%d".format(r[0], r[1], r[2], r[3], w, h))
-        check("Home: the top bar sits above the title", r[4] <= r[1] + 118f * (r[2] - r[0]) / 1024f + 0.5f)
+        val problems = Layout.problems("Home", app.home.layoutRects(), app.safe, setOf("boy"))
+        check("Home: every button and text inside the safe area, nothing overlapping", problems.isEmpty(), problems.joinToString("; "))
+        val rs = app.home.layoutRects().toMap()
+        check("Home: the top bar sits above the logo", rs.getValue("profile")[3] <= rs.getValue("logo")[1] + 0.5f)
         check("Home: Level ${pr.playerLevel} with ${pr.levelXp}/${Progress.XP_PER_LEVEL} XP on a fresh install", pr.playerLevel == 1 && pr.levelXp == 0)
         tapHome(HomeScreen.GEAR)
         check("the top bar's gear opens SETTINGS", app.popup == Pop.SETTINGS)
@@ -348,7 +354,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
     private fun reopenTheApp() {
         val a = app.progress
         val sim2 = SimPlatform(assets).also { it.saveFile = saveFile }
-        val b = App(sim2).progress
+        val b = App(sim2, showSplash = false).progress
         val same = a.unlocked == b.unlocked && a.stars.contentEquals(b.stars) && a.best.contentEquals(b.best) && a.relics.contentEquals(b.relics) &&
             a.coins == b.coins && a.gems == b.gems && a.missionClaimed.contentEquals(b.missionClaimed) && a.chestOpened.contentEquals(b.chestOpened) &&
             a.dailyIndex == b.dailyIndex && a.lastClaimDay == b.lastClaimDay && a.sound == b.sound && a.vibration == b.vibration &&
@@ -362,7 +368,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         check("RESET starts over (settings kept)", pr.unlocked == 1 && pr.totalStars == 0 && pr.coins == Progress.START_COINS && pr.xp == 0 &&
             pr.gems == Progress.START_GEMS && pr.relics.none { it } && pr.missionClaimed.none { it } && pr.sensitivity == 2)
         tapId(Menus.CLOSE)
-        val b = App(SimPlatform(assets).also { it.saveFile = saveFile }).progress
+        val b = App(SimPlatform(assets).also { it.saveFile = saveFile }, showSplash = false).progress
         check("... and stays reset after reopening", b.unlocked == 1 && b.totalStars == 0 && b.coins == Progress.START_COINS)
         check("Android back on the Home screen leaves the app", !app.back())
         shot("21-home-after-reset")

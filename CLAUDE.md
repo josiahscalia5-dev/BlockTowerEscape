@@ -8,8 +8,10 @@
 ## Ground rules from the owner
 - Don't start over or redesign. Keep the approved artwork (Home, Level 4 sky tower, Level 5 jungle temple),
   the cartoon boy, the HUD and the Block Tower Escape identity; polish the implementation underneath.
+- Splash, Home and the level map use the same boy, Guardian and world (from design/menu_reference.png and
+  design/home_reference.png): never swap in a different character.
 - Every screen must fit any Android display (short/tall phones, tablets, foldables) and respect the camera
-  cut-out and gesture-navigation areas.
+  cut-out, system bars, gesture-navigation areas and rounded corners; check with `sim devices`.
 
 ## Testing without Android
 - The desktop harness in `sim/` runs the same game code (see README "Headless playtest"):

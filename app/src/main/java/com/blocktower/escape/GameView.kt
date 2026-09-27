@@ -6,10 +6,12 @@ import android.os.Build
 import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.RoundedCorner
 import android.view.View
 import android.view.WindowInsets
 import com.blocktower.escape.core.App
 import com.blocktower.escape.core.Key
+import kotlin.math.max
 
 /**
  * Hardware-accelerated view that runs the game loop on the UI thread via Choreographer:
@@ -21,11 +23,13 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
     private val gfx = AndroidGfx(context.assets)
     private var lastNanos = 0L
     private var running = false
+    private val safe = FloatArray(4)
 
     init {
         isFocusable = true
         isFocusableInTouchMode = true
         keepScreenOn = true
+        app.density = resources.displayMetrics.density
     }
 
     fun resume() {
@@ -35,6 +39,7 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         platform.resumeAudio()
         Choreographer.getInstance().postFrameCallback(this)
         requestFocus()
+        requestApplyInsets()
     }
 
     fun pause() {
@@ -59,23 +64,14 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
     }
 
     /**
-     * The safe area: the camera cut-out at the top, and at the bottom the cut-out or the gesture-navigation strip,
-     * whichever is taller (a swipe that starts in that strip goes to the system, so no control may sit in it).
-     * The game draws edge to edge; only buttons and text keep inside the safe area.
+     * The safe area. The game draws edge to edge (behind the hidden system bars and into the camera cut-out); only
+     * buttons and text keep inside the safe area: the status and navigation bars as if shown (they slide in over the
+     * game on a swipe, in gesture and 3-button navigation alike), the camera cut-out, the gesture-navigation strip
+     * (a swipe that starts there goes to the system) and room for rounded display corners.
      */
-    @Suppress("DEPRECATION")
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        var top = 0f
-        var bottom = 0f
-        if (Build.VERSION.SDK_INT >= 28) {
-            insets.displayCutout?.let { top = it.safeInsetTop.toFloat(); bottom = it.safeInsetBottom.toFloat() }
-        }
-        if (Build.VERSION.SDK_INT >= 30) {
-            bottom = maxOf(bottom, insets.getInsets(WindowInsets.Type.mandatorySystemGestures()).bottom.toFloat())
-        } else if (Build.VERSION.SDK_INT >= 29) {
-            bottom = maxOf(bottom, insets.mandatorySystemGestureInsets.bottom.toFloat())
-        }
-        app.setInsets(top, bottom)
+        safeInsets(insets, safe)
+        app.setInsets(safe[1], safe[3], safe[0], safe[2])
         return super.onApplyWindowInsets(insets)
     }
 
@@ -141,5 +137,34 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         if (k == 0) return false
         app.onKey(k, false)
         return true
+    }
+
+    companion object {
+        /** Safe insets in pixels: [left, top, right, bottom]. */
+        @Suppress("DEPRECATION")
+        fun safeInsets(wi: WindowInsets, out: FloatArray) {
+            var l: Int; var t: Int; var r: Int; var b: Int
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars = wi.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                val gest = wi.getInsets(WindowInsets.Type.mandatorySystemGestures())
+                l = bars.left; t = bars.top; r = bars.right; b = max(bars.bottom, gest.bottom)
+            } else {
+                l = wi.stableInsetLeft; t = wi.stableInsetTop; r = wi.stableInsetRight; b = wi.stableInsetBottom
+                if (Build.VERSION.SDK_INT >= 28) wi.displayCutout?.let { c ->
+                    l = max(l, c.safeInsetLeft); t = max(t, c.safeInsetTop); r = max(r, c.safeInsetRight); b = max(b, c.safeInsetBottom)
+                }
+                if (Build.VERSION.SDK_INT >= 29) b = max(b, wi.mandatorySystemGestureInsets.bottom)
+            }
+            if (Build.VERSION.SDK_INT >= 31) {
+                // something tucked into a rounded corner needs about (1 - 1/sqrt2) of its radius of clearance
+                fun rad(pos: Int) = wi.getRoundedCorner(pos)?.radius ?: 0
+                val k = 0.3f
+                val tl = rad(RoundedCorner.POSITION_TOP_LEFT); val tr = rad(RoundedCorner.POSITION_TOP_RIGHT)
+                val bl = rad(RoundedCorner.POSITION_BOTTOM_LEFT); val br = rad(RoundedCorner.POSITION_BOTTOM_RIGHT)
+                t = max(t, (max(tl, tr) * k).toInt()); b = max(b, (max(bl, br) * k).toInt())
+                l = max(l, (max(tl, bl) * k).toInt()); r = max(r, (max(tr, br) * k).toInt())
+            }
+            out[0] = l.toFloat(); out[1] = t.toFloat(); out[2] = r.toFloat(); out[3] = b.toFloat()
+        }
     }
 }
