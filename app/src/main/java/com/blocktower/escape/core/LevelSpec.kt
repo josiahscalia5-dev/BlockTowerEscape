@@ -78,7 +78,7 @@ object Levels {
         guardName = "", gateName = "Sky Portal",
         camDist = 4.4f, camHeight = 3.6f, camPitch = 0.30f, camFocal = 1.0f,
         bigGate = false, extraObjective = "Survive the hazards",
-        newThings = listOf("The Shield tool", "Vanishing and cracked blocks", "Spikes", "Treasure route"),
+        newThings = listOf("The Shield tool", "Vanishing and cracked blocks", "Spikes", "Magical wind", "Treasure route"),
         coinStar = 0.55f, timeStar = 45, rewardCoins = 180, rewardGems = 4,
     ) { Levels123.level3() }
 

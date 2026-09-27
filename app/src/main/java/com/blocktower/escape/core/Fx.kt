@@ -156,7 +156,17 @@ class Fx {
     }
 
     fun banner(l1: String, l2: String, color: Int, dur: Float = 2.4f, warn: Boolean = false) {
+        // a warning on screen is never cut short by good news: that waits its turn
+        val cur = banners.firstOrNull()
+        if (!warn && cur != null && cur.warn && cur.dur - cur.t > 0.4f) {
+            banners.removeAll { it !== cur && !it.warn }
+            banners.add(Banner(l1, l2, color, dur, warn)); return
+        }
         banners.clear()
+        banners.add(Banner(l1, l2, color, dur, warn))
+    }
+    /** A banner that follows the one on screen (two-part announcements). */
+    fun bannerThen(l1: String, l2: String, color: Int, dur: Float = 2.4f, warn: Boolean = false) {
         banners.add(Banner(l1, l2, color, dur, warn))
     }
 

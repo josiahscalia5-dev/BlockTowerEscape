@@ -47,8 +47,14 @@ class Collapse {
 
 object Chase { const val NONE = 0; const val WARNING = 1; const val REVEAL = 2; const val RUN = 3; const val ESCAPED = 4; const val CAUGHT = 5 }
 
-/** Adventure events: Tower Guard chase (with the tower collapsing behind), rising lava, final escape, debris. */
+/** Adventure events: Tower Guard chase (with the tower collapsing behind), rising lava, final escape, debris, magical wind. */
 class Events(val g: Game) {
+    companion object {
+        /** Magical wind: a gust every 3 s: 0.8 s of warning streaks, 1.3 s of push, then calm. */
+        const val GUST_PERIOD = 3.0f; const val WARN_T = 0.8f; const val GUST_T = 1.3f
+        /** Strongest sideways push (units per second): steering (a swipe or the stick) beats it easily. */
+        const val WIND_PUSH = 1.1f
+    }
     private val rng = Rng(99)
 
     // ---- Tower Guard chase
@@ -74,6 +80,18 @@ class Events(val g: Game) {
     var lavaY = -100f
     private var lavaSpeed = 0f
 
+    // ---- magical wind: gusts from alternating sides, each announced by streaks of wind before it pushes
+    var windOn = false
+    private var windT = 0f
+    /** Which way the next / current gust blows (-1 left, 1 right). */
+    var windDir = 1f
+    /** 0..1: how hard the gust is pushing right now. */
+    var gust = 0f
+    /** 0..1: the warning streaks before a gust, and the gust itself (for the screen effect). */
+    var windShow = 0f
+    /** Sideways push the wind puts on the steering target (units per second). */
+    val windPush get() = windDir * gust * WIND_PUSH
+
     // ---- debris
     val rocks = Array(6) { Rock() }
     private var rockT = 0f
@@ -92,7 +110,7 @@ class Events(val g: Game) {
     var meterKind = 0
 
     fun reset() {
-        resetChase(); resetFinal(); resetLava()
+        resetChase(); resetFinal(); resetLava(); resetWind()
         meter = 0f; meterShow = 0f; camBlend = 0f
         val watching = g.world.guardianLair != null
         lairState = if (watching) 1 else 0; lairShow = if (watching) 1f else 0f; lairLeave = 0f
@@ -106,6 +124,7 @@ class Events(val g: Game) {
     }
     private fun resetFinal() { finalOn = false; finalT = 0f; finalCollapse.reset() }
     private fun resetLava() { lavaOn = false; lavaStop = false; lavaY = -100f; lavaSpeed = 0f }
+    private fun resetWind() { windOn = false; windT = 0f; gust = 0f; windShow = 0f; windDir = 1f }
 
     private fun triggerZ(e: Int): Float = g.world.triggers.firstOrNull { it.event == e }?.z ?: 9999f
 
@@ -115,6 +134,7 @@ class Events(val g: Game) {
         else if (chase != Chase.ESCAPED) { resetChase(); chase = Chase.ESCAPED }
         if (triggerZ(Ev.FINAL) > cpZ) resetFinal()
         if (triggerZ(Ev.LAVA) > cpZ) resetLava() else if (lavaOn) lavaY = min(lavaY, cpY - 5f)
+        if (triggerZ(Ev.WIND) > cpZ || triggerZ(Ev.WIND_STOP) <= cpZ) resetWind() else { windT = 0f; gust = 0f }
         camBlend = 0f
         val lair = g.world.guardianLair
         if (lair != null && cpZ > lair[2] - 7f) { lairState = 3; lairShow = 0f; lairLeave = 1f }
@@ -137,7 +157,9 @@ class Events(val g: Game) {
         when (e) {
             Ev.CHASE -> if (chase == Chase.NONE) {
                 chase = Chase.WARNING; phaseT = 0f
-                g.fx.banner("DANGER!", "${g.spec.guardName} APPROACHING!", 0xFFFF5A4A.toInt(), 2.3f, true)
+                // first the warning, then who is coming
+                g.fx.banner("DANGER!", "", 0xFFFF5A4A.toInt(), 1.15f, true)
+                g.fx.bannerThen(g.spec.guardName, "APPROACHING!", 0xFFFF5A4A.toInt(), 1.7f, true)
                 g.platform.sound(Sfx.WARNING); g.platform.haptic(true)
                 guard.on = true; guard.falling = false; guard.stun = 0f; guard.grab = 0f
                 guard.z = p.z - 9f; guard.x = 0f; guard.y = g.world.levelAt(floor(guard.z).toInt())
@@ -167,6 +189,12 @@ class Events(val g: Game) {
                 g.shake = max(g.shake, 0.35f)
             }
             Ev.LAVA_STOP -> lavaStop = true
+            Ev.WIND -> if (!windOn) {
+                windOn = true; windT = 0f; gust = 0f; windDir = 1f
+                g.fx.banner("MAGICAL WIND!", "GUSTS PUSH YOU SIDEWAYS — STEER AGAINST THEM", 0xFF9FE8FF.toInt(), 2.4f, true)
+                g.platform.sound(Sfx.WHOOSH, 0.9f, 0.7f); g.platform.sound(Sfx.WARNING, 0.5f, 1.3f)
+            }
+            Ev.WIND_STOP -> if (windOn) { windOn = false; g.fx.toast("THE WIND DIES DOWN", "", 0xFF9FE8FF.toInt(), 1.6f) }
             Ev.FINAL -> if (!finalOn) {
                 finalOn = true; finalT = 0f
                 val c = finalCollapse
@@ -181,7 +209,26 @@ class Events(val g: Game) {
 
     private fun p0() = g.player
 
+    /** A gust every [GUST_PERIOD] seconds: streaks of wind first (the warning), then the push, then calm. */
+    private fun updateWind(dt: Float) {
+        if (!windOn) { gust = approach(gust, 0f, dt * 3f); windShow = approach(windShow, 0f, dt * 2f); return }
+        if (g.state != GS.PLAY) return
+        val before = windT % GUST_PERIOD
+        windT += dt
+        val c = windT % GUST_PERIOD
+        if (c < before) windDir = -windDir                                   // a new gust, from the other side
+        if (before < WARN_T && c >= WARN_T) { g.platform.sound(Sfx.WHOOSH, 0.8f, if (windDir > 0f) 0.9f else 0.8f); g.platform.haptic(false) }
+        val target = when {
+            c < WARN_T -> 0f
+            c < WARN_T + GUST_T -> 1f
+            else -> 0f
+        }
+        gust = approach(gust, target, dt * (if (target > gust) 2.5f else 1.8f))
+        windShow = approach(windShow, if (c < WARN_T + GUST_T) 1f else 0.25f, dt * 3f)
+    }
+
     fun update(dt: Float) {
+        updateWind(dt)
         updateChase(dt)
         updateLair(dt)
         updateCollapse(chaseCollapse, dt, if (chase == Chase.RUN) (if (g.spec.jungle) p0().z - (8.5f - 4.5f * meter) else guard.z - 2.6f) else null)

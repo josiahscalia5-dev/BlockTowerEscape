@@ -96,6 +96,9 @@ class WorldRenderer(val g: Game) {
         gr.image(art.bg, left, top, w, hh)
         if (top > 0f) gr.fillRectGradient(-40f, -40f, gr.width + 40f, top + 2f, 0xFF03287E.toInt(), 0xFF04349F.toInt())
         if (rolled) gr.restore()
+        // depth: a light sky haze over the far scenery (never a blur), so the blocks, the boy and the coins in
+        // front stand out crisp and bright against it
+        gr.fillRectGradient(0f, 0f, gr.width.toFloat(), gr.height.toFloat(), 0x1CC8DEFF, 0x2EC8DEFF)
     }
 
     // ------------------------------------------------------------------ collection
@@ -757,9 +760,10 @@ class WorldRenderer(val g: Game) {
         }
         gr.glow(ax, ay + r * 0.6f, r * (2.2f + 1.5f * charge), Col.withA(0xFFFFD27A.toInt(), intensity * 0.6f))
         gr.setAdditive(false)
-        // sparkles drifting out of the portal
-        for (i in 0..5) {
-            val ph = fract(t * 0.35f + i / 6f)
+        // sparkles drifting out of the portal, more of them the closer you get
+        val sparks = 6 + (12 * near).toInt()
+        for (i in 0 until sparks) {
+            val ph = fract(t * 0.35f + i / sparks.toFloat())
             val sx = ax + sin(i * 2.3f + t) * r * (0.6f + ph)
             val sy = ay + r * 1.2f - ph * r * 3.2f
             star4(gr, sx, sy, gw * 0.012f * (1f - ph) * (1f + near), Col.withA(0xFFFFF0C0.toInt(), fade * (1f - ph)))
@@ -783,6 +787,9 @@ class WorldRenderer(val g: Game) {
         val cx = po.x; val cy = po.y + 1.75f; val z = po.z - 0.05f
         if (!cam.project(cx, cy, z)) return
         val depth = cam.depth
+        // too far to draw yet: a pillar of light marks where the portal is, from the first second of the level
+        val far = smooth((depth - (maxDepth - 16f)) / 12f)
+        if (far > 0.01f && g.state == GS.PLAY) drawPortalMarker(gr, cam.sx, cam.sy, far)
         if (depth > maxDepth) return
         val sc = cam.scaleAt(depth)
         val sx = cam.sx; val sy = cam.sy
@@ -805,8 +812,10 @@ class WorldRenderer(val g: Game) {
         }
         gr.glow(sx, sy + 0.3f * sc, (0.9f + 0.8f * charge) * sc, Col.withA(0xFFFFE0FF.toInt(), a * (0.35f + 0.5f * charge)))
         gr.setAdditive(false)
-        for (i in 0..5) {
-            val ph = fract(t * 0.4f + i / 6f)
+        // more magic spills out the closer you get
+        val sparks = 6 + (10 * near).toInt()
+        for (i in 0 until sparks) {
+            val ph = fract(t * 0.4f + i / sparks.toFloat())
             star4(gr, sx + sin(i * 2.3f + t) * sc * (0.4f + ph), sy + 0.9f * sc - ph * 2.2f * sc, 0.1f * sc * (1f - ph), Col.withA(0xFFFFF0FF.toInt(), a * (1f - ph)))
         }
         if (!open && g.state == GS.PLAY) {
@@ -815,6 +824,21 @@ class WorldRenderer(val g: Game) {
                 gr.setAdditive(true); gr.glow(sx, sy, 1.8f * sc, Col.withA(0xFF60A8FF.toInt(), k)); gr.setAdditive(false)
                 gr.strokeCircle(sx, sy, 1.2f * sc, max(2f, 0.06f * sc), Col.withA(0xFFB8E0FF.toInt(), k * 1.6f))
             }
+        }
+    }
+
+    /** A pillar of light rising from a portal still too far away to draw, so the player always knows where to go. */
+    private fun drawPortalMarker(gr: Gfx, sx: Float, sy: Float, a: Float) {
+        val s = g.hud.s; val t = g.t
+        val bw = 30f * s * (1f + 0.08f * sin(t * 2.5f))
+        gr.setAdditive(true)
+        gr.fillRectGradient(sx - bw, 0f, sx + bw, sy, 0x00B070FF, Col.withA(0xFFB070FF.toInt(), 0.30f * a))
+        gr.fillRectGradient(sx - bw * 0.3f, 0f, sx + bw * 0.3f, sy, 0x00FFF0FF, Col.withA(0xFFFFF0FF.toInt(), 0.35f * a))
+        gr.glow(sx, sy, 70f * s * (1f + 0.12f * sin(t * 3f)), Col.withA(0xFFD8A0FF.toInt(), 0.6f * a))
+        gr.setAdditive(false)
+        for (i in 0 until 5) {
+            val ph = fract(t * 0.5f + i / 5f)
+            star4(gr, sx + sin(i * 2.1f + t * 1.3f) * bw * 0.8f, sy - ph * 160f * s, 9f * s * (1f - ph), Col.withA(0xFFFFF0FF.toInt(), a * (1f - ph)))
         }
     }
 
@@ -1262,6 +1286,26 @@ class WorldRenderer(val g: Game) {
         val w = gr.width.toFloat(); val h = gr.height.toFloat()
         val s = g.hud.s
         val t = g.t
+        val ev = g.ev
+        if (ev.windShow > 0.01f) {
+            // magical wind: pale streaks sweeping across the way the gust blows (faint while it gathers)
+            val dir = ev.windDir
+            val speed = 0.35f + 0.9f * ev.gust
+            for (i in 0 until 18) {
+                val row = fract(i * 0.618f)
+                val y = h * (0.14f + 0.72f * row) + sin(t * 1.7f + i) * 18f * s
+                val ph = fract(t * speed + i * 0.37f)
+                val len = (120f + 140f * fract(i * 0.29f)) * s * (0.5f + ev.gust)
+                val x = if (dir > 0f) -len + ph * (w + len * 2f) else w + len - ph * (w + len * 2f)
+                val a = ev.windShow * (0.3f + 0.5f * ev.gust) * sin(ph * 3.14159f)
+                val th = (5f + 5f * fract(i * 0.47f)) * s
+                val bend = sin(t * 3f + i) * 10f * s
+                // a soft blue under-stroke (so the streak reads against white clouds), then the bright streak
+                gr.line(x, y + th * 0.5f, x - dir * len, y + bend + th * 0.5f, th * 1.6f, Col.withA(0xFF6AA8E8.toInt(), a * 0.35f))
+                gr.line(x, y, x - dir * len, y + bend, th, Col.withA(0xFFF6FCFF.toInt(), a))
+                gr.line(x - dir * len * 0.15f, y - th * 1.8f, x - dir * len * 0.7f, y - th * 1.8f + bend * 0.6f, th * 0.5f, Col.withA(0xFFF6FCFF.toInt(), a * 0.6f))
+            }
+        }
         if (g.speedOn && g.player.state == PS.NORMAL) {
             // speed lines at the screen edges only (never over the path)
             for (i in 0 until 16) {

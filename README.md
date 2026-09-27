@@ -61,8 +61,12 @@ Each ends at a block portal that opens once the blue blocks are collected.
 2. **First Challenge** — wider gaps, slow moving blocks, mystery blocks, the first spikes, and the **Magnet** for blue
    blocks on islands out of reach.
 3. **Mechanics Begin** — a moving-block ferry, cracked bridges that break if you stop, vanishing stepping stones,
-   spike rows (jump them or use the new **Shield**), timed spikes, a fork with an optional treasure route, and fast
-   moving blocks before the portal.
+   spike rows (jump them or use the new **Shield**), timed spikes, a fork with an optional treasure route, *MAGICAL
+   WIND* over the cracked bridge (streaks of wind warn of each gust, which pushes you toward the spikes at the sides:
+   steer against it), and fast moving blocks before the portal.
+
+From the first second, a pillar of light marks where the portal is; up close the portal itself glows brighter and
+more magic spills out of it the nearer you get.
 
 ## Level 5 — the jungle temple
 **Mission:** collect **10 blue blocks** and reach the **golden portal** at the top of the temple (01:15 on the clock,
@@ -129,7 +133,7 @@ The start of the level reproduces the Screen 4 design. After **3 · 2 · 1 · GO
 2. **Sky platforms** — the first jumps and blue blocks, a hidden gem ledge
 3. **Moving and crumbling blocks** — sliding platforms (safe middle route, risky blue-pillar route, a hidden bridge), cracked bridges, lava-cracked blocks, a secret shortcut
 4. **Traps and difficult jumps** — spike rows to time or jump, a fork (left: safe + hidden heart, right: treasure), a trapped ? box
-5. **Tower Guard chase** — *DANGER! TOWER GUARD APPROACHING!* The camera turns to show it rise behind you, then the tower collapses behind it while it closes in. Reach the checkpoint and it falls; get caught and it's game over.
+5. **Tower Guard chase** — *DANGER!* then *TOWER GUARD APPROACHING!* The camera turns to show it rise behind you, then the tower collapses behind it while it closes in. Reach the checkpoint and it falls; get caught and it's game over.
 6. **Checkpoint haven** — breathing room, a heart and a shield
 7. **Tool trials** — blue blocks only the magnet can reach, a gap too wide to jump (block tool, speed, or vanishing stones), a spike run for the shield
 8. **Final climb** — lava floods the tower from below

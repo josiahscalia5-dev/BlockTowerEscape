@@ -8,7 +8,7 @@ package com.blocktower.escape.core
  *  Level 2  First Challenge     longer path, wider gaps, slow moving blocks, mystery blocks, the first
  *                               spikes, and the MAGNET for blue blocks out of reach.
  *  Level 3  Mechanics Begin     faster moving blocks, vanishing and cracked blocks, spike rows, harder
- *                               jumps, an optional treasure route, and the SHIELD.
+ *                               jumps, an optional treasure route, magical wind, and the SHIELD.
  *
  * Row string legend: see [CourseWriter].
  */
@@ -243,7 +243,9 @@ private class L3(w: World) : SkyWriter(w, 3) {
         row(64, 3, "cYc"); row(65, 3, "ccc"); row(66, 3.5f, "YGY"); row(67, 4, "GBG")
         coinLine(0f, 3f, 64, 65)
         row(68, 4, "YGY")
-        // ---- a cracked bridge with timed spikes beside it: keep moving, stay in the middle
+        // ---- magical wind over the cracked bridge with timed spikes beside it: steer against the gusts,
+        // keep moving, stay in the middle
+        trig(64, Ev.WIND)
         row(69, 4, "ccc"); row(70, 4, "tct"); row(71, 4, "ccc"); row(72, 4, "cBc")
         save(0f, 1, 71)
         coinLine(0f, 4f, 69, 72)
@@ -252,6 +254,7 @@ private class L3(w: World) : SkyWriter(w, 3) {
         row(74, 4.5f, "d"); row(75, 5, "d"); row(76, 5.5f, "d"); row(77, 6, "d")
         save(0f, 2, 75); save(0f, 3, 77)
         coin(0f, 5f, 74); coin(0f, 5.5f, 75); coin(0f, 6f, 76); coin(0f, 6.5f, 77)
+        trig(78, Ev.WIND_STOP)
         row(78, 6, "GYG"); checkpointRow(79, 6); row(80, 6, "GYG")
         // ---- fast moving blocks, then spikes and a timed row before the portal
         moving(0f, 6, 82, 1.5f, 2.0f, 0f, 2.0f, BC.PURPLE)

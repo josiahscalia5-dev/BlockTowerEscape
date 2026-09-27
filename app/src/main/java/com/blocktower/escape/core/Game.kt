@@ -643,6 +643,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             if (kx != 0f) { steerX += kx * 4.5f * dt; swipe.laneChange = true }
             val jr = if (joystickMode) joy.steerRate() else 0f
             if (jr != 0f) { steerX += jr * dt; swipe.laneChange = true }
+            // magical wind pushes the steering target: the boy drifts unless steered back (on the ground the
+            // path's edge still holds him; in the air nothing does)
+            if (ev.gust > 0.01f) { steerX += ev.windPush * dt; swipe.laneChange = true }
             val gb = p.ground
             if (p.grounded && gb != null && gb.type == BT.MOVING) steerX += gb.dxFrame
             if (p.grounded) {
@@ -650,7 +653,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
                 val lo = pathLo; val hi = pathHi
                 if (lo < hi) { val c = clamp(steerX, lo, hi); swipe.absorb(steerX - c); steerX = c }
                 // settle onto the middle of a block once the thumb stops steering
-                if (swipe.steerIdle > 0.18f && joy.steerIdle > 0.18f && kx == 0f && swipe.laneChange) {
+                if (swipe.steerIdle > 0.18f && joy.steerIdle > 0.18f && kx == 0f && swipe.laneChange && ev.gust < 0.05f) {
                     val cx = nearestBlockCentre(steerX)
                     if (!cx.isNaN()) steerX = lerp(steerX, cx, damp(7f, dt))
                 }
