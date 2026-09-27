@@ -30,6 +30,7 @@ fun main(args: Array<String>) {
         "finish" -> finishFrames(assets, out, (opts["level"] ?: "5").toInt())
         "app" -> appShots(assets, out, w, h)
         "flow" -> Flow(assets, out, opts).run()
+        "devices" -> Devices(assets, out, opts).run()
         else -> error("unknown mode ${args[0]}")
     }
 }
