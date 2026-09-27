@@ -124,6 +124,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
     private var camLead = 0f
     private var kickY = 0f; private var kickV = 0f
     private var camInit = false
+    private var camCyK = 0f
 
     /** Lateral position the boy is steering toward (swipes move it; he glides after it). */
     var steerX = 0f
@@ -154,7 +155,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         fx.clear(); ev.reset()
         results = null; failReason = ""
         shake = 0f; rumble = 0f; flashWhite = 0f; flashRed = 0f; hint = ""; hintT = 0f; pendingHint = ""
-        camInit = false; camYaw = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
+        camInit = false; camYaw = 0f; camCyK = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
         combo = 0; lastTargetT = -9f
         kickY = 0f; kickV = 0f; camLead = 0f; camRoll = 0f; camFov = 1f
         swipe.reset(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f; movedYet = false
@@ -186,7 +187,7 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         fx.clear(); results = null; failReason = ""
         shake = 0f; flashRed = 0f; flashWhite = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
         state = GS.INTRO; stateT = 1.39f; introCountFrom = 1.39f; introSwoop = false; paused = false
-        camInit = false; camYaw = 0f
+        camInit = false; camYaw = 0f; camCyK = 0f
         swipe.stop(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f
         markSpawnContacts()
     }
@@ -764,7 +765,9 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
     }
 
     // ------------------------------------------------------------------ swinging logs (Level 5)
-    private var logT = 0f
+    /** Clock the swinging logs run on (slows with slow motion). */
+    var logT = 0f
+        private set
     private val logWhoosh = BooleanArray(8)
 
     /** Swings the spiked logs; one that sweeps through the boy knocks him back (the shield blocks it). */
@@ -1490,7 +1493,14 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
             // follow the fall from above so the tower does not get between the camera and the boy
             dist += 1.4f; height += 2.6f; pitch += 0.3f
         }
+        var cyToCentre = 0f
+        if (spec.jungle && state == GS.PLAY) {
+            // the final approach: lift the gaze so the portal rises into view above the stairs
+            val k = smooth((gateProgress() - 0.84f) / 0.12f)
+            pitch = lerp(pitch, 0.36f, k); height += 0.5f * k; dist += 0.6f * k
+        }
         if (state == GS.COMPLETE || state == GS.RESULTS) {
+            cyToCentre = if (state == GS.RESULTS) 1f else smooth(stateT / 1.2f)
             // pull back until the whole gate is framed, then ease in toward the portal as the boy enters
             val u = if (state == GS.RESULTS) 1f else smooth(stateT / 1.7f)
             val push = if (state == GS.COMPLETE) smooth((stateT - 1.1f) / 1.2f) * 0.22f else 0.22f
@@ -1534,7 +1544,9 @@ class Game(val platform: Platform, levelNumber: Int = 5) {
         val tr = max(shake, rumble)
         val amp = tr * tr * 24f * hud.s
         cam.cx = hud.w * 0.5f + amp * noise(t * 29f)
-        cam.cy = (if (spec.camCy > 0f) hud.h * spec.camCy else hud.sceneCY) + amp * noise(t * 31f + 7f)
+        camCyK = lerp(camCyK, cyToCentre, damp(4f, dt))
+        val cy0 = if (spec.camCy > 0f) lerp(hud.h * spec.camCy, hud.sceneCY, camCyK) else hud.sceneCY
+        cam.cy = cy0 + amp * noise(t * 31f + 7f)
         cam.roll = camRoll + tr * tr * 0.035f * noise(t * 21f + 3f)
         ev.applyCamera(this)
         cam.update()

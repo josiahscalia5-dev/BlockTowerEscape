@@ -217,6 +217,8 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         trig(6, Ev.HINT_BLOCK)
         save(0f, -3, 9)
         coin(0f, 1.1f, 8); coin(0f, 1.3f, 9); coin(0f, 1.1f, 10)
+        // ...or hop across the vanishing stones on the left
+        for (z in intArrayOf(7, 9, 11)) blk(-3f, 0f, z, BC.PURPLE, BT.DISAPPEAR)
         row(12, 0, "YGY"); row(13, 0, "YBY"); row(14, 0, "YGY")
         bubble(1f, 0f, 14, TK.SHIELD)
         // spike run: jump the rows or let the shield take a hit
@@ -233,8 +235,9 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         // ================= SECTION 5 : TEMPLE GUARDIAN CHASE =================
         zo = 118; lo = 20f
         section("chase", 0, 38)
-        stoneRow(0, 0f, -1, 1); stoneRow(1, 0f, -1, 1); stoneRow(2, 0f, -1, 1)
-        trig(1, Ev.CHASE)
+        // a checkpoint just before the chase: getting caught never sends you back through the tool trials
+        archCheckpoint(0, 0); stoneRow(1, 0f, -1, 1); stoneRow(2, 0f, -1, 1)
+        trig(2, Ev.CHASE)
         row(3, 0, "KYK"); row(4, 0, "KBK"); row(5, 0, "KYK")
         row(7, 0, "RYR"); row(8, 0, "RYR"); row(9, 0, "tYt"); row(10, 0, "RYR")
         row(12, 0, "ccc"); row(13, 0, "cYc"); row(14, 0, "ccc")
@@ -252,16 +255,17 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         collapsible(-4, 38)
 
         // ================= SECTION 6 : CHECKPOINT =================
-        section("haven", 39, 45)
-        for (z in 39..45) if (z != 42) row(z, 1, if (z % 2 == 0) "GYGYG" else "YGYGY", -2)
+        section("haven", 39, 48)
+        for (z in 39..48) if (z != 42) row(z, 1, if (z % 2 == 0) "GYGYG" else "YGYGY", -2)
         row(42, 1, "GY.YG", -2); checkpoint(42, 1)
         trig(41, Ev.CHASE_END)
-        mystery(-2f, 1f, 44, Reward.HEART, BC.GREEN)
-        mystery(2f, 1f, 44, Reward.TOOL_SHIELD, BC.GREEN)
-        for (z in intArrayOf(39, 45)) { under(-2f, 1f, z, 3); under(2f, 1f, z, 3) }
+        mystery(-2f, 1f, 46, Reward.HEART, BC.GREEN)
+        mystery(2f, 1f, 46, Reward.TOOL_SHIELD, BC.GREEN)
+        for (z in intArrayOf(39, 44, 48)) { under(-2f, 1f, z, 3); under(2f, 1f, z, 3) }
+        coin(-1f, 1f, 44); coin(1f, 1f, 44); coin(0f, 1f, 47)
 
         // ================= SECTION 7 : DIFFICULT TEMPLE CLIMB =================
-        zo = 164; lo = 21f
+        zo = 167; lo = 21f
         section("temple", 0, 36)
         trig(0, Ev.ZONE, "SECTION 7", "THE TEMPLE CLIMB")
         stoneRow(0, 0f, -1, 1); row(1, 0, "KbK")
@@ -290,7 +294,7 @@ private class Level5Writer(w: World) : CourseWriter(w, 5) {
         for (z in intArrayOf(5, 13, 19, 26, 35)) { val l = w.levelAt(z + zo) - lo; under(-1f, l, z, 3); under(1f, l, z, 3) }
 
         // ================= SECTION 8 + 9 : FINAL APPROACH AND ESCAPE THROUGH THE PORTAL =================
-        zo = 202; lo = 30f
+        zo = 205; lo = 30f
         section("approach", 0, 28)
         trig(0, Ev.FINAL)
         row(0, 0, "KYK"); row(1, 0, "KYK"); row(2, 0, "KYK"); row(3, 0, "KYK")

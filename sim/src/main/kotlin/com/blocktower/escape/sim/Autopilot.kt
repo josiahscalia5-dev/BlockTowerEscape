@@ -42,15 +42,44 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
     private val log = ArrayList<String>()
     private val seen = HashSet<String>()
 
-    // ---- the route: target lane (x) from each z onward
-    private val route = floatArrayOf(
-        -9f, 0f, 9.4f, 1f, 13.7f, 0f,
-        86.1f, -1f, 86.8f, 0f,                 // step on the shortcut ? block, then take the golden bridge
-        117.6f, 2.5f,                          // fork: the treasure path on the right
-        129.6f, 1f, 132.3f, 0f,                // back in, passing the trapped ? box in the middle of the path
-        211.6f, 1f, 212.9f, 0f                 // take the shield bubble before the spike run
+    /**
+     * Where the scripted moments happen on each level, and the lane to steer for from each z onward.
+     * Level 23 is the sky tower, Level 5 the jungle temple.
+     */
+    private class Plan(
+        val route: FloatArray,
+        val fallZ: Float, val steerZ: Float, val speedZ: Float, val captureZ: Float,
+        val magnetZ: Float, val shieldZ: Float, val blockZ0: Float, val blockZ1: Float,
+        val trapZ0: Float, val trapZ1: Float,
+        /** "choosing between paths": pass zone A with x in range, then zone B with x in range */
+        val pathA: FloatArray, val pathB: FloatArray,
+    )
+    private val level = (opts["level"] ?: "23").toInt()
+    private val plan = if (level == 23) Plan(
+        route = floatArrayOf(
+            -9f, 0f, 9.4f, 1f, 13.7f, 0f,
+            86.1f, -1f, 86.8f, 0f,                 // step on the shortcut ? block, then take the golden bridge
+            117.6f, 2.5f,                          // fork: the treasure path on the right
+            129.6f, 1f, 132.3f, 0f,                // back in, passing the trapped ? box in the middle of the path
+            211.6f, 1f, 212.9f, 0f),               // take the shield bubble before the spike run
+        fallZ = 15.2f, steerZ = 22.1f, speedZ = 30f, captureZ = 146f, magnetZ = 193.8f, shieldZ = 212.7f,
+        blockZ0 = 201.5f, blockZ1 = 203f, trapZ0 = 108f, trapZ1 = 142f,
+        pathA = floatArrayOf(120f, 127f, 1.7f, 9f), pathB = floatArrayOf(131f, 134f, -1.3f, 1.3f),
+    ) else Plan(
+        route = floatArrayOf(
+            -9f, 0f, 1.6f, 0.2f, 2.6f, -0.3f, 4.6f, 0f, 8.7f, 0.6f, 9.6f, 0.5f, 10.6f, 1.0f,
+            13.3f, 1.4f, 14.6f, 0.9f, 15.6f, 0.4f, 17.2f, 0.2f, 20.2f, 0.9f, 21.6f, 1.2f, 23.2f, 1.9f,
+            // the coin trail up toward the portal
+            24.6f, 1.8f, 25.6f, 1.5f, 26.6f, 1.2f, 27.6f, 0.9f, 28.6f, 1.0f, 29.6f, 1.3f, 30.6f, 1.6f, 31.6f, 1.7f, 32.6f, 1.5f,
+            33.6f, 0f,
+            // the vanishing stepping stones in the moving-stones section
+            78.3f, 1f, 79.4f, 0f, 80.4f, 1f, 81.6f, 0f),
+        fallZ = 36.2f, steerZ = 160.5f, speedZ = 38f, captureZ = 125f, magnetZ = 92.5f, shieldZ = 104.5f,
+        blockZ0 = 96.5f, blockZ1 = 98.2f, trapZ0 = 57f, trapZ1 = 90f,
+        pathA = floatArrayOf(18f, 20f, -9f, 0.6f), pathB = floatArrayOf(24f, 25.2f, 1.2f, 9f),
     )
     private fun routeX(z: Float): Float {
+        val route = plan.route
         var x = 0f
         var i = 0
         while (i < route.size) { if (z >= route[i]) x = route[i + 1]; i += 2 }
@@ -207,7 +236,14 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         when (g.state) {
             GS.FAILED -> {
                 thumbQ.clear()
-                if (g.stateT > 2.2f) { note("GAME OVER screen: pressing CONTINUE"); seen.add("continue"); g.onKey(Key.ENTER, true); g.onKey(Key.ENTER, false) }
+                if (g.stateT > 2.2f) {
+                    note("GAME OVER screen: pressing CONTINUE"); seen.add("continue"); g.onKey(Key.ENTER, true); g.onKey(Key.ENTER, false)
+                    // tools placed after the checkpoint may be needed again
+                    val cz = p.z
+                    if (cz < plan.blockZ1) blockUsed = false
+                    if (cz < plan.magnetZ) magnetUsed = false
+                    if (cz < plan.shieldZ) shieldUsed = false
+                }
                 return
             }
             GS.RESULTS -> { if (g.stateT > 1.0f && g.stateT < 1.02f) seen.add("results"); return }
@@ -220,26 +256,32 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         val z = p.z
 
         // --- scripted tests along the way
-        if (!fallTestDone && z > 15.2f && p.grounded && thumbFree) {
+        if (!fallTestDone && z > plan.fallZ && p.grounded && thumbFree) {
             // leap off the side of the path on purpose: the safety net should catch us
             fallStartHearts = g.hearts
             if (leapOffTheSide()) { fallTestDone = true; leapFrame = frame; note("deliberate leap off the path") }; return
         }
         if (frame - leapFrame < 90) return          // committed to the leap: no steering back
-        if (!fallTestDone) {} else if (steerTest < 99 && z > 22.1f) { steeringTests(); if (steerTest < 99) return }
-        if (!speedUsed && z > 30f && p.grounded && len2(p.vx, p.vz) > 2.5f) { tapTool(TK.SPEED); speedUsed = true }
+        if (!fallTestDone) {} else if (steerTest < 99 && z > plan.steerZ && (g.ev.chase == Chase.NONE || g.ev.chase == Chase.ESCAPED)) { steeringTests(); if (steerTest < 99) return }
+        if (!speedUsed && z > plan.speedZ && p.grounded && len2(p.vx, p.vz) > 2.5f) { tapTool(TK.SPEED); speedUsed = true }
         flatGroundFlick()
-        if (!captureTestDone && g.ev.chase == Chase.RUN && z > 146f) {
+        if (!captureTestDone && g.ev.chase == Chase.RUN && z > plan.captureZ) {
             // stop and let the Tower Guard catch us once
             if (idleUntil < 0f) { idleUntil = g.t + 12f; note("stopping in front of the Tower Guard") }
             if (g.t < idleUntil) { wantRun = false; keepPace(); return }
         }
         if (g.ev.chase == Chase.CAUGHT) captureTestDone = true
         if (captureTestDone) idleUntil = -1f
-        if (!magnetUsed && z > 193.8f && p.grounded) { tapTool(TK.MAGNET); magnetUsed = true }
-        if (!shieldUsed && z > 212.7f && p.grounded) { tapTool(TK.SHIELD); shieldUsed = true }
+        if (!magnetUsed && z > plan.magnetZ && p.grounded) { tapTool(TK.MAGNET); magnetUsed = true }
+        if (!shieldUsed && z > plan.shieldZ && p.grounded) { tapTool(TK.SHIELD); shieldUsed = true }
 
         wantRun = true
+        // --- a swinging log will be in the way when we get there: wait for it to swing clear
+        if (logInWay()) {
+            if (!logWaitNoted) { note("waiting for the swinging log"); logWaitNoted = true; logWaits++ }
+            wantRun = false; keepPace(); return
+        }
+        logWaitNoted = false
         // --- steering: a sideways swipe whenever the lane we want is off to the side
         var tx = routeX(z)
         val ground = p.ground
@@ -262,7 +304,7 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         }
         if (edge < 0f) { keepPace(); return }
         // the block tool bridge in the tool trials: too far to jump
-        if (!blockUsed && !wall && z > 201.5f && z < 203f && edge < 0.6f) { tapTool(TK.BLOCK); blockUsed = true; return }
+        if (!blockUsed && !wall && z > plan.blockZ0 && z < plan.blockZ1 && edge < 0.6f) { tapTool(TK.BLOCK); blockUsed = true; return }
         val landing = landingAhead(z + edge, y)
         if (landing != null && landing.type == BT.MOVING && !wall) {
             // wait back from the edge (with a run-up) until the platform will be under us when we land
@@ -283,6 +325,27 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         if (frame - flickJumpFrame < 50) { keepPace(); return }   // the game times that jump to the edge
         if (edge < (if (wall) 0.45f else 0.32f)) pressJump()
         keepPace()
+    }
+
+    private var logWaitNoted = false
+    private var logWaits = 0
+    /** Predicts whether a swinging log sweeps through our lane while we pass under it. */
+    private fun logInWay(): Boolean {
+        for (l in g.world.logs) {
+            val dz = l.pz - p.z
+            if (dz < 1.0f || dz > 3.4f || abs(p.y - (l.py - l.len)) > 3f) continue
+            val sp = max(3.2f, p.vz)
+            val t0 = g.logT + dz / sp
+            val w = com.blocktower.escape.core.TAU / l.period
+            var k = -2
+            while (k <= 4) {
+                val a = l.amp * sin(w * (t0 + k * 0.1f) + l.phase)
+                val cx = l.px + sin(a) * l.len; val cy = l.py - kotlin.math.cos(a) * l.len
+                if (abs(p.x - cx) < l.size * 0.5f + 0.6f && cy - l.radius < p.y + Tune.HEIGHT + 0.25f) return true
+                k++
+            }
+        }
+        return false
     }
 
     /** Swipe up to keep running (or down to stop) when the pace is not what we want. */
@@ -319,7 +382,7 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
                 val unchanged = (0..3).all { g.tools[it].count == toolCounts0[it] && !g.tools[it].isActive }
                 result("swipes never activate tools", unchanged, "tool counts ${toolCounts0.joinToString()} -> ${(0..3).joinToString { g.tools[it].count.toString() }}")
                 result("swipe right (standing)", g.steerX > mark0 + 0.3f && p.x > mark0 + 0.3f, "x ${"%.2f".format(mark0)} -> ${"%.2f".format(p.x)}")
-                steerSwipe(mark0 - g.steerX); startStep = 4; stepAt = frame + 40
+                steerSwipe(mark0 - g.steerX); startStep = 4; stepAt = frame + 64
             }
             4 -> {
                 result("swipe left (standing)", abs(p.x - mark0) < 0.15f, "back to x=${"%.2f".format(p.x)}")
@@ -383,7 +446,7 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
     private var maxDvz = 0f
     private var maxDx = 0f; private var maxDvx = 0f
     private var penetrations = 0
-    private var hurts = 0; private var trapHurts = 0
+    private var hurts = 0; private var trapHurts = 0; private var logHits = 0
     private var lastHurt = 0f
     private var jumpsWhileMoving = 0; private var jumpsLanded = 0
     private var airFrom = -1; private var airVz = 0f
@@ -410,7 +473,8 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         }
         // hits (spikes, traps) — the fall and capture tests are counted separately
         if (p.hurtFlash > lastHurt + 0.5f && normal) {
-            hurts++; if (p.z in 108f..142f) trapHurts++
+            hurts++; if (p.z in plan.trapZ0..plan.trapZ1) trapHurts++
+            if (g.world.logs.any { abs(it.pz - p.z) < 1.6f }) logHits++
             note("hit (hurt flash) at z=${"%.1f".format(p.z)}")
         }
         lastHurt = p.hurtFlash
@@ -425,8 +489,9 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         }
         if (airFrom >= 0 && p.state != PS.NORMAL) airFrom = -1
         // the fork: the right-hand treasure path, then back to the middle
-        if (normal && p.grounded && p.z in 120f..127f && p.x > 1.7f) forkRight = true
-        if (forkRight && normal && p.z > 131f && p.z < 134f && abs(p.x) < 1.3f) forkRejoined = true
+        val pa = plan.pathA; val pb = plan.pathB
+        if (normal && p.grounded && p.z in pa[0]..pa[1] && p.x in pa[2]..pa[3]) forkRight = true
+        if (forkRight && normal && p.grounded && p.z in pb[0]..pb[1] && p.x in pb[2]..pb[3]) forkRejoined = true
         if (normal) { maxYaw = max(maxYaw, abs(g.turn) * 0.045f); maxRoll = max(maxRoll, abs(g.turn) * 0.012f) }
         // fall recovery
         if (fallTestDone && !seen.contains("recovered") && seen.contains("ps:RESCUE_RIDE") && p.state == PS.NORMAL && p.grounded) {
@@ -485,11 +550,11 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         println()
         println("================ AUTOPILOT REPORT ================")
         println("frames: $frame (${"%.1f".format(frame / 60f)} s of game time)")
-        println("final state: ${stateName(g.state)}   score: ${g.score}   blue: ${g.target}/12   coins: ${g.coinsCollected}/${g.world.coinTotal}   hearts: ${g.hearts}")
+        println("final state: ${stateName(g.state)}   score: ${g.score}   blue: ${g.target}/${g.spec.targetNeed}   coins: ${g.coinsCollected}/${g.world.coinTotal}   hearts: ${g.hearts}")
         if (r != null) println("results: stars=${r.stars} timeLeft=${r.timeLeft}s total=${r.totalScore} rewardCoins=${r.rewardCoins} gems=${r.gemReward}")
         val checks = listOf(
             "countdown + GO" to (seen.contains("ps:NORMAL") || true),
-            "blue blocks collected (12/12)" to (g.target >= 12),
+            "blue blocks collected (${g.spec.targetNeed}/${g.spec.targetNeed})" to (g.target >= g.spec.targetNeed),
             "fall -> safety net -> recovery" to (seen.contains("ps:RESCUE_FALL") && seen.contains("ps:RESCUE_RIDE")),
             "tool SPEED used" to seen.contains("tool:SPEED"),
             "tool MAGNET used" to seen.contains("tool:MAGNET"),
@@ -500,9 +565,9 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
             "chase: captured -> game over" to seen.contains("chase:CAUGHT"),
             "game over -> continue from checkpoint" to seen.contains("continue"),
             "chase: escaped at the checkpoint" to seen.contains("chase:ESCAPED"),
-            "final climb (lava)" to seen.contains("lava"),
+            "final climb (lava)" to (seen.contains("lava") || level != 23),
             "final escape (collapse)" to seen.contains("final escape"),
-            "entered the Ancient Gate" to seen.contains("ps:WIN"),
+            "entered the ${g.spec.gateName}" to seen.contains("ps:WIN"),
             "LEVEL COMPLETE results" to (g.state == GS.RESULTS),
         )
         var ok = true
@@ -510,8 +575,13 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         // ---- movement tests
         val box = trapBox()
         result("5 jump while moving", jumpsWhileMoving >= 5 && flickJumps >= 1, "$jumpsWhileMoving running jumps landed (button + $flickJumps context flick jumps)")
-        result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the right-hand path: $forkRight, steered back to the main path: $forkRejoined")
-        result("7 moving around obstacles", box != null && !box.used && trapHurts == 0, "trapped ? box untouched: ${box?.used == false}, hits in the trap section: $trapHurts")
+        if (level == 23) {
+            result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the right-hand path: $forkRight, steered back to the main path: $forkRejoined")
+            result("7 moving around obstacles", box != null && !box.used && trapHurts == 0, "trapped ? box untouched: ${box?.used == false}, hits in the trap section: $trapHurts")
+        } else {
+            result("6 steering across block paths", forkRight && forkRejoined, "the left cluster by the guardian's ruins: $forkRight, then the right cluster toward the portal: $forkRejoined")
+            result("7 moving around obstacles", logHits == 0 && trapHurts == 0 && g.world.logs.isNotEmpty(), "waited for the swinging logs $logWaits times, log hits: $logHits, hits in the hazard section: $trapHurts")
+        }
         result("9 tools while moving", toolsWhileMoving.size >= 3, "used while running: ${toolsWhileMoving.joinToString()}")
         result("10 reaching the final portal", seen.contains("ps:WIN") && g.state == GS.RESULTS, "entered the gate, results shown")
         result("never inside a block", penetrations == 0, "$penetrations frames overlapping a solid block")

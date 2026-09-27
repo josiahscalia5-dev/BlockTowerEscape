@@ -27,7 +27,7 @@ fun main(args: Array<String>) {
         "poses" -> posesSheet(assets, out)
         "play" -> Autopilot(assets, out, opts).run()
         "profile" -> profile(assets)
-        "finish" -> finishFrames(assets, out)
+        "finish" -> finishFrames(assets, out, (opts["level"] ?: "5").toInt())
         else -> error("unknown mode ${args[0]}")
     }
 }
@@ -85,14 +85,14 @@ fun profile(assets: File) {
 }
 
 /** Starts on the gate plaza with the objective complete and renders the finish sequence. */
-fun finishFrames(assets: File, out: File) {
-    val game = Game(SimPlatform(assets))
+fun finishFrames(assets: File, out: File, level: Int) {
+    val game = Game(SimPlatform(assets), level)
     val gfx = J2DGfx(assets, 540, 1170)
     game.hud.layout(540, 1170)
     for (i in 0 until 200) game.update(1f / 60f)
     val po = game.world.portals.first()
     game.player.reset(0f, po.y, po.z - 3.2f)
-    game.target = 12
+    game.target = game.spec.targetNeed
     game.input.kU = true
     var f = 0
     while (game.state != com.blocktower.escape.core.GS.COMPLETE && f < 600) { game.update(1f / 60f); f++ }

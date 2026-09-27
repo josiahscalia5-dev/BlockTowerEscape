@@ -867,7 +867,8 @@ class WorldRenderer(val g: Game) {
         val w = gr.width.toFloat(); val h = gr.height.toFloat()
         val s = max(w / art.artW, h / art.artH)
         val px = clamp(-g.camX * 7f, -60f, 60f) * s
-        val climb = clamp((cam.ey - 3.6f) * 6f, 0f, 420f) * s
+        // the jungle stays in view: the plate only drifts a little as the path climbs
+        val climb = clamp((cam.ey - 3.6f) * 2.2f, 0f, 150f) * s
         jbS = s
         jbLeft = w * 0.5f - (art.bgArtX + art.artW * 0.5f) * s + px
         jbTop = -art.bgArtY * s + climb
@@ -1022,7 +1023,9 @@ class WorldRenderer(val g: Game) {
     private fun drawArch(gr: Gfx, cp: Checkpoint) {
         val img = art.checkpointArch ?: return
         if (!cam.project(cp.x, cp.y - 0.35f, cp.z + 0.1f)) return
-        val a = smooth((cam.depth - 1.6f) / 2.4f) * (1f - smooth((cam.depth - (maxDepth - 10f)) / 10f))
+        var a = smooth((cam.depth - 1.6f) / 2.4f) * (1f - smooth((cam.depth - (maxDepth - 10f)) / 10f))
+        // while the camera looks back at the Guardian, arches behind the boy step aside
+        if (cp.z < g.player.z) a *= 1f - g.ev.camBlend
         if (a <= 0.01f) return
         val sc = cam.scaleAt(cam.depth)
         val w = 3.6f * sc

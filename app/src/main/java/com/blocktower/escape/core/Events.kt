@@ -357,6 +357,8 @@ class Events(val g: Game) {
         cam.ex = lerp(cam.ex, tx, u); cam.ey = lerp(cam.ey, ty, u); cam.ez = lerp(cam.ez, tz, u)
         cam.yaw = lerp(cam.yaw, Math.PI.toFloat(), u)
         cam.pitch = lerp(cam.pitch, pitch, u)
+        // a level framed with the lens centre low on screen looks back through the middle of the screen
+        if (c.spec.camCy > 0f) cam.cy = lerp(cam.cy, c.hud.h * 0.5f, u)
         cam.roll *= 1f - u
     }
 
