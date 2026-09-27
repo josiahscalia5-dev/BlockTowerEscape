@@ -18,7 +18,7 @@ class WorldRenderer(val g: Game) {
     private val cam get() = g.cam
 
     private object K { const val BLOCK = 0; const val COIN = 1; const val PLAYER = 2; const val BEACON = 3; const val PORTAL = 4
-        const val GUARD = 5; const val DRAGON = 6; const val FIREBALL = 7; const val ROCK = 8; const val RIDE = 9 }
+        const val GUARD = 5; const val ROCK = 8; const val RIDE = 9 }
 
     private var n = 0
     private var kinds = IntArray(2048)
@@ -60,8 +60,6 @@ class WorldRenderer(val g: Game) {
                 K.BEACON -> drawBeacon(gr, r as Checkpoint)
                 K.PORTAL -> drawPortal(gr, r as Portal)
                 K.GUARD -> drawGuard(gr)
-                K.DRAGON -> drawDragon(gr)
-                K.FIREBALL -> drawFireball(gr, r as Fireball)
                 K.ROCK -> drawRock(gr, r as Rock)
                 K.RIDE -> drawRidePlatform(gr)
             }
@@ -77,18 +75,23 @@ class WorldRenderer(val g: Game) {
         val h = g.hud
         val s = h.bgS
         gr.fillRect(0f, 0f, gr.width.toFloat(), gr.height.toFloat(), 0xFF0A3CA8.toInt())
-        val sec = g.world.sectionAt(g.player.z)
-        val ox = sec?.originX ?: 0f
-        val px = clamp(-(g.camX - ox) * 7f, -60f, 60f) * s
+        val px = clamp(-g.camX * 7f, -60f, 60f) * s
         val climb = clamp((cam.ey - 3.17f) * 7f, 0f, 380f) * s
         val w = art.bg.w * s
         val hh = art.bg.h * s
         val left = gr.width * 0.5f - (art.bgArtX + 512f) * s + px
         val top = h.bgArtTop - art.bgArtY * s + climb
+        val roll = cam.roll
+        val rolled = abs(roll) > 0.0005f
+        if (rolled) {
+            // the sky rolls with the camera; zoom slightly so no edge shows
+            gr.save(); gr.translate(cam.cx, cam.cy); gr.rotate(roll * 57.29578f)
+            val z = 1f + abs(roll) * 2.6f
+            gr.scale(z, z); gr.translate(-cam.cx, -cam.cy)
+        }
         gr.image(art.bg, left, top, w, hh)
-        if (top > 0f) gr.fillRectGradient(0f, 0f, gr.width.toFloat(), top + 2f, 0xFF03287E.toInt(), 0xFF04349F.toInt())
-        val st = g.ev.stormAmt
-        if (st > 0.01f) gr.fillRect(0f, 0f, gr.width.toFloat(), gr.height.toFloat(), Col.withA(0xFF1A2440.toInt(), 0.42f * st))
+        if (top > 0f) gr.fillRectGradient(-40f, -40f, gr.width + 40f, top + 2f, 0xFF03287E.toInt(), 0xFF04349F.toInt())
+        if (rolled) gr.restore()
     }
 
     // ------------------------------------------------------------------ collection
@@ -129,9 +132,6 @@ class WorldRenderer(val g: Game) {
         if (p.state == PS.RESCUE_RIDE) push(K.RIDE, p, cam.dist2(p.x, p.y - 0.1f, p.z) + 0.5f)
         val gd = g.ev.guard
         if (gd.on) push(K.GUARD, gd, cam.dist2(gd.x, gd.y + 2f, gd.z - 0.3f))
-        val dr = g.ev.dragon
-        if (dr.on) push(K.DRAGON, dr, cam.dist2(dr.x, dr.y, dr.z))
-        for (f in g.ev.fireballs) if (f.on) push(K.FIREBALL, f, cam.dist2(f.x, f.y, f.z))
         for (rk in g.ev.rocks) if (rk.on) push(K.ROCK, rk, cam.dist2(rk.x, rk.y + 0.35f, rk.z) - 0.3f)
     }
 
@@ -290,31 +290,54 @@ class WorldRenderer(val g: Game) {
         var color = b.color
         var overlay = OV.NONE
         var glowC = 0; var glowA = 0f
+        var flash = b.flash
+        // scale about the block centre: a collected shell swells as it cracks, blocks pop when they settle
+        var grow = 1f
+        val objective = g.target < Tune.TARGET_NEED
         when (b.type) {
             BT.MYSTERY -> overlay = if (b.color == BC.RED) OV.MYSTERY_R else OV.MYSTERY_G
             BT.BOOST -> { overlay = OV.BOOST; color = BC.BLUE; glowC = 0xFF7FE6FF.toInt(); glowA = 0.08f + 0.08f * pulse(t, 5f) }
             BT.SAVE -> { overlay = OV.SAVE; glowC = 0xFFFFFFD0.toInt(); glowA = 0.1f + 0.15f * pulse(t, 4f) }
             BT.BOUNCE -> overlay = OV.BOUNCE
-            BT.TRAP -> overlay = OV.TRAP
+            BT.TRAP -> { overlay = OV.TRAP
+                // armed: the trap glows red just before the spikes pop
+                val c = (t + b.phase) % 2.6f
+                if (c in 1.25f..1.85f) { glowC = 0xFFFF3A2A.toInt(); glowA = 0.28f * sin(((c - 1.25f) / 0.6f) * Math.PI.toFloat()) } }
             BT.CHECKPOINT -> overlay = if (g.world.checkpoints.getOrNull(b.checkpointId)?.active == true) OV.RUNE_ON else OV.RUNE_OFF
             BT.CRACKED -> overlay = when { b.damage > 0.75f -> OV.CRACK3; b.damage > 0.35f -> OV.CRACK2; else -> OV.CRACK1 }
             BT.FALLING -> overlay = if (b.state >= 1) OV.CRACK2 else OV.CRACK1
             BT.COLORSHIFT -> { color = g.shiftColor(b); overlay = OV.SHIFT }
             BT.TOOLBLOCK, BT.RESCUE -> { overlay = OV.ENERGY; glowC = Col.WHITE; glowA = 0.15f + 0.15f * pulse(t, 7f) }
-            BT.TARGET -> { glowC = 0xFF9FD8FF.toInt(); glowA = 0.06f * pulse(t + b.z * 0.7f, 3f) }
+            BT.TARGET -> { glowC = 0xFF9FD8FF.toInt(); glowA = if (objective) 0.07f + 0.09f * pulse(t + b.z * 0.7f, 3f) else 0.03f }
             else -> {}
         }
+        if (b.crackT > 0f) {
+            val u = b.crackT
+            overlay = if (u < 0.34f) OV.CRACK1 else if (u < 0.67f) OV.CRACK2 else OV.CRACK3
+            flash = max(flash, u * 0.55f); grow = 1f + 0.07f * u
+        }
+        if (b.pop > 0f) grow *= 1f + 0.09f * sin(b.pop * Math.PI.toFloat())
+        val hx = b.sx * 0.5f * grow; val hz = b.sz * 0.5f * grow; val hy = sy * grow
+        val cz = b.z + b.sz * 0.5f
+        val y0 = y - (hy - sy) * 0.5f
         val static = b.type != BT.MOVING && b.rise <= 0f && !b.destroyed && b.shake <= 0f && b.bump <= 0f && b.squash <= 0f &&
-            b.alpha >= 0.99f && b.sx == 1f && b.sy == 1f && b.sz == 1f && b.type != BT.FALLING
-        val ok = drawBox(gr, x - b.sx * 0.5f, y, b.z, x + b.sx * 0.5f, y + sy, b.z + b.sz, color, b.variant, alpha, b.flash,
+            b.alpha >= 0.99f && b.sx == 1f && b.sy == 1f && b.sz == 1f && b.type != BT.FALLING && grow == 1f
+        val ok = drawBox(gr, x - hx, y0, cz - hz, x + hx, y0 + hy, cz + hz, color, b.variant, alpha, flash,
             if (static) b else null, overlay, glowC, glowA)
         if (!ok) return
         if (b.type == BT.TRAP && b.spike > 0.02f) drawSpikes(gr, b)
-        if (b.type == BT.TARGET && ((t * 0.7f + b.z * 0.37f + b.x * 0.21f) % 3f) < 0.35f) {
-            // twinkle so blue target blocks read as collectibles
-            val u = ((t * 0.7f + b.z * 0.37f + b.x * 0.21f) % 3f) / 0.35f
-            if (cam.project(b.x - 0.3f + 0.6f * fract(b.z * 0.31f), b.y + 1.02f, b.z + 0.3f)) {
-                val sz = cam.scaleAt(cam.depth) * 0.22f * sin(u * Math.PI.toFloat())
+        if (b.type == BT.TARGET && objective) {
+            // the current objective: a soft light breathing on the top face, and a twinkle now and then
+            if (cam.project(b.x, b.y1 + 0.05f, b.z + 0.5f)) {
+                val sc = cam.scaleAt(cam.depth)
+                val a = (0.16f + 0.12f * pulse(t + b.z * 0.7f, 3f)) * (1f - smooth((cam.depth - 30f) / 20f))
+                gr.setAdditive(true)
+                gr.glow(cam.sx, cam.sy, 0.85f * sc, Col.withA(0xFF4AA8FF.toInt(), a))
+                gr.setAdditive(false)
+            }
+            val ph = (t * 0.7f + b.z * 0.37f + b.x * 0.21f) % 3f
+            if (ph < 0.35f && cam.project(b.x - 0.3f + 0.6f * fract(b.z * 0.31f), b.y + 1.02f, b.z + 0.3f)) {
+                val sz = cam.scaleAt(cam.depth) * 0.22f * sin(ph / 0.35f * Math.PI.toFloat())
                 star4(gr, cam.sx, cam.sy, sz, 0xFFFFFFFF.toInt())
             }
         }
@@ -396,49 +419,36 @@ class WorldRenderer(val g: Game) {
             val gy = groundBelow(p.x, p.y, p.z)
             if (gy > -999f) {
                 val hgt = p.y - gy
-                drawShadow(gr, p.x, p.z, gy, clamp01(1f - hgt / 6f), 0.36f * (1f + hgt * 0.05f), 0.26f * (1f + hgt * 0.05f))
+                drawShadow(gr, p.x, p.z, gy, clamp01(1f - hgt / 6f) * p.portalScale, 0.36f * (1f + hgt * 0.05f), 0.26f * (1f + hgt * 0.05f))
             }
         }
-        if (p.invuln > 0f && p.state == PS.NORMAL && ((t * 16f).toInt() and 1) == 1) return
+        // invulnerability after a hit: flicker (half-transparent, never invisible)
+        val blink = p.invuln > 0f && p.state == PS.NORMAL && ((t * 14f).toInt() and 1) == 1
+        val alpha = if (blink) 0.4f else 1f
         // sprite metrics: the boy is ~1.95 world units tall at the camera's framing distance
         val worldH = 1.95f
-        var bob = 0f
-        val speed = len2(p.vx, p.vz)
-        if (p.grounded && speed > 0.6f) bob = abs(sin(p.runPhase * Math.PI.toFloat())) * 0.07f
-        val breathe = if (p.grounded && speed <= 0.6f) sin(t * 2.4f) * 0.012f else 0f
-        if (!cam.project(p.x, p.y + bob, p.z)) return
+        if (!cam.project(p.x, p.y, p.z)) return
         val fx0 = cam.sx; val fy0 = cam.sy
         val scale = cam.scaleAt(cam.depth)
-        var hPx = worldH * scale
-        val wPx = hPx * art.boy.w / art.boy.h
-        var sxk = 1f; var syk = 1f + breathe
-        if (p.squash > 0f) { syk *= 1f - p.squash; sxk *= 1f + p.squash * 0.7f }
-        else if (p.squash < 0f) { syk *= 1f - p.squash; sxk *= 1f + p.squash * 0.5f }
-        if (!p.grounded && p.state == PS.NORMAL) { syk *= 1f + clamp(p.vy * 0.004f, -0.03f, 0.05f) }
-        val ps = p.portalScale
-        sxk *= ps; syk *= ps
-        var rot = -p.lean * 7f
-        if (p.state == PS.RESCUE_FALL && !p.grounded) rot += sin(t * 14f) * 16f
-        if (p.state == PS.CAUGHT || p.state == PS.PORTAL) rot += sin(p.spin) * 25f
-        val flip = p.flip && p.grounded && speed > 0.6f
+        val hPx = worldH * scale * p.portalScale
+        if (hPx < 2f) return
+        val pose = g.rig.computePose(p)
+        val speed = len2(p.vx, p.vz)
         // speed afterimages
-        if (g.speedOn && speed > 1f) {
+        if (g.speedOn && speed > 1f && p.state == PS.NORMAL) {
             for (k in 2 downTo 1) {
-                if (!cam.project(p.x - p.vx * 0.035f * k, p.y + bob, p.z - p.vz * 0.035f * k)) continue
-                spriteQuad(cam.sx, cam.sy, wPx * sxk, hPx * syk, rot, flip, cam.scaleAt(cam.depth) / scale)
-                gr.imageQuad(art.boy, 0f, 0f, art.boy.w.toFloat(), art.boy.h.toFloat(), q, 0.28f / k, 1f, 0xFF60D8FF.toInt(), 0.6f)
+                if (!cam.project(p.x - p.vx * 0.04f * k, p.y, p.z - p.vz * 0.04f * k)) continue
+                g.rig.draw(gr, art.rig, pose, cam.sx, cam.sy, worldH * cam.scaleAt(cam.depth), 0.22f / k, 0xFF60D8FF.toInt(), 0.65f)
             }
         }
-        spriteQuad(fx0, fy0, wPx * sxk, hPx * syk, rot, flip, 1f)
         val hurt = p.hurtFlash
-        gr.imageQuad(art.boy, 0f, 0f, art.boy.w.toFloat(), art.boy.h.toFloat(), q, 1f, 1f,
-            if (hurt > 0f) 0xFFFF3030.toInt() else 0, if (hurt > 0f) hurt * 0.55f else 0f)
-        hPx *= syk
+        g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, alpha, if (hurt > 0f) 0xFFFF3030.toInt() else 0, if (hurt > 0f) hurt * 0.55f else 0f)
         val midX = fx0; val midY = fy0 - hPx * 0.45f
         if (g.shieldOn) {
-            val r = hPx * 0.62f * (1f + 0.03f * sin(t * 6f))
-            val left = g.tools[TK.SHIELD].active
-            val a = if (left < 2f && ((t * 8f).toInt() and 1) == 0) 0.4f else 1f
+            val tl = g.tools[TK.SHIELD]
+            val grow = easeOutBack(clamp01((tl.duration - tl.active) / 0.3f))
+            val r = hPx * 0.62f * (1f + 0.03f * sin(t * 6f)) * grow
+            val a = if (tl.active < 2f && ((t * 8f).toInt() and 1) == 0) 0.4f else 1f
             gr.setAdditive(true)
             gr.glow(midX, midY, r * 1.05f, Col.withA(0xFF3FA8FF.toInt(), 0.35f * a))
             gr.setAdditive(false)
@@ -450,6 +460,14 @@ class WorldRenderer(val g: Game) {
                 val ph = fract(t * 0.9f + k / 3f)
                 val rr = hPx * (0.3f + ph * 0.7f)
                 gr.strokeCircle(midX, midY + hPx * 0.2f, rr, 4f * g.hud.s, Col.withA(0xFFFF5A5A.toInt(), 0.6f * (1f - ph)))
+            }
+        }
+        // dazed stars after taking a hit
+        if (p.hurtT < 0.9f && p.state == PS.NORMAL) {
+            val a = 1f - p.hurtT / 0.9f
+            for (k in 0..2) {
+                val an = t * 7f + k * TAU / 3f
+                star4(gr, midX + cos(an) * hPx * 0.22f, fy0 - hPx * 0.98f + sin(an) * hPx * 0.05f, hPx * 0.05f * a, Col.withA(0xFFFFF0A0.toInt(), a))
             }
         }
     }
@@ -522,8 +540,8 @@ class WorldRenderer(val g: Game) {
     // ------------------------------------------------------------------ portals
     private fun drawPortal(gr: Gfx, po: Portal) {
         val t = g.t
-        val rad = if (po.isEnd) 1.45f else 1.1f
-        val cyW = po.y + if (po.isEnd) 1.9f else 1.3f
+        val rad = 1.45f
+        val cyW = po.y + 1.9f
         val spin = t * (1.6f + po.charge * 5f)
         // swirl disc (rotating quad in the portal plane)
         val rr = rad * 1.42f
@@ -536,7 +554,7 @@ class WorldRenderer(val g: Game) {
         val csx = cam.sx; val csy = cam.sy
         val s = cam.scaleAt(cam.depth)
         gr.setAdditive(true)
-        gr.glow(csx, csy, rad * s * 1.9f, Col.withA(if (po.isEnd) 0xFFFF7AE0.toInt() else 0xFFB070FF.toInt(), 0.55f + 0.3f * po.charge))
+        gr.glow(csx, csy, rad * s * 1.9f, Col.withA(0xFFFF7AE0.toInt(), 0.55f + 0.3f * po.charge))
         gr.setAdditive(false)
         gr.imageQuad(art.swirl, 0f, 0f, art.swirl.w.toFloat(), art.swirl.h.toFloat(), q, 0.95f, 1f, Col.WHITE, po.charge * 0.5f)
         // second counter-rotating layer
@@ -555,9 +573,9 @@ class WorldRenderer(val g: Game) {
             cam.project(po.x + cos(a) * rad, cyW + sin(a) * rad, po.z)
             poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
         }
-        gr.strokePoly(poly, m, 0.16f * s, if (po.isEnd) 0xFFFFB0F0.toInt() else 0xFFD8B0FF.toInt())
+        gr.strokePoly(poly, m, 0.16f * s, 0xFFFFB0F0.toInt())
         gr.strokePoly(poly, m, 0.06f * s, Col.WHITE)
-        if (po.isEnd) drawFlames(gr, po, rad, cyW)
+        drawFlames(gr, po, rad, cyW)
         // sparkles
         for (k in 0..5) {
             val a = t * 2f + k * TAU / 6f
@@ -606,16 +624,19 @@ class WorldRenderer(val g: Game) {
         }
         val ls = sw * 0.45f
         val reach = gd.reach
+        val grab = gd.grab
         // legs
         box(-1.05f, 0f, -0.45f + ls, -0.2f, 1.7f, 0.45f + ls, b, 0)
         box(0.2f, 0f, -0.45f - ls, 1.05f, 1.7f, 0.45f - ls, b, 1)
         // torso
         box(-1.35f, 1.6f, -0.7f, 1.35f, 3.6f, 0.7f, c, 0)
         box(-1.1f, 1.9f, if (lookBack) 0.62f else -0.78f, 1.1f, 3.3f, if (lookBack) 0.78f else -0.62f, b, 2)
-        // arms (reach forward when close)
-        val az = 0.2f + reach * 1.2f
-        box(-2.15f, 1.8f - reach * 0.2f, -0.45f + az * 0.3f - ls * 0.6f, -1.35f, 3.5f, 0.45f + az + ls * 0.6f, c, 1)
-        box(1.35f, 1.8f - reach * 0.2f, -0.45f + az * 0.3f + ls * 0.6f, 2.15f, 3.5f, 0.45f + az - ls * 0.6f, c, 2)
+        // arms: reach forward when close, close in around the boy when grabbing
+        val az = 0.2f + reach * 1.2f + grab * 0.4f
+        val ax = lerp(1.75f, 0.95f, grab)
+        val ay = grab * 0.9f
+        box(-ax - 0.4f, 1.8f - reach * 0.2f + ay, -0.45f + az * 0.3f - ls * 0.6f, -ax + 0.4f, 3.5f + ay, 0.45f + az + ls * 0.6f, c, 1)
+        box(ax - 0.4f, 1.8f - reach * 0.2f + ay, -0.45f + az * 0.3f + ls * 0.6f, ax + 0.4f, 3.5f + ay, 0.45f + az - ls * 0.6f, c, 2)
         // head with horns
         box(-0.75f, 3.6f, -0.65f, 0.75f, 4.75f, 0.65f, c, 2)
         box(-1.0f, 4.45f, -0.2f, -0.72f, 5.15f, 0.2f, BC.STONE, 0)
@@ -638,34 +659,11 @@ class WorldRenderer(val g: Game) {
         if (cam.project(gx, baseY + 4.2f + bob, gz + 0.3f)) {
             val s = cam.scaleAt(cam.depth)
             gr.setAdditive(true)
-            gr.glow(cam.sx, cam.sy, 1.4f * s, Col.withA(0xFFFF6A10.toInt(), 0.35f + 0.15f * pulse(t, 8f)))
+            val angry = if (g.ev.chase == Chase.REVEAL || g.ev.chase == Chase.CAUGHT) 0.3f else 0f
+            gr.glow(cam.sx, cam.sy, 1.4f * s, Col.withA(0xFFFF6A10.toInt(), 0.35f + angry + 0.15f * pulse(t, 8f)))
             gr.setAdditive(false)
         }
         if (fall > 0f) return
-    }
-
-    // ------------------------------------------------------------------ dragon
-    private fun drawDragon(gr: Gfx) {
-        val d = g.ev.dragon
-        if (!cam.project(d.x, d.y, d.z)) return
-        val s = cam.scaleAt(cam.depth) * 1.6f
-        val dir = if (d.vx < 0f) -1f else 1f
-        val flap = sin(g.t * 6.5f)
-        gr.save()
-        gr.translate(cam.sx, cam.sy)
-        gr.scale(dir * s / 100f, s / 100f)
-        gr.rotate(-6f + sin(g.t * 1.3f) * 4f)
-        DragonArt.draw(gr, flap, g.t, d.shots < 3 && d.t > 1.6f)
-        gr.restore()
-    }
-
-    private fun drawFireball(gr: Gfx, f: Fireball) {
-        if (!cam.project(f.x, f.y, f.z)) return
-        val s = cam.scaleAt(cam.depth)
-        gr.setAdditive(true)
-        gr.glow(cam.sx, cam.sy, 0.9f * s, 0xCCFF7A10.toInt())
-        gr.glow(cam.sx, cam.sy, 0.45f * s, 0xFFFFE070.toInt())
-        gr.setAdditive(false)
     }
 
     private fun drawRock(gr: Gfx, r: Rock) {
@@ -732,6 +730,20 @@ class WorldRenderer(val g: Game) {
                 PK.STAR -> star4(gr, cam.sx, cam.sy, r * 1.6f * (0.4f + 0.6f * lf), Col.withA(p.color, min(1f, lf * 1.5f)))
                 PK.DUST -> gr.fillCircle(cam.sx, cam.sy, r, Col.withA(p.color, 0.55f * lf))
                 PK.FIRE -> { gr.setAdditive(true); gr.glow(cam.sx, cam.sy, r * (1.8f - lf * 0.6f), Col.withA(Col.mix(0xFFFF3A10.toInt(), p.color, lf), lf)); gr.setAdditive(false) }
+                PK.CONFETTI -> {
+                    val cs = cos(p.rot) * r * 1.3f; val sn = sin(p.rot) * r * 0.55f * abs(cos(p.rot * 1.7f))
+                    poly[0] = cam.sx + cs; poly[1] = cam.sy + sn; poly[2] = cam.sx - sn; poly[3] = cam.sy + cs * 0.4f
+                    poly[4] = cam.sx - cs; poly[5] = cam.sy - sn; poly[6] = cam.sx + sn; poly[7] = cam.sy - cs * 0.4f
+                    gr.fillPoly(poly, 4, Col.withA(p.color, min(1f, lf * 2.5f)))
+                }
+                PK.STREAK -> {
+                    val sx0 = cam.sx; val sy0 = cam.sy
+                    if (cam.project(p.x - p.vx * 0.05f, p.y - p.vy * 0.05f, p.z - p.vz * 0.05f)) {
+                        gr.setAdditive(true)
+                        gr.line(sx0, sy0, cam.sx, cam.sy, max(1.5f, r * 0.8f), Col.withA(p.color, 0.8f * lf))
+                        gr.setAdditive(false)
+                    }
+                }
                 PK.SHARD -> {
                     val cs = cos(p.rot) * r; val sn = sin(p.rot) * r
                     poly[0] = cam.sx + cs; poly[1] = cam.sy + sn; poly[2] = cam.sx - sn; poly[3] = cam.sy + cs
@@ -762,40 +774,15 @@ class WorldRenderer(val g: Game) {
         val w = gr.width.toFloat(); val h = gr.height.toFloat()
         val s = g.hud.s
         val t = g.t
-        val st = g.ev.stormAmt
-        if (st > 0.01f) {
-            // rain streaks
-            val n = (70 * st).toInt()
-            val wind = g.ev.windVX * 18f * s
-            for (i in 0 until n) {
-                val hx = fract(sin(i * 12.9898f) * 43758.547f)
-                val hy = fract(sin(i * 78.233f) * 12345.678f)
-                val x = (hx * (w + 200f) + t * (60f + wind * 3f)) % (w + 200f) - 100f
-                val y = (hy * h + t * (1400f + hx * 500f) * s) % h
-                gr.line(x, y, x - 8f * s - wind, y + 38f * s, 2.2f * s, Col.withA(0xFFD8E8FF.toInt(), 0.35f * st))
-            }
-            if (g.ev.windPhase >= 1) {
-                val a = if (g.ev.windPhase == 2) 0.55f else 0.25f
-                for (i in 0 until 14) {
-                    val hy = fract(sin(i * 3.7f) * 999.1f)
-                    val sp = 900f * s
-                    var x = (fract(sin(i * 5.1f) * 777.7f) * w + t * sp * g.ev.windDir) % (w + 300f)
-                    if (x < 0) x += w + 300f
-                    x -= 150f
-                    val y = hy * h
-                    gr.line(x, y, x - g.ev.windDir * 160f * s, y, 3f * s, Col.withA(Col.WHITE, a * st))
-                }
-            }
-        }
-        if (g.ev.lightning > 0f) gr.fillRect(0f, 0f, w, h, Col.withA(0xFFE8F0FF.toInt(), g.ev.lightning * 0.55f))
-        if (g.speedOn) {
-            for (i in 0 until 18) {
-                val a = i / 18f * TAU + t * 0.3f
-                val ph = fract(t * 2.2f + i * 0.37f)
-                val r0 = (0.35f + ph * 0.6f) * max(w, h) * 0.6f
+        if (g.speedOn && g.player.state == PS.NORMAL) {
+            // speed lines at the screen edges only (never over the path)
+            for (i in 0 until 16) {
+                val a = i / 16f * TAU + t * 0.3f
+                val ph = fract(t * 2.4f + i * 0.37f)
+                val r0 = (0.62f + ph * 0.4f) * max(w, h) * 0.55f
                 val x0 = w * 0.5f + cos(a) * r0; val y0 = h * 0.55f + sin(a) * r0
-                val x1 = w * 0.5f + cos(a) * (r0 + 90f * s); val y1 = h * 0.55f + sin(a) * (r0 + 90f * s)
-                gr.line(x0, y0, x1, y1, 3f * s, Col.withA(Col.WHITE, 0.35f * (1f - ph)))
+                val x1 = w * 0.5f + cos(a) * (r0 + 80f * s); val y1 = h * 0.55f + sin(a) * (r0 + 80f * s)
+                gr.line(x0, y0, x1, y1, 3f * s, Col.withA(Col.WHITE, 0.28f * (1f - ph)))
             }
         }
         // lava heat glow
@@ -803,17 +790,31 @@ class WorldRenderer(val g: Game) {
         if (ly > -50f) {
             val d = g.player.y - ly
             val k = clamp01(1f - d / 6f)
-            gr.fillRectGradient(0f, h * 0.55f, w, h, 0x00FF5010, Col.withA(0xFFFF5010.toInt(), 0.25f + 0.35f * k))
+            gr.fillRectGradient(0f, h * 0.6f, w, h, 0x00FF5010, Col.withA(0xFFFF5010.toInt(), 0.18f + 0.3f * k))
         }
-        // guard danger glow at the bottom edge
-        if (g.ev.chaseActive) {
-            val k = g.ev.meter
-            if (k > 0.45f) gr.fillRectGradient(0f, h * 0.7f, w, h, 0x00FF2010, Col.withA(0xFFFF2010.toInt(), (k - 0.45f) * 0.9f * (0.7f + 0.3f * pulse(t, 10f))))
+        // danger glow at the bottom edge while the guard closes in
+        if (g.ev.chaseActive || g.ev.chase == Chase.WARNING) {
+            val k = if (g.ev.chase == Chase.WARNING) 0.7f else g.ev.meter
+            if (k > 0.4f) {
+                val a = (k - 0.4f) * 0.85f * (0.7f + 0.3f * pulse(t, 10f))
+                gr.fillRectGradient(0f, h * 0.72f, w, h, 0x00FF2010, Col.withA(0xFFFF2010.toInt(), a))
+                gr.fillRectGradient(0f, 0f, w * 0.12f, h, Col.withA(0xFFFF2010.toInt(), a * 0.6f), 0x00FF2010, false)
+                gr.fillRectGradient(w * 0.88f, 0f, w, h, 0x00FF2010, Col.withA(0xFFFF2010.toInt(), a * 0.6f), false)
+            }
+        }
+        if (g.ev.finalOn && g.state == GS.PLAY) {
+            val k = 0.12f + 0.05f * pulse(t, 3f)
+            gr.fillRectGradient(0f, h * 0.8f, w, h, 0x00FF8A30, Col.withA(0xFFFF8A30.toInt(), k))
+        }
+        if (g.player.state == PS.CAUGHT || (g.state == GS.FAILED && g.failReason.startsWith("CAUGHT"))) {
+            gr.fillRectGradient(0f, 0f, w, h * 0.3f, 0x99000008.toInt(), 0x00000008)
+            gr.fillRectGradient(0f, h * 0.7f, w, h, 0x00000008, 0x99000008.toInt())
         }
         if (g.flashRed > 0f) {
-            gr.fillRectGradient(0f, 0f, w, h * 0.25f, Col.withA(0xFFFF1020.toInt(), 0.45f * g.flashRed), 0x00FF1020)
-            gr.fillRectGradient(0f, h * 0.75f, w, h, 0x00FF1020, Col.withA(0xFFFF1020.toInt(), 0.45f * g.flashRed))
+            gr.fillRectGradient(0f, 0f, w, h * 0.22f, Col.withA(0xFFFF1020.toInt(), 0.4f * g.flashRed), 0x00FF1020)
+            gr.fillRectGradient(0f, h * 0.78f, w, h, 0x00FF1020, Col.withA(0xFFFF1020.toInt(), 0.4f * g.flashRed))
         }
-        if (g.flashWhite > 0f) gr.fillRect(0f, 0f, w, h, Col.withA(Col.WHITE, g.flashWhite * 0.9f))
+        if (g.flashWhite > 0f) gr.fillRect(0f, 0f, w, h, Col.withA(Col.WHITE, g.flashWhite * 0.6f))
     }
+
 }

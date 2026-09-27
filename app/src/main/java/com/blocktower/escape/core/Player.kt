@@ -29,6 +29,7 @@ class Player {
     var invuln = 0f
     var hurtFlash = 0f
     var airTime = 0f
+    var boostT = 0f
     var portalScale = 1f
     var spin = 0f
     var sortKey = 0f
@@ -47,7 +48,7 @@ class Player {
         x = x0; y = y0; z = z0; vx = 0f; vy = 0f; vz = 0f
         grounded = true; ground = null; lastGroundY = y0; coyote = 0f; jumpBuffer = 0f; jumping = false
         state = PS.NORMAL; stateT = 0f; lean = 0f; invuln = 0f; hurtFlash = 0f
-        portalScale = 1f; spin = 0f; airTime = 0f; runW = 0f; airW = 0f
+        portalScale = 1f; spin = 0f; airTime = 0f; boostT = 0f; runW = 0f; airW = 0f
         landT = 9f; jumpT = 9f; skidT = 9f; collectT = 9f; castT = 9f; hurtT = 9f; celebrateT = 9f
         safeX = x0; safeY = y0; safeZ = z0; safeBlock = null
     }

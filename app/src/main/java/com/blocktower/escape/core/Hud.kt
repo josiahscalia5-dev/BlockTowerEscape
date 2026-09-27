@@ -38,6 +38,10 @@ class Hud(val g: Game) {
     private var heartBump = 0f
     private var pausePress = 0f
     private var overlayT = 0f
+    private val toolBurst = FloatArray(4)
+    private var objectiveFlash = 0f
+    private var nextToastT = 0f
+    private var lastScoreTick = 0
 
     fun setInsets(top: Float, bottom: Float) { topInset = top; bottomInset = bottom }
 
@@ -76,12 +80,16 @@ class Hud(val g: Game) {
     fun bumpGems() { gemBump = 1f }
     fun bumpHearts() { heartBump = 1f }
     fun denied(k: Int) { toolDenied[k] = 1f }
+    fun toolFx(k: Int) { toolBurst[k] = 1f; g.fx.ring(toolX(k), toolY(k), toolColor(k), 50f * s, 150f * s, 0.45f, 9f * s) }
+    fun objectiveDone() { objectiveFlash = 1f; g.fx.ring(targetIconX(), targetIconY(), 0xFF7CFFA8.toInt(), 30f * s, 200f * s, 0.7f, 10f * s) }
+    fun resultsStarted() { overlayT = 0f; lastScoreTick = 0; skipResults = false }
 
     fun update(dt: Float) {
         targetBump = max(0f, targetBump - dt * 3f); coinBump = max(0f, coinBump - dt * 5f)
         gemBump = max(0f, gemBump - dt * 5f); heartBump = max(0f, heartBump - dt * 2.5f)
         jumpDown = max(0f, jumpDown - dt * 6f); pausePress = max(0f, pausePress - dt * 5f)
-        for (i in 0..3) { toolPress[i] = max(0f, toolPress[i] - dt * 5f); toolDenied[i] = max(0f, toolDenied[i] - dt * 3f) }
+        for (i in 0..3) { toolPress[i] = max(0f, toolPress[i] - dt * 5f); toolDenied[i] = max(0f, toolDenied[i] - dt * 3f); toolBurst[i] = max(0f, toolBurst[i] - dt * 2.2f) }
+        objectiveFlash = max(0f, objectiveFlash - dt * 0.6f)
         overlayT += dt
     }
 
@@ -91,20 +99,21 @@ class Hud(val g: Game) {
     fun touchDown(id: Int, x: Float, y: Float) {
         val st = g.state
         if (g.paused) { overlayButton(x, y); return }
+        if (st == GS.RESULTS && !resultsRevealed()) { skipResults = true; return }
         if (st == GS.RESULTS || st == GS.FAILED) { overlayButton(x, y); return }
+        if (st == GS.COMPLETE) return
         if (x > ax(930f) && y < ayT(110f)) { pausePress = 1f; g.togglePause(); overlayT = 0f; return }
         for (k in 0..3) if (inCircle(x, y, toolX(k), toolY(k), 72f * s)) {
-            toolPress[k] = 1f; g.input.toolTap[k] = true; g.input.any = true; return
+            toolPress[k] = 1f; g.input.toolTap[k] = true; return
         }
         if (inCircle(x, y, jumpCX(), jumpCY(), 150f * s) || (x > w * 0.62f && y > h * 0.62f)) {
             jumpId = id; jumpDown = 1f
-            g.input.jumpHeld = true; g.input.jumpPressed = true; g.input.any = true
+            g.input.jumpHeld = true; g.input.jumpPressed = true
             return
         }
         if (x < w * 0.62f && y > h * 0.5f) {
             joyId = id
             moveJoy(x, y)
-            g.input.any = true
         }
     }
 
@@ -135,15 +144,18 @@ class Hud(val g: Game) {
         g.platform.sound(Sfx.CLICK)
         when {
             g.paused -> g.togglePause()
-            g.state == GS.RESULTS || g.state == GS.FAILED -> { g.restartLevel(); overlayT = 0f }
+            g.state == GS.FAILED -> { g.continueFromCheckpoint(); overlayT = 0f }
+            g.state == GS.RESULTS -> g.fx.popupScreen("LEVEL 24 — COMING SOON", w * 0.5f, btnA[1] - 50f * s, 0xFFBFD8FF.toInt(), 36f)
         }
     }
     private fun pressB() {
         g.platform.sound(Sfx.CLICK)
-        if (g.paused) { g.restartLevel(); overlayT = 0f }
-        else if (g.state == GS.RESULTS) g.fx.popupScreen("Next screens are not built yet", w * 0.5f, btnB[1] - 40f * s, 0xFFBFD8FF.toInt(), 34f)
+        if (g.paused || g.state == GS.FAILED || g.state == GS.RESULTS) { g.restartLevel(); overlayT = 0f }
     }
-    fun pressDefault() { if (g.paused || g.state == GS.RESULTS || g.state == GS.FAILED) pressA() }
+    fun pressDefault() {
+        if (g.state == GS.RESULTS && !resultsRevealed()) { skipResults = true; return }
+        if (g.paused || g.state == GS.RESULTS || g.state == GS.FAILED) pressA()
+    }
 
     // ------------------------------------------------------------------ render
     fun render(gr: Gfx) {
@@ -158,13 +170,12 @@ class Hud(val g: Game) {
         drawFlyers(gr)
         drawScreenPopups(gr)
         drawBanner(gr)
-        if (g.state == GS.INTRO) {
-            val a = 0.55f + 0.45f * pulse(g.t, 4f)
-            gr.text("MOVE OR JUMP TO START", joyCX() + 20f * s, joyCY() - 190f * s, 30f * s, Font.UI, Col.WHITE, Align.LEFT, 5f * s, 0xCC0A1438.toInt(), a)
-        }
+        drawToast(gr)
+        drawMission(gr)
+        drawCountdown(gr)
         if (g.paused) drawPause(gr)
         else if (g.state == GS.RESULTS) drawResults(gr)
-        else if (g.state == GS.FAILED && g.stateT > 1.1f) drawFail(gr)
+        else if (g.state == GS.FAILED && g.stateT > (if (g.failReason.startsWith("CAUGHT")) 0.5f else 1.1f)) drawFail(gr)
     }
 
     private fun panel(gr: Gfx, l: Float, t: Float, r: Float, b: Float, rad: Float, fill: Int) {
@@ -242,6 +253,7 @@ class Hud(val g: Game) {
     private fun drawTargetPanel(gr: Gfx) {
         val l = ax(810f); val t = ayT(118f); val r = ax(1004f); val b = ayT(392f)
         val done = g.shownTarget >= Tune.TARGET_NEED
+        if (objectiveFlash > 0f) { gr.setAdditive(true); gr.glow((l + r) * 0.5f, (t + b) * 0.5f, (r - l) * 0.9f, Col.withA(0xFF4AF08A.toInt(), objectiveFlash * 0.7f)); gr.setAdditive(false) }
         gr.fillRoundRect(l - 2f * s, t - 2f * s, r + 2f * s, b + 2f * s, 20f * s, 0xFF06122E.toInt())
         drawRR(gr, l, t, r, b, 18f * s, if (done) 0xFF4AF08A.toInt() else 0xFF3A9CFF.toInt(), if (done) 0xFF18B050.toInt() else 0xFF1E62E6.toInt())
         drawRR(gr, l + 5f * s, t + 5f * s, r - 5f * s, b - 5f * s, 14f * s, 0xFF0F245C.toInt(), 0xFF081640.toInt())
@@ -265,9 +277,11 @@ class Hud(val g: Game) {
         if (toolDenied[k] > 0f) x += sin(toolDenied[k] * 40f) * 8f * s * toolDenied[k]
         val press = 1f - 0.08f * toolPress[k]
         val R = 62f * s * press * (1f + 0.12f * sin(tl.anim * PI.toFloat()))
-        if (tl.isActive) {
+        if (tl.isActive || toolBurst[k] > 0f || tl.readyFlash > 0f) {
+            val expiring = tl.isActive && tl.active < 1.5f && ((g.t * 8f).toInt() and 1) == 0
+            val a = if (tl.isActive) (if (expiring) 0.25f else 0.55f + 0.25f * pulse(g.t, 6f)) else 0f
             gr.setAdditive(true)
-            gr.glow(x, y, R * 1.55f, Col.withA(toolColor(k), 0.55f + 0.25f * pulse(g.t, 6f)))
+            gr.glow(x, y, R * (1.55f + 0.5f * toolBurst[k]), Col.withA(toolColor(k), max(a, max(toolBurst[k], tl.readyFlash * 0.6f))))
             gr.setAdditive(false)
         }
         gr.fillCircle(x, y, R + 2f * s, 0xFF081236.toInt())
@@ -280,7 +294,8 @@ class Hud(val g: Game) {
         val ih = base * s * press * (1f + 0.3f * sin(tl.anim * PI.toFloat())) * (1f + 0.25f * sin(tl.gain * PI.toFloat()))
         val iw = ih * img.w / img.h
         val a = if (tl.count <= 0 && !tl.isActive) 0.4f else 1f
-        gr.image(img, x - iw * 0.5f - 4f * s, y - ih * 0.5f - 4f * s, iw, ih, a)
+        val iy = y - 10f * s * sin(toolBurst[k] * PI.toFloat())
+        gr.image(img, x - iw * 0.5f - 4f * s, iy - ih * 0.5f - 4f * s, iw, ih, a)
         if (tl.isActive) {
             val frac = tl.active / tl.duration
             gr.arc(x, y, R + 7f * s, -90f, 360f * frac, 7f * s, 0xFFFFE14A.toInt())
@@ -374,6 +389,9 @@ class Hud(val g: Game) {
         if (g.ev.meterKind == 0) {
             gr.fillRect(ex - 12f * s, ey - 5f * s, ex - 3f * s, ey + 1f * s, Col.withA(0xFFFF8A20.toInt(), a))
             gr.fillRect(ex + 3f * s, ey - 5f * s, ex + 12f * s, ey + 1f * s, Col.withA(0xFFFF8A20.toInt(), a))
+        } else if (g.ev.meterKind == 2) {
+            gr.fillRoundRect(ex - 14f * s, ey - 2f * s, ex + 14f * s, ey + 14f * s, 5f * s, Col.withA(0xFFFF6A10.toInt(), a))
+            gr.fillCircle(ex - 5f * s, ey - 4f * s, 6f * s, Col.withA(0xFFFFB040.toInt(), a)); gr.fillCircle(ex + 6f * s, ey - 7f * s, 4f * s, Col.withA(0xFFFFD070.toInt(), a))
         } else {
             gr.line(ex - 10f * s, ey - 10f * s, ex + 8f * s, ey + 10f * s, 3f * s, Col.withA(0xFFFFB04A.toInt(), a))
             gr.line(ex - 2f * s, ey - 12f * s, ex - 6f * s, ey + 4f * s, 3f * s, Col.withA(0xFFFFB04A.toInt(), a))
@@ -451,8 +469,8 @@ class Hud(val g: Game) {
         val inU = clamp01(t / 0.3f)
         val out = if (t > b.dur - 0.35f) clamp01((b.dur - t) / 0.35f) else 1f
         val a = out
-        val y = h * 0.34f
-        val bh = (if (b.line2.isEmpty()) 110f else 170f) * s
+        val y = h * 0.3f
+        val bh = (if (b.line2.isEmpty()) 104f else 150f) * s
         val sc = easeOutBack(inU)
         gr.fillRectGradient(0f, y - bh * 0.5f * sc, w, y + bh * 0.5f * sc, Col.withA(0xFF0A1030.toInt(), 0.7f * a), Col.withA(0xFF1A0A30.toInt(), 0.7f * a))
         if (b.warn) {
@@ -470,12 +488,12 @@ class Hud(val g: Game) {
                 gr.restore()
             }
         }
-        val s1 = 78f * s * sc
+        val s1 = 68f * s * sc
         if (b.line2.isEmpty()) {
-            gr.text(b.line1, w * 0.5f, y, s1 * 1.1f, Font.TITLE, b.color, Align.CENTER, s1 * 0.12f, 0xFF1A0A20.toInt(), a)
+            gr.text(b.line1, w * 0.5f, y, s1 * 1.15f, Font.TITLE, b.color, Align.CENTER, s1 * 0.12f, 0xFF1A0A20.toInt(), a)
         } else {
-            gr.text(b.line1, w * 0.5f, y - 30f * s * sc, s1, Font.TITLE, b.color, Align.CENTER, s1 * 0.12f, 0xFF1A0A20.toInt(), a)
-            gr.text(b.line2, w * 0.5f, y + 40f * s * sc, 40f * s * sc, Font.TITLE, Col.WHITE, Align.CENTER, 6f * s, 0xFF1A0A20.toInt(), a)
+            gr.text(b.line1, w * 0.5f, y - 26f * s * sc, s1, Font.TITLE, b.color, Align.CENTER, s1 * 0.12f, 0xFF1A0A20.toInt(), a)
+            gr.text(b.line2, w * 0.5f, y + 36f * s * sc, 34f * s * sc, Font.TITLE, Col.WHITE, Align.CENTER, 5f * s, 0xFF1A0A20.toInt(), a)
         }
     }
 
@@ -488,9 +506,11 @@ class Hud(val g: Game) {
         gr.text(label, cxp, cyp, bh * 0.46f, Font.TITLE, Col.WHITE, Align.CENTER, 5f * s, 0x66000000)
     }
 
-    private fun overlayPanel(gr: Gfx, top: Float, bottom: Float) {
-        gr.fillRect(0f, 0f, w, h, 0xB0050A20.toInt())
-        val l = w * 0.5f - 440f * s; val r = w * 0.5f + 440f * s
+    private fun overlayPanel(gr: Gfx, topIn: Float, bottomIn: Float, scale: Float = 1f) {
+        gr.fillRect(0f, 0f, w, h, Col.withA(0xFF050A20.toInt(), 0.69f * clamp01(scale * 2f)))
+        val cyp = (topIn + bottomIn) * 0.5f
+        val top = cyp + (topIn - cyp) * scale; val bottom = cyp + (bottomIn - cyp) * scale
+        val l = w * 0.5f - 440f * s * scale; val r = w * 0.5f + 440f * s * scale
         gr.fillRoundRect(l - 3f * s, top - 3f * s, r + 3f * s, bottom + 3f * s, 36f * s, 0xFF06122E.toInt())
         drawRR(gr, l, top, r, bottom, 34f * s, 0xFF3A9CFF.toInt(), 0xFF1E62E6.toInt())
         drawRR(gr, l + 7f * s, top + 7f * s, r - 7f * s, bottom - 7f * s, 28f * s, 0xFF13306E.toInt(), 0xFF081640.toInt())
@@ -506,14 +526,64 @@ class Hud(val g: Game) {
     }
 
     private fun drawFail(gr: Gfx) {
-        val top = h * 0.5f - 300f * s; val bot = h * 0.5f + 300f * s
-        overlayPanel(gr, top, bot)
-        gr.text("LEVEL FAILED", w * 0.5f, top + 95f * s, 78f * s, Font.TITLE, 0xFFFF6A5A.toInt(), Align.CENTER, 8f * s, 0xFF1A0A20.toInt())
+        val top = h * 0.5f - 330f * s; val bot = h * 0.5f + 330f * s
+        val u = easeOutBack(clamp01(overlayTSinceFail() / 0.35f))
+        overlayPanel(gr, top, bot, u)
+        if (u < 0.6f) return
+        gr.text("GAME OVER", w * 0.5f, top + 95f * s, 84f * s, Font.TITLE, 0xFFFF6A5A.toInt(), Align.CENTER, 8f * s, 0xFF1A0A20.toInt())
         gr.text(g.failReason, w * 0.5f, top + 185f * s, 38f * s, Font.TITLE, Col.WHITE, Align.CENTER, 5f * s, 0xFF1A0A20.toInt())
-        gr.text("Blue blocks ${g.target}/12   •   Coins +${g.coinsCollected * Tune.COIN_VALUE}", w * 0.5f, top + 265f * s, 32f * s, Font.UI, 0xFFCFE0FF.toInt())
-        gr.text("Checkpoints keep your progress — try again!", w * 0.5f, top + 320f * s, 28f * s, Font.UI, 0xFF9FB4E0.toInt())
-        button(gr, w * 0.5f, top + 460f * s, 520f * s, 110f * s, "RETRY", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
-        btnB[0] = -1f; btnB[1] = -1f; btnB[2] = -1f; btnB[3] = -1f
+        gr.text("Blue blocks ${g.target}/12   •   Score ${fmt(g.score)}", w * 0.5f, top + 262f * s, 32f * s, Font.UI, 0xFFCFE0FF.toInt())
+        val cp = g.checkpoint
+        gr.text(if (cp > 0) "Continue from checkpoint $cp with full hearts" else "Continue from the start with full hearts", w * 0.5f, top + 318f * s, 28f * s, Font.UI, 0xFF9FB4E0.toInt())
+        button(gr, w * 0.5f, top + 430f * s, 560f * s, 110f * s, "CONTINUE", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
+        button(gr, w * 0.5f, top + 565f * s, 560f * s, 90f * s, "RESTART LEVEL", 0xFFFFB84A.toInt(), 0xFFE0701A.toInt(), btnB)
+    }
+    private fun overlayTSinceFail() = g.stateT - (if (g.failReason.startsWith("CAUGHT")) 0.5f else 1.1f)
+
+    // ------------------------------------------------------------------ level start
+    private fun drawCountdown(gr: Gfx) {
+        val txt = g.countdownText()
+        if (txt.isEmpty()) return
+        val ph = clamp01(g.countdownPhase())
+        val go = txt == "GO!"
+        val pop = easeOutBack(clamp01(ph / 0.25f))
+        val a = if (ph < 0.7f) 1f else 1f - (ph - 0.7f) / 0.3f
+        val size = (if (go) 150f else 190f) * s * (0.6f + 0.4f * pop) * (if (go) 1f + 0.15f * ph else 1f)
+        val cy = h * 0.4f
+        if (go) { gr.setAdditive(true); gr.glow(w * 0.5f, cy, 300f * s * (0.6f + ph), Col.withA(0xFFFFD040.toInt(), 0.5f * a)); gr.setAdditive(false) }
+        gr.text(txt, w * 0.5f, cy, size, Font.TITLE, if (go) 0xFFFFE14A.toInt() else Col.WHITE, Align.CENTER, size * 0.09f, 0xFF10205A.toInt(), a)
+    }
+
+    /** Compact mission card under the top bar right after GO (never covers the path). */
+    private fun drawMission(gr: Gfx) {
+        if (g.state != GS.PLAY && g.state != GS.INTRO) return
+        val t = if (g.state == GS.INTRO) -1f else g.playT - 0.5f
+        if (t < 0f || t > 3.6f) return
+        val inU = easeOutCubic(clamp01(t / 0.35f)); val outU = clamp01((3.6f - t) / 0.35f)
+        val a = inU * outU
+        val l = ax(170f); val r = ax(780f); val top = ayT(128f) - (1f - inU) * 30f * s; val b = top + 150f * s
+        gr.fillRoundRect(l, top, r, b, 22f * s, Col.withA(0xFF0A1438.toInt(), 0.82f * a))
+        gr.strokeRoundRect(l, top, r, b, 22f * s, 3f * s, Col.withA(0xFFFFE14A.toInt(), 0.9f * a))
+        gr.text("MISSION", (l + r) * 0.5f, top + 28f * s, 30f * s, Font.TITLE, Col.withA(0xFFFFE14A.toInt(), a), Align.CENTER, 4f * s, Col.withA(0xFF1A0A20.toInt(), a))
+        val cube = g.art.targetCube
+        val iw = 40f * s
+        gr.image(cube, l + 40f * s, top + 50f * s, iw, iw * cube.h / cube.w, a)
+        gr.text("Collect 12 Blue Blocks", l + 96f * s, top + 71f * s, 32f * s, Font.UI, Col.withA(Col.WHITE, a), Align.LEFT)
+        // a small gate glyph
+        val gx = l + 60f * s; val gy = top + 118f * s
+        gr.fillRoundRect(gx - 16f * s, gy - 18f * s, gx + 16f * s, gy + 18f * s, 14f * s, Col.withA(0xFFFFB040.toInt(), a))
+        gr.fillRoundRect(gx - 9f * s, gy - 10f * s, gx + 9f * s, gy + 18f * s, 9f * s, Col.withA(0xFFB04AE8.toInt(), a))
+        gr.text("Reach the Ancient Gate", l + 96f * s, gy, 32f * s, Font.UI, Col.withA(Col.WHITE, a), Align.LEFT)
+    }
+
+    private fun drawToast(gr: Gfx) {
+        val o = g.fx.toasts.firstOrNull() ?: return
+        if (g.fx.banners.isNotEmpty()) return
+        val u = o.t
+        val a = clamp01(u / 0.25f) * clamp01((o.dur - u) / 0.35f)
+        val y = ayT(150f) + (1f - clamp01(u / 0.25f)) * -20f * s
+        gr.text(o.text, w * 0.5f - 60f * s, y, 30f * s, Font.TITLE, Col.withA(o.color, a), Align.CENTER, 5f * s, Col.withA(0xFF10205A.toInt(), a))
+        if (o.sub.isNotEmpty()) gr.text(o.sub, w * 0.5f - 60f * s, y + 40f * s, 40f * s, Font.TITLE, Col.withA(Col.WHITE, a), Align.CENTER, 6f * s, Col.withA(0xFF10205A.toInt(), a))
     }
 
     private val starPath = VPath()
@@ -536,46 +606,83 @@ class Hud(val g: Game) {
         }
     }
 
+    // ------------------------------------------------------------------ results
+    private var skipResults = false
+    private val rStars = 1.3f; private val rScore = 2.3f; private val rScoreDur = 1.4f; private val rRewards = 3.9f; private val rButtons = 4.3f
+    private fun resultsT() = if (skipResults) 99f else g.stateT
+    fun resultsRevealed() = resultsT() >= rButtons
+
     private fun drawResults(gr: Gfx) {
         val r = g.results ?: return
-        val t = g.stateT
+        val t = resultsT()
         val top = h * 0.5f - 560f * s; val bot = h * 0.5f + 560f * s
-        overlayPanel(gr, top, bot)
+        val u = easeOutBack(clamp01(t / 0.35f))
+        overlayPanel(gr, top, bot, u)
+        if (u < 0.7f) return
         val cxp = w * 0.5f
-        gr.text("LEVEL 23 COMPLETE!", cxp, top + 90f * s, 70f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 8f * s, 0xFF1A0A20.toInt())
+        val titleU = easeOutBack(clamp01((t - 0.25f) / 0.35f))
+        if (titleU > 0f) gr.text("LEVEL COMPLETE!", cxp, top + 88f * s, 78f * s * titleU, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 8f * s * titleU, 0xFF1A0A20.toInt())
+        // objectives
+        fun objective(i: Int, done: Boolean, label: String, value: String) {
+            val ot = t - 0.55f - i * 0.3f
+            if (ot < 0f) return
+            val a = clamp01(ot / 0.2f)
+            val y = top + 175f * s + i * 58f * s
+            val lx = cxp - 360f * s
+            gr.fillCircle(lx + 20f * s, y, 20f * s, Col.withA(if (done) 0xFF2EC05A.toInt() else 0xFF6A7488.toInt(), a))
+            gr.text(if (done) "✓" else "–", lx + 20f * s, y + 1f * s, 30f * s, Font.UI, Col.withA(Col.WHITE, a))
+            gr.text(label, lx + 56f * s, y, 34f * s, Font.UI, Col.withA(0xFFE8F0FF.toInt(), a), Align.LEFT)
+            gr.text(value, cxp + 360f * s, y, 34f * s, Font.UI, Col.withA(if (done) 0xFF7CFFA8.toInt() else Col.WHITE, a), Align.RIGHT)
+        }
+        objective(0, r.targetGot >= Tune.TARGET_NEED, "Collect 12 Blue Blocks", "${r.targetGot}/12")
+        objective(1, true, "Reach the Ancient Gate", "✓")
+        // stars pop in one by one
         for (i in 0..2) {
-            val st = t - 0.35f - i * 0.3f
+            val st = t - rStars - i * 0.3f
             val on = i < r.stars
             val sc = if (st <= 0f) 0f else if (on) easeOutBack(clamp01(st / 0.35f)) else 1f
-            val sx = cxp + (i - 1) * 170f * s; val sy = top + 225f * s - (if (i == 1) 26f * s else 0f)
+            val sx = cxp + (i - 1) * 170f * s; val sy = top + 385f * s - (if (i == 1) 26f * s else 0f)
             star(gr, sx, sy, 70f * s, false)
-            if (on && sc > 0f) star(gr, sx, sy, 70f * s * sc, true)
+            if (on && sc > 0f) {
+                star(gr, sx, sy, 70f * s * sc, true)
+                if (st < 0.3f) { gr.setAdditive(true); gr.glow(sx, sy, 160f * s * st / 0.3f, Col.withA(0xFFFFE070.toInt(), 1f - st / 0.3f)); gr.setAdditive(false) }
+            }
+            if (on && st > 0f && st - 1f / 60f <= 0f) g.platform.sound(Sfx.STAR, 1f, 1f + i * 0.12f)
         }
-        var y = top + 360f * s
-        val lx = cxp - 380f * s; val rx = cxp + 380f * s
-        fun rowLine(icon: Img?, label: String, value: String, col: Int = Col.WHITE) {
-            if (icon != null) { val iw = 52f * s; gr.image(icon, lx, y - iw * 0.5f * icon.h / icon.w, iw, iw * icon.h / icon.w) }
-            gr.text(label, lx + 70f * s, y, 36f * s, Font.UI, 0xFFCFE0FF.toInt(), Align.LEFT)
-            gr.text(value, rx, y, 38f * s, Font.UI, col, Align.RIGHT)
-            y += 74f * s
+        // score counts up
+        val su = clamp01((t - rScore) / rScoreDur)
+        val shown = (r.totalScore * easeOutCubic(su)).toInt()
+        if (t >= rScore) {
+            val tick = (shown / 250)
+            if (su < 1f && tick != lastScoreTick) { lastScoreTick = tick; g.platform.sound(Sfx.SCORE, 0.5f, 1f + su * 0.5f) }
+            gr.text("SCORE", cxp, top + 505f * s, 34f * s, Font.TITLE, 0xFFCFE0FF.toInt())
+            val pulseK = if (su >= 1f) 1f + 0.06f * sin(clamp01((t - rScore - rScoreDur) / 0.3f) * PI.toFloat()) else 1f
+            gr.text(fmt(shown), cxp, top + 572f * s, 84f * s * pulseK, Font.TITLE, Col.WHITE, Align.CENTER, 7f * s, 0xFF1A0A20.toInt())
+            gr.text("Level ${fmt(r.levelScore)}  •  Time +${fmt(r.timeBonus)}  •  Hearts +${fmt(r.heartBonus)}" + (if (r.targetBonus > 0) "  •  Target +${fmt(r.targetBonus)}" else ""),
+                cxp, top + 640f * s, 26f * s, Font.UI, 0xFF9FB4E0.toInt())
         }
-        rowLine(g.art.targetCube, "Blue Blocks", "${r.targetGot}/12" + if (r.targetGot >= 12) "  ✓" else "", if (r.targetGot >= 12) 0xFF7CFFA8.toInt() else Col.WHITE)
-        rowLine(g.art.coinIcon, "Coins Collected", "${r.coinsCollected} / ${r.coinTotal}")
-        rowLine(g.art.stopwatch, "Time Left", "%d:%02d".format(r.timeLeft / 60, r.timeLeft % 60))
-        rowLine(g.art.heartFull, "Hearts Left", "${r.hearts}")
-        rowLine(null, "Mystery Blocks", "${r.mystery} / ${r.mysteryTotal}")
-        gr.fillRect(lx, y - 30f * s, rx, y - 27f * s, 0x553A9CFF)
-        y += 10f * s
-        gr.text("BONUS REWARDS", cxp, y, 34f * s, Font.TITLE, 0xFFFFE14A.toInt())
-        y += 56f * s
-        gr.text("Time +${r.timeBonus}   •   Hearts +${r.heartBonus}   •   Target +${r.targetBonus}", cxp, y, 30f * s, Font.UI, 0xFFCFE0FF.toInt())
-        y += 80f * s
-        val ci = g.art.coinIcon; val gi = g.art.gem
-        gr.image(ci, cxp - 300f * s, y - 30f * s, 60f * s, 60f * s * ci.h / ci.w)
-        gr.text("+${r.bonusCoins + r.coinsCollected * Tune.COIN_VALUE}", cxp - 225f * s, y, 50f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.LEFT, 5f * s, 0xFF1A0A20.toInt())
-        gr.image(gi, cxp + 90f * s, y - 30f * s, 58f * s, 58f * s * gi.h / gi.w)
-        gr.text("+${r.gemReward}", cxp + 165f * s, y, 50f * s, Font.TITLE, 0xFFE59CFF.toInt(), Align.LEFT, 5f * s, 0xFF1A0A20.toInt())
-        button(gr, cxp - 205f * s, bot - 110f * s, 360f * s, 110f * s, "REPLAY", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
-        button(gr, cxp + 205f * s, bot - 110f * s, 360f * s, 110f * s, "NEXT", 0xFF5AB6FF.toInt(), 0xFF1E62E6.toInt(), btnB, false)
+        // rewards
+        val ru = t - rRewards
+        if (ru > 0f) {
+            val k = easeOutBack(clamp01(ru / 0.35f))
+            val y = top + 735f * s
+            gr.text("REWARDS", cxp, top + 690f * s, 30f * s, Font.TITLE, 0xFFFFE14A.toInt())
+            val ci = g.art.coinIcon; val gi = g.art.gem; val tc = g.art.targetCube
+            val isz = 56f * s * k
+            gr.image(ci, cxp - 330f * s, y - isz * 0.5f, isz, isz * ci.h / ci.w)
+            gr.text("+${fmt(r.rewardCoins + r.coinsCollected * Tune.COIN_VALUE)}", cxp - 262f * s, y, 44f * s * k, Font.TITLE, 0xFFFFE14A.toInt(), Align.LEFT, 5f * s, 0xFF1A0A20.toInt())
+            gr.image(gi, cxp - 20f * s, y - isz * 0.5f, isz, isz * gi.h / gi.w)
+            gr.text("+${r.gemReward}", cxp + 48f * s, y, 44f * s * k, Font.TITLE, 0xFFE59CFF.toInt(), Align.LEFT, 5f * s, 0xFF1A0A20.toInt())
+            gr.image(tc, cxp + 175f * s, y - isz * 0.5f, isz, isz * tc.h / tc.w)
+            gr.text("${r.targetGot}", cxp + 243f * s, y, 44f * s * k, Font.TITLE, 0xFF9FDBFF.toInt(), Align.LEFT, 5f * s, 0xFF1A0A20.toInt())
+            gr.text("Coins ${r.coinsCollected}/${r.coinTotal}   •   Mystery ${r.mystery}/${r.mysteryTotal}   •   Hearts ${r.hearts}   •   Time left ${r.timeLeft}s",
+                cxp, y + 64f * s, 25f * s, Font.UI, 0xFF9FB4E0.toInt())
+        }
+        if (t >= rButtons) {
+            val k = easeOutBack(clamp01((t - rButtons) / 0.3f))
+            button(gr, cxp, bot - 205f * s, 620f * 0.9f * s * k + 1f, 120f * s * k + 1f, "NEXT LEVEL", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
+            button(gr, cxp, bot - 80f * s, 420f * s * k + 1f, 86f * s * k + 1f, "REPLAY", 0xFF5AB6FF.toInt(), 0xFF1E62E6.toInt(), btnB)
+        } else { btnA.fill(-1f); btnB.fill(-1f) }
     }
+
 }

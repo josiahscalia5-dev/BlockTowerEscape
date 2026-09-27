@@ -27,14 +27,14 @@ class SoundFx(context: Context) {
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build())
         .build()
-    private val ids = IntArray(Sfx.COUNT) { 0 }
+    private val ids = IntArray(Sfx.TOTAL) { 0 }
     @Volatile private var ready = false
 
     init {
-        val dir = File(context.cacheDir, "sfx_v1").apply { mkdirs() }
+        val dir = File(context.cacheDir, "sfx_v2").apply { mkdirs() }
         Thread {
             try {
-                for (id in 0 until Sfx.COUNT) {
+                for (id in 0 until Sfx.TOTAL) {
                     val f = File(dir, "s$id.wav")
                     if (!f.exists()) writeWav(f, synth(id))
                     ids[id] = pool.load(f.absolutePath, 1)
@@ -110,7 +110,6 @@ class SoundFx(context: Context) {
         Sfx.WARNING -> buf(1.3f).also { for (k in 0..3) tone(it, if (k % 2 == 0) 620f else 460f, if (k % 2 == 0) 620f else 460f, 0.32f, k * 0.3f, 0.3f, 1f, 1) }
         Sfx.STOMP -> buf(0.4f).also { tone(it, 70f, 40f, 0.8f, 0f, 0.4f, 5f); noise(it, 0.4f, 0f, 0.2f, 6f, 0.08f) }
         Sfx.ROAR -> buf(1.3f).also { r -> noise(r, 0.7f, 0f, 1.3f, 2f, 0.12f); tone(r, 110f, 70f, 0.4f, 0f, 1.3f, 2f, 2); for (i in r.indices) r[i] *= (0.7f + 0.3f * sin(i * 2f * PI.toFloat() * 9f / rate)) }
-        Sfx.DRAGON -> buf(0.9f).also { tone(it, 900f, 380f, 0.35f, 0f, 0.9f, 2f, 2); noise(it, 0.35f, 0f, 0.9f, 2.5f, 0.35f) }
         Sfx.EXPLODE -> buf(0.9f).also { noise(it, 0.9f, 0f, 0.9f, 3.5f, 0.12f); tone(it, 90f, 40f, 0.5f, 0f, 0.5f, 4f) }
         Sfx.CRUMBLE -> buf(0.5f).also { r -> for (k in 0 until 14) noise(r, 0.35f, rnd.nextFloat() * 0.4f, 0.05f, 9f, 0.4f); noise(r, 0.2f, 0f, 0.5f, 4f, 0.08f) }
         Sfx.PORTAL -> buf(1.1f).also { noise(it, 0.3f, 0f, 1.1f, 2f, 0.2f); notes(it, floatArrayOf(392f, 523f, 659f, 784f, 1046f), 0.12f, 0.5f, 0.2f) }
@@ -118,10 +117,17 @@ class SoundFx(context: Context) {
         Sfx.LOSE -> buf(1.3f).also { notes(it, floatArrayOf(392f, 370f, 349f, 330f), 0.25f, 0.4f, 0.3f, 1) }
         Sfx.CLICK -> buf(0.05f).also { tone(it, 1500f, 1200f, 0.4f, 0f, 0.05f, 8f) }
         Sfx.TICK -> buf(0.08f).also { tone(it, 1000f, 1000f, 0.35f, 0f, 0.06f, 8f) }
-        Sfx.WIND -> buf(1.1f).also { r -> noise(r, 0.5f, 0f, 1.1f, 1.2f, 0.05f); for (i in r.indices) r[i] *= sin(PI.toFloat() * i / r.size) }
-        Sfx.THUNDER -> buf(1.6f).also { noise(it, 0.9f, 0f, 1.6f, 2.2f, 0.06f); noise(it, 0.5f, 0f, 0.15f, 8f, 0.5f) }
         Sfx.GEM -> buf(0.4f).also { tone(it, 1568f, 1568f, 0.3f, 0f, 0.3f, 4f); tone(it, 2093f, 2093f, 0.3f, 0.07f, 0.3f, 4f) }
         Sfx.TOOLGET -> buf(0.45f).also { notes(it, floatArrayOf(659f, 831f, 988f), 0.07f, 0.25f, 0.3f) }
+        Sfx.COUNT -> buf(0.25f).also { tone(it, 784f, 784f, 0.45f, 0f, 0.22f, 5f, 1); tone(it, 1568f, 1568f, 0.15f, 0f, 0.2f, 6f) }
+        Sfx.GO -> buf(0.7f).also { tone(it, 1046f, 1046f, 0.35f, 0f, 0.6f, 3f, 1); tone(it, 1318f, 1318f, 0.3f, 0f, 0.6f, 3f); tone(it, 1568f, 1568f, 0.3f, 0.02f, 0.6f, 3f) }
+        Sfx.CRACK -> buf(0.2f).also { noise(it, 0.7f, 0f, 0.06f, 9f, 0.95f); tone(it, 2400f, 900f, 0.25f, 0f, 0.08f, 8f, 1); noise(it, 0.35f, 0.05f, 0.14f, 7f, 0.6f) }
+        Sfx.STAR -> buf(0.7f).also { notes(it, floatArrayOf(1318f, 1760f, 2637f), 0.06f, 0.45f, 0.28f); noise(it, 0.1f, 0f, 0.3f, 5f, 0.9f) }
+        Sfx.SCORE -> buf(0.05f).also { tone(it, 1900f, 1900f, 0.3f, 0f, 0.04f, 9f, 1) }
+        Sfx.WHOOSH -> buf(0.7f).also { r -> var y = 0f; for (i in r.indices) { val u = i.toFloat() / r.size; y += ((rnd.nextFloat() * 2f - 1f) - y) * (0.05f + 0.5f * u); r[i] = y * 0.8f * sin(PI.toFloat() * u) } }
+        Sfx.GRAB -> buf(0.5f).also { tone(it, 90f, 50f, 0.8f, 0f, 0.45f, 5f); noise(it, 0.5f, 0f, 0.15f, 7f, 0.25f); tone(it, 300f, 120f, 0.3f, 0.02f, 0.3f, 6f, 1) }
+        Sfx.SPIKE -> buf(0.2f).also { tone(it, 1800f, 1750f, 0.3f, 0f, 0.18f, 7f); tone(it, 2710f, 2690f, 0.2f, 0f, 0.15f, 8f); noise(it, 0.2f, 0f, 0.04f, 9f, 0.9f) }
+        Sfx.SKID -> buf(0.3f).also { noise(it, 0.45f, 0f, 0.28f, 4f, 0.25f) }
         else -> buf(0.05f)
     }
 

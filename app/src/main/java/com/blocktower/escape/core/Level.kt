@@ -2,7 +2,14 @@ package com.blocktower.escape.core
 
 /**
  * Level 23 course. Rows run along +z; "lvl" is the walking-surface height (block top).
- * The first rows reproduce the composition of the Screen 4 artwork.
+ * The first rows reproduce the composition of the Screen 4 artwork; after that the tower is
+ * built as eight hand-placed sections that get steadily more intense:
+ *
+ *  1 intro  2 moving blocks  3 falling/cracked  4 trap gauntlet  5 Tower Guard chase
+ *  6 checkpoint haven  7 final tower (rising lava)  8 final escape to the Ancient Gate
+ *
+ * Block colour tells the player how a block behaves: yellow cracked, orange falling, purple
+ * vanishing, stone spikes, cyan star boost, gold save, magenta bounce, blue = objective.
  *
  * Row string legend (lane x starts at x0, default centred):
  *  R G Y P O  normal coloured blocks      K brick        B blue TARGET block
@@ -12,7 +19,7 @@ package com.blocktower.escape.core
 object Level {
     fun build(): World {
         val w = World()
-        w.rowMin = -8; w.rowMax = 240
+        w.rowMin = -8; w.rowMax = 250
         w.initRows()
         LevelWriter(w).write()
         return w
@@ -33,7 +40,8 @@ private class LevelWriter(val w: World) {
             BT.TARGET -> w.targetTotal++
             BT.DISAPPEAR -> b.alpha = 1f
             BT.COLORSHIFT -> { b.phase = rng.f(0f, 5f) }
-            BT.TRAP -> { b.phase = rng.f(0f, 2.4f) }
+            // spikes fire in a wave along the course so a row's rhythm can be read and timed
+            BT.TRAP -> { b.phase = ((z * 0.9f + x * 0.35f) % 2.6f + 2.6f) % 2.6f }
             BT.APPEAR -> { b.rise = 1f; b.visible = false }
             else -> {}
         }
@@ -94,9 +102,18 @@ private class LevelWriter(val w: World) {
         return b
     }
 
-    fun moving(x: Float, lvl: Int, z: Int, amp: Float, speed: Float, phase: Float, width: Float = 2f, c: Int = BC.GREEN): Block {
+    fun moving(x: Float, lvl: Int, z: Int, amp: Float, speed: Float, phase: Float, width: Float = 2f, c: Int = BC.GREEN, depth: Float = 1f): Block {
         val b = blk(x, lvl.toFloat(), z, c, BT.MOVING)
-        b.sx = width; b.baseX = ox + x; b.amp = amp; b.speed = speed; b.phase = phase; b.lastX = b.x
+        b.sx = width; b.sz = depth; b.baseX = ox + x; b.amp = amp; b.speed = speed; b.phase = phase; b.lastX = b.x
+        return b
+    }
+
+    fun save(x: Float, lvl: Int, z: Int) = blk(x, lvl.toFloat(), z, BC.GOLD, BT.SAVE)
+
+    /** Hidden bridge block: invisible until the player comes within [reveal] lanes of it. */
+    fun hidden(x: Float, lvl: Int, z: Int, c: Int, reveal: Float): Block {
+        val b = blk(x, lvl.toFloat(), z, c, BT.APPEAR)
+        b.amp = reveal
         return b
     }
 
@@ -107,15 +124,24 @@ private class LevelWriter(val w: World) {
         w.checkpoints.add(Checkpoint(id, ox + x, lvl + lo, z + 0.5f))
     }
 
+    /** Checkpoint platform: a rune block between two brick posts, standing on brick pillars. */
+    fun checkpointRow(z: Int, lvl: Int) {
+        row(z, lvl, "K.K"); checkpoint(z, lvl)
+        pillar(-1, lvl, z, 2); pillar(1, lvl, z, 2)
+    }
+
     /** Raise one block of a row (lane variety, as in the artwork's uneven stacks). */
     fun raise(x: Int, z: Int, dy: Float) {
         val r = w.row(z) ?: return
         for (b in r) if (absf(b.x - (ox + x)) < 0.01f && b.type != BT.MOVING) { b.y += dy; b.remember() }
     }
 
-    fun trig(z: Int, ev: Int) { w.triggers.add(Trigger(z.toFloat(), ox - 8f, ox + 8f, ev)) }
+    fun trig(z: Int, ev: Int, text: String = "", text2: String = "") { w.triggers.add(Trigger(z.toFloat(), ox - 8f, ox + 8f, ev, text, text2)) }
 
     fun section(name: String, z0: Int, z1: Int) { w.sections.add(Section(name, z0, z1, ox)) }
+
+    /** Marks every block in rows z0..z1 as part of a collapsing stretch of the tower. */
+    fun collapsible(z0: Int, z1: Int) { for (b in w.blocks) if (b.row in z0..z1) b.eventTag = Ev.COLLAPSE }
 
     fun write() {
         // ================= SECTION 0 : START — composition of the artwork =================
@@ -123,7 +149,7 @@ private class LevelWriter(val w: World) {
         ox = 0f; lo = 0f
         section("start", -8, 13)
         w.spawnX = 0f; w.spawnY = 0f; w.spawnZ = 0.45f
-        // the start pad counts as checkpoint 0 (recovery point before checkpoint A)
+        // the start pad counts as checkpoint 0
         w.checkpoints.add(Checkpoint(0, 0f, 0f, 0.45f).also { it.active = true })
         // lanes are separate columns of different heights, like the artwork's uneven stacks
         fun lane(x: Int, z: Int, lvl: Float, c: Char) { row(z, lvl, c.toString(), x, path = false) }
@@ -179,246 +205,194 @@ private class LevelWriter(val w: World) {
         coin(1f, 6.5f, 13)
         // coins along the boost arc
         coin(-2f, 2.6f, 3); coin(-2f, 3.2f, 4); coin(-2f, 2.9f, 8)
-        trig(1, Ev.HINT_TARGET)
+        trig(3, Ev.HINT_TARGET)
 
         lo = 3f
-        // ================= SECTION 1 : JUMPS & CRUMBLING BLOCKS =================
-        section("jumps", 14, 39)
-        row(14, 4, "YRG")
-        row(15, 4, "GBR")
-        row(16, 4, "RYG")
+        // ================= SECTION 1 : EASY INTRODUCTION =================
+        // flat, wide and forgiving: first jump, first blue blocks, a hidden side ledge
+        section("intro", 14, 33)
+        row(14, 4, "RYG"); row(15, 4, "RBG"); row(16, 4, "RYG")
         trig(15, Ev.HINT_JUMP)
-        // gap rows 17-18, with a rare save block far below
-        blk(0f, 1f, 17, BC.GOLD, BT.SAVE)
-        coin(0f, 5f, 17); coin(0f, 5.2f, 18)
-        row(19, 4, "GcR")
-        row(20, 4, "RcY")
-        row(21, 4, "YGR")
-        row(22, 4, "GbY")
-        row(23, 5, "..R")
-        row(24, 6, "ddd")
-        row(25, 6, "ddd")
-        coinLine(0f, 6f, 24, 25)
-        row(26, 6, "RGY")
-        mystery(0f, 8.6f, 26, Reward.TOOL_BLOCK, BC.GREEN)
-        row(27, 6, "GRY")
-        row(28, 6, "fff")
-        row(29, 6, "fff")
-        // row 30 gap
-        row(31, 6, "RGY")
-        row(32, 6, "YPR")
-        row(33, 6, "GRB")
-        row(34, 6, "RYs")
-        row(35, 6, "GRY")
-        coinLine(0f, 6f, 31, 35)
-        row(36, 7, "YGR")
-        row(37, 7, "RPG")
-        row(38, 7, "K.K"); checkpoint(38, 7)
-        row(39, 7, "GYR")
-        pillar(-1, 7, 38, 2); pillar(1, 7, 38, 2)
+        // first gap: a coin arc shows the jump, a golden save block waits below as a safety net
+        save(0f, 1, 17)
+        coin(0f, 5f, 17); coin(0f, 5.3f, 18)
+        row(19, 4, "RYG"); row(20, 4, "RYG"); row(21, 4, "RBG"); row(22, 4, "RYG"); row(23, 4, "RYG")
+        coinLine(0f, 4f, 19, 20); coinLine(0f, 4f, 22, 23)
+        // hidden treasure ledge one block up on the left: gems for the curious
+        row(20, 5, "PP", -3, path = false); row(21, 5, "PP", -3, path = false); row(22, 5, ".P", -3, path = false)
+        mystery(-3f, 5f, 22, Reward.GEMS, BC.GREEN)
+        pillar(-3, 5, 20, 2); pillar(-3, 5, 21, 2)
+        coin(-2f, 5f, 20); coin(-2f, 5f, 21)
+        // half-step climb to a platform with a ? block to bump from below
+        row(24, 4.5f, "YRY"); row(25, 5, "GRG"); row(26, 5, "GBG"); row(27, 5, "GRG")
+        mystery(0f, 7.6f, 26, Reward.COINS, BC.GREEN)
+        pillar(-1, 5, 27, 2); pillar(1, 5, 27, 2)
+        // one-row hop
+        row(29, 5, "YGY"); row(30, 5, "YGY"); row(31, 5, "BGY"); row(32, 5, "YGY"); row(33, 5, "YGY")
+        coinLine(0f, 5f, 29, 33)
 
-        // ================= SECTION 2 : MOVING / APPEARING / COLOUR-SHIFT =================
-        section("moving", 40, 66)
-        row(40, 7, "GYR")
-        row(41, 7, "RGY")
-        trig(41, Ev.HINT_TOOLS)
-        // gap 42..49 : sliding platforms, and a hidden bridge on the left that appears on approach
-        moving(0f, 7, 43, 1.4f, 1.5f, 0f)
-        moving(0f, 7, 45, 1.4f, 1.8f, 2.2f, c = BC.YELLOW)
-        moving(0f, 7, 47, 1.4f, 1.6f, 4.1f, c = BC.RED)
-        for (z in 42..49) blk(-3f, 7f, z, pick(), BT.APPEAR)
-        coin(0f, 7f, 43); coin(0f, 7f, 45); coin(0f, 7f, 47)
-        blk(0f, 4f, 44, BC.GOLD, BT.SAVE); blk(0f, 4f, 48, BC.GOLD, BT.SAVE)
-        row(50, 7, "RGY")
-        row(51, 7, "sss")
-        row(52, 7, "YBR")
-        row(53, 7, "GRP")
-        row(54, 7, "GY.")
-        mystery(1f, 7f, 54, Reward.TRAP, BC.RED)
-        row(55, 8, "RGY")
-        row(56, 8, ".RG")
-        mystery(-1f, 8f, 56, Reward.SHORTCUT, BC.GREEN)
-        row(57, 9, "GYR")
-        row(58, 9, "RGY")
-        // gap 59..62: stepping stones or the shortcut bridge
-        blk(1f, 9f, 60, BC.PURPLE, BT.DISAPPEAR)
-        blk(-1f, 9f, 61, BC.YELLOW)
-        for (z in 59..62) { val b = blk(0f, 9f, z, BC.GOLD, BT.APPEAR); b.shortcutId = 1; b.color = BC.GOLD }
-        row(63, 9, "YGR")
-        row(64, 9, "GBG")
-        row(65, 9, "PPP")
-        row(66, 9, "RYG")
-        pillar(-1, 9, 65, 2); pillar(1, 9, 65, 2)
-        w.portals.add(Portal(0f, 9f + lo, 65.5f, false, 40f, 10f + lo, 70.5f))
+        // ================= SECTION 2 : MOVING BLOCKS =================
+        // safe route: slow, wide sliding platforms in the middle
+        // risky route: single blue pillars on the right (three targets, precise jumps)
+        // hidden route: a bridge on the far left that only appears when you walk the left lane
+        section("moving", 34, 60)
+        trig(34, Ev.ZONE, "ZONE 2", "SLIDING STEPS")
+        row(34, 5, "GYG"); row(35, 5, "GYG"); row(36, 5, "GYG")
+        mystery(1f, 7.6f, 35, Reward.TOOL_BLOCK, BC.GREEN)
+        trig(35, Ev.HINT_TOOLS)
+        moving(0f, 5, 38, 0.65f, 1.2f, 0f, 1.6f, BC.GREEN, 2f)
+        moving(0f, 5, 42, 0.65f, 1.3f, 2.2f, 1.6f, BC.YELLOW, 2f)
+        for (z in intArrayOf(38, 41, 44)) blk(3f, 5f, z, BC.BLUE, BT.TARGET)
+        pillar(3, 5, 38, 3); pillar(3, 5, 41, 3); pillar(3, 5, 44, 3)
+        for (z in 36..45) hidden(-2f, 5, z, if (z % 2 == 0) BC.GREEN else BC.YELLOW, 1.6f)
+        coinLine(-2f, 5f, 38, 44)
+        coin(0f, 5.6f, 37); coin(0f, 5.8f, 41); coin(0f, 5.6f, 45)
+        save(0f, 2, 40); save(0f, 2, 45)
+        row(46, 5, "GYG"); row(47, 5, "GBG"); row(48, 5, "GYG")
+        // ferry crossing: two long platforms sliding in opposite directions
+        moving(0f, 5, 50, 1.8f, 1.5f, 0f, 3f, BC.RED)
+        moving(0f, 5, 52, 1.8f, 1.5f, 3.14f, 3f, BC.YELLOW)
+        save(0f, 2, 51)
+        coin(0f, 5f, 50); coin(0f, 5f, 52)
+        row(54, 5, "RYR"); row(55, 5, "RYR"); row(56, 5, "RBR")
+        checkpointRow(57, 5)
+        row(58, 5, "RYR"); row(59, 5, "RYR"); row(60, 5, "RYR")
 
-        // ================= SECTION 3 : STORM (another tower section) =================
-        ox = 40f
-        section("storm", 67, 98)
-        row(70, 10, "GYR")
-        row(71, 10, "RGP")
-        row(72, 10, "YGR")
-        trig(73, Ev.STORM)
-        row(73, 10, "RG", 0)
-        row(74, 10, "YB", 0)
-        row(75, 10, "GR", 0)
-        blk(0f, 8f, 76, BC.GOLD, BT.SAVE)
-        row(77, 11, "GR", -1)
-        row(78, 11, "BY", -1)
-        row(79, 11, "cR", -1)
-        row(80, 11, "YG", -1)
-        row(81, 11, "RY", 0)
-        row(82, 11, ".G", 0)
-        mystery(0f, 11f, 82, Reward.HEART, BC.GREEN)
-        row(83, 11, "GB", 0)
-        blk(1f, 8f, 84, BC.GOLD, BT.SAVE)
-        row(85, 12, "Y", 0)
-        row(86, 12, "RY", -1)
-        row(87, 12, "GR", 0)
-        row(88, 12, "BG", -1)
-        row(89, 12, "R", 0)
-        row(90, 12, "GcY")
-        row(91, 12, "RYG")
-        row(92, 12, "YcR")
-        row(93, 12, "GRY")
-        row(94, 12, "RGY")
-        coinLine(0.5f, 10f, 73, 75); coinLine(-0.5f, 11f, 77, 80); coinLine(0f, 12f, 85, 89)
-        trig(95, Ev.STORM_END)
-        row(95, 12, "YGR")
-        row(96, 12, "GRY")
-        row(97, 12, "K.K"); checkpoint(97, 12)
-        row(98, 12, "RYG")
-        pillar(-1, 12, 97, 2); pillar(1, 12, 97, 2)
+        // ================= SECTION 3 : FALLING & CRACKED BLOCKS =================
+        section("crumble", 61, 93)
+        trig(61, Ev.ZONE, "ZONE 3", "CRUMBLING BRIDGE")
+        // cracked bridge: fine to run over, breaks if you stand still
+        row(61, 5, "ccc"); row(62, 5, "ccc"); row(63, 5, "cBc"); row(64, 5, "ccc"); row(65, 5, "ccc")
+        // falling blocks drop a moment after you step on them
+        row(67, 5, "fff"); row(68, 5, "fff"); row(69, 5, "fff"); row(70, 5, "fff")
+        coinLine(0f, 5f, 67, 70)
+        row(71, 5, "GRG"); row(72, 5, ".RG")
+        // the ? block on the left opens a secret golden bridge over the next gap
+        mystery(-1f, 5f, 72, Reward.SHORTCUT, BC.GREEN)
+        for (z in 73..79) { val b = blk(0f, 5f, z, BC.GOLD, BT.APPEAR); b.shortcutId = 1 }
+        // otherwise: vanishing stepping stones
+        blk(-1f, 5f, 74, BC.PURPLE, BT.DISAPPEAR); blk(1f, 5f, 76, BC.PURPLE, BT.DISAPPEAR); blk(-1f, 5f, 78, BC.PURPLE, BT.DISAPPEAR)
+        coin(-1f, 5f, 74); coin(1f, 5f, 76); coin(-1f, 5f, 78)
+        save(0f, 2, 76)
+        row(80, 5, "GRG"); row(81, 5, "BRG"); row(82, 5, "G*G")
+        trig(80, Ev.HINT_BLOCK)
+        // the difficult jump: three rows wide. The star block launches you over it.
+        save(0f, 2, 84)
+        coin(0f, 6f, 83); coin(0f, 6.6f, 84); coin(0f, 6f, 85)
+        row(86, 5, "RGR"); row(87, 5, "RGR"); row(88, 5, "RGR"); row(89, 5, "RGR")
+        pillar(-1, 5, 86, 2); pillar(1, 5, 86, 2)
+        // broken staircase: half steps with cracked treads in the middle
+        row(90, 5.5f, "YcY"); row(91, 6f, "YcB"); row(92, 6.5f, "YcY"); row(93, 7f, "GYG")
 
-        // ================= SECTION 4 : GUARD CHASE =================
-        section("chase", 99, 136)
-        row(99, 12, "GYR")
-        row(100, 12, "RGY")
-        row(101, 12, "YRG")
-        trig(101, Ev.CHASE)
-        row(102, 12, "GYR")
-        row(103, 12, "tGt")
-        row(104, 13, "RYG")
-        row(105, 13, "YGB")
-        row(106, 13, "GtR")
-        row(107, 13, "RYG")
-        row(108, 13, "GRYGR", -2)
-        trig(108, Ev.HINT_FORK)
-        // fork: left = bait (targets + traps + dead-end gap), right = safe path with coins
-        for (z in 109..117) {
-            val s = when (z) { 111 -> "BR"; 113 -> "tt"; 114 -> "YB"; 116 -> "tG"; else -> if (z % 2 == 0) "GY" else "RG" }
-            row(z, 13, s, -3, path = false)
-        }
-        row(121, 13, "RG", -3, path = false)
-        for (z in 109..121) {
-            val s = if (z % 3 == 0) "YR" else if (z % 3 == 1) "GY" else "RG"
-            row(z, 13, s, 2)
-        }
-        coinLine(2.5f, 13f, 109, 121)
-        row(122, 13, "RGYGR", -2)
-        row(123, 13, "YGR")
-        row(124, 13, "sGs")
-        row(125, 13, "GYR")
-        row(126, 14, "RGY")
-        row(127, 14, "YBG")
-        row(128, 14, "fff")
-        row(129, 14, "GRY")
-        row(130, 15, "RYG")
-        row(131, 15, "GRY")
-        row(132, 15, "YtG")
-        row(133, 15, "RGY")
-        row(134, 15, "GYR")
-        row(135, 15, "K.K"); checkpoint(135, 15)
-        trig(135, Ev.CHASE_END)
-        row(136, 15, "YRG")
-        pillar(-1, 15, 135, 2); pillar(1, 15, 135, 2)
-        coinLine(0f, 13f, 123, 125); coinLine(0f, 14f, 126, 129); coinLine(0f, 15f, 130, 134)
+        // ================= SECTION 4 : TRAP GAUNTLET =================
+        section("traps", 94, 127)
+        row(94, 7, "GYG"); row(95, 7, "GYG"); row(96, 7, "GYG")
+        trig(95, Ev.TRAPS)
+        // spike rows: wait for the spikes to drop, or jump over them
+        row(97, 7, "ttt"); row(98, 7, "PYP"); row(99, 7, "PYP"); row(100, 7, "ttt"); row(101, 7, "PYP"); row(102, 7, "tYt"); row(103, 7, "PYP")
+        coin(0f, 7.9f, 97); coin(0f, 7.9f, 100)
+        // the fork
+        row(104, 7, "GYGYG", -2)
+        trig(104, Ev.FORK)
+        // left: safe path with coins, and a bounce block up to a hidden heart
+        for (z in 105..115) row(z, 7, if (z % 2 == 0) "GY" else "YG", -3, path = false)
+        for (b in w.row(109)!!) if (absf(b.x + 3f) < 0.01f) { b.type = BT.BOUNCE; b.color = BC.MAGENTA; b.remember() }
+        row(111, 10, "PP", -3, path = false); row(112, 10, ".P", -3, path = false); row(113, 10, "PP", -3, path = false)
+        mystery(-3f, 10f, 112, Reward.HEART, BC.GREEN)
+        coinLine(-2.5f, 7f, 105, 108); coinLine(-2.5f, 7f, 114, 115); coin(-2.5f, 10f, 111)
+        // right: spikes and treasure (three blue blocks and a gem box)
+        val right = arrayOf("GG", "tt", "BG", "GG", "tt", "GB", "GG", "tt", "BG", "G.", "GG")
+        for ((i, s) in right.withIndex()) row(105 + i, 7, s, 2, path = false)
+        mystery(3f, 7f, 114, Reward.GEMS, BC.RED)
+        for (z in 105..115) w.pathLevel[z] = 7f + lo
+        pillar(-3, 7, 105, 3); pillar(3, 7, 105, 3); pillar(-3, 7, 115, 3); pillar(3, 7, 115, 3)
+        row(116, 7, "GYGYG", -2)
+        // a trapped ? box in the middle of the path
+        row(117, 7, "Y.Y"); mystery(0f, 7f, 117, Reward.TRAP, BC.RED)
+        row(118, 7, "YYY")
+        moving(0f, 7, 120, 1.3f, 1.9f, 0.5f, 2.2f, BC.PURPLE)
+        save(0f, 4, 120)
+        row(122, 7, "tYt"); row(123, 7, "GYG"); row(124, 7, "GBG"); row(125, 7, "GYG")
+        checkpointRow(126, 7)
+        row(127, 7, "GYG")
 
-        // ================= SECTION 5 : DRAGON ATTACK =================
-        section("dragon", 137, 158)
-        row(137, 15, "GYR")
-        row(138, 15, "RGY")
-        row(139, 15, "YRG")
-        mystery(1f, 17.6f, 139, Reward.TOOL_BLOCK, BC.RED)
-        row(140, 15, "GYR")
-        trig(141, Ev.DRAGON)
-        trig(140, Ev.HINT_BLOCK)
-        for (z in 141..157) {
-            val s = when (z) { 143 -> "RYG"; 149 -> "BRY"; 153 -> "GYB"; else -> if (z % 3 == 0) "YGR" else if (z % 3 == 1) "RYG" else "GRY" }
-            row(z, 15, s)
-        }
-        for (z in 141..157) coin(0f, 15f, z)
-        // blocks the dragon will burn away
-        for (b in w.blocks) if (b.row in 146..147 || b.row == 151 || (b.row in 155..156 && b.x >= ox - 0.1f)) {
-            if (b.row in 141..157) b.eventTag = Ev.DRAGON
-        }
-        row(158, 15, "K.K"); checkpoint(158, 15)
-        pillar(-1, 15, 158, 2); pillar(1, 15, 158, 2)
+        // ================= SECTION 5 : TOWER GUARD CHASE =================
+        // the guard appears behind you and the tower crumbles behind it; reach the next checkpoint
+        section("chase", 128, 169)
+        row(128, 7, "KYK"); row(129, 7, "KYK"); row(130, 7, "KYK")
+        trig(129, Ev.CHASE)
+        row(131, 7, "KYK"); row(132, 7, "KBK"); row(133, 7, "KYK")
+        row(135, 7, "RYR"); row(136, 7, "RYR"); row(137, 7, "tYt"); row(138, 7, "RYR")
+        row(141, 7, "ccc"); row(142, 7, "cBc"); row(143, 7, "ccc"); row(144, 7, "ccc")
+        row(145, 8, "KRK"); row(146, 8, "KRK"); row(147, 8, "KRK"); row(148, 8, "K*K")
+        save(0f, 5, 150)
+        row(152, 8, "RYR"); row(153, 8, "RYR"); row(154, 8, "RBR"); row(155, 8, "RYR")
+        moving(0f, 8, 157, 1.0f, 2.0f, 0f, 2.4f, BC.YELLOW)
+        save(0f, 5, 157)
+        row(159, 8, "KYK"); row(160, 8, "tYt"); row(161, 8, "KYK"); row(162, 8, "KYK"); row(163, 8, "KYK")
+        row(164, 8, "fff"); row(165, 8, "fff"); row(166, 8, "fff")
+        row(167, 8, "KYK"); row(168, 8, "KYK"); row(169, 8, "KYK")
+        coinLine(0f, 7f, 128, 133); coinLine(0f, 7f, 135, 138); coinLine(0f, 7f, 141, 144)
+        coinLine(0f, 8f, 152, 155); coinLine(0f, 8f, 159, 169)
+        coin(0f, 9.4f, 150)
+        collapsible(112, 169)
 
-        // ================= SECTION 6 : TOWER COLLAPSE =================
-        section("collapse", 159, 178)
-        trig(161, Ev.COLLAPSE)
-        row(159, 15, "GYR")
-        row(160, 15, "RGY")
-        row(161, 15, "YRG")
-        row(162, 15, "GRY")
-        row(163, 15, "RYG")
-        row(164, 16, "GRY")
-        row(165, 16, "YGR")
-        row(166, 16, "fGf")
-        row(167, 16, "BRY")
-        row(168, 16, "GYR")
-        // row 169 gap
-        row(170, 17, "RGY")
-        // gap 171..173 with a sliding platform at 172
-        moving(0f, 17, 172, 0.8f, 1.6f, 0f, 2.6f, BC.PURPLE)
-        row(174, 17, "YBR")
-        row(175, 17, "GRY")
-        row(176, 17, "RYG")
-        row(177, 17, "GYR")
-        row(178, 17, "K.K"); checkpoint(178, 17)
-        pillar(-1, 17, 178, 2); pillar(1, 17, 178, 2)
-        for (b in w.blocks) if (b.row in 159..176) b.eventTag = Ev.COLLAPSE
-        coinLine(0f, 15f, 159, 163); coinLine(0f, 16f, 164, 168); coin(0f, 17f, 172); coinLine(0f, 17f, 174, 176)
+        // ================= SECTION 6 : CHECKPOINT HAVEN =================
+        section("haven", 170, 177)
+        for (z in 170..177) if (z != 173 && z != 175) row(z, 8, if (z % 2 == 0) "GYGYG" else "YGYGY", -2)
+        row(173, 8, "GY.YG", -2); checkpoint(173, 8)
+        row(175, 8, ".GYG.", -2)
+        mystery(-2f, 8f, 175, Reward.HEART, BC.GREEN)
+        mystery(2f, 8f, 175, Reward.TOOL_SHIELD, BC.GREEN)
+        trig(172, Ev.CHASE_END)
+        for (z in intArrayOf(170, 177)) { pillar(-2, 8, z, 3); pillar(2, 8, z, 3) }
 
-        // ================= SECTION 7 : LAVA RUSH =================
-        section("lava", 179, 199)
-        row(179, 17, "GYR")
-        row(180, 17, "RGY")
-        row(181, 17, "YRG")
-        trig(181, Ev.LAVA)
-        row(182, 18, "GRY")
-        row(183, 18, "RYG")
-        row(184, 19, "YGR")
-        row(185, 19, "G.Y")
-        row(186, 20, "RbG")
-        row(187, 20, "YRG")
-        row(188, 21, "GYB")
-        row(189, 21, "R.G")
-        row(190, 22, "YRG")
-        row(191, 22, "GYR")
-        row(192, 23, "BRG")
-        row(193, 23, "RGY")
-        row(194, 24, "GYR")
-        row(195, 24, "RYG")
-        trig(195, Ev.LAVA_STOP)
-        for (z in 182..195) coin(0f, (w.pathLevel[z] ?: 21f) - lo, z)
+        // ================= SECTION 7 : THE FINAL TOWER =================
+        // lava floods the tower from below: climb
+        section("tower", 178, 212)
+        row(178, 8, "PRP"); row(179, 8, "PRP")
+        trig(179, Ev.LAVA)
+        row(180, 9, "RPR"); row(181, 9, "RPR")
+        row(183, 10, "PRP"); row(184, 10, "PBP"); row(185, 10, "PRP"); row(186, 10, "PbP"); row(187, 10, "PRP")
+        // the next floor is two blocks up: bounce, or climb the half-step stairs on the left
+        row(186, 10, "P", -2, path = false)
+        row(187, 10.5f, "P", -2, path = false); row(188, 11f, "R", -2, path = false)
+        row(189, 11.5f, "P", -2, path = false); row(190, 12f, "R", -2, path = false)
+        row(188, 12, "PRP"); row(189, 12, "PRP"); row(190, 12, "PRP"); row(191, 12, "PRB"); row(192, 12, "PRP")
+        checkpointRow(193, 12)
+        row(194, 12, "PRP")
+        moving(0f, 12, 196, 1.4f, 2.2f, 1f, 2.2f, BC.PURPLE)
+        save(0f, 9, 196)
+        // vanishing staircase
+        row(198, 12.5f, "ddd"); row(199, 13f, "ddd"); row(200, 13.5f, "ddd")
+        row(201, 14, "RBR"); row(202, 14, "RPR")
+        row(204, 15, "PRP"); row(205, 15, "PRP"); row(206, 15, "PRP")
+        row(209, 15, "OYO"); row(210, 15, "OYO"); row(211, 15, "OBO"); row(212, 15, "OYO")
+        trig(209, Ev.LAVA_STOP)
+        coinLine(0f, 10f, 183, 185); coinLine(0f, 12f, 188, 192); coinLine(0f, 15f, 204, 206); coin(0f, 16.2f, 207); coin(0f, 16.2f, 208)
+        coin(-2f, 11f, 188); coin(-2f, 12f, 190)
+        for (z in intArrayOf(183, 188, 204, 209)) { pillar(-1, if (z < 188) 10 else if (z < 204) 12 else 15, z, 3); pillar(1, if (z < 188) 10 else if (z < 204) 12 else 15, z, 3) }
 
-        // ================= SECTION 8 : END PORTAL =================
-        section("end", 196, 208)
-        row(196, 24, "RGYGR", -2)
-        row(197, 24, "YRGRY", -2)
-        row(198, 24, "GYRYG", -2)
-        row(199, 24, "PKKKP", -2)
-        row(200, 24, "KKKKK", -2)
-        row(201, 24, "PKKKP", -2)
-        row(202, 24, "KKKKK", -2)
-        for (z in 199..202) { pillar(-2, 24, z, 3); pillar(2, 24, z, 3) }
-        w.portals.add(Portal(0f + ox, 24f + lo, 201.5f, true))
-        // decorative arch of the end portal
-        for (k in 0..3) {
-            val l = blk(-2f, 25f + k, 201, BC.BRICK, BT.BRICK); l.decor = false
-            val r = blk(2f, 25f + k, 201, BC.BRICK, BT.BRICK); r.decor = false
-        }
-        for (x in -2..2) blk(x.toFloat(), 29f, 201, if (x == 0) BC.PURPLE else BC.BRICK, if (x == 0) BT.NORMAL else BT.BRICK)
+        // ================= SECTION 8 : FINAL ESCAPE — THE ANCIENT GATE =================
+        section("escape", 213, 232)
+        trig(213, Ev.FINAL)
+        row(213, 15, "KYK"); row(214, 15, "KYK"); row(215, 15, "KYK"); row(216, 15, "KYK")
+        row(218, 15, "KOK"); row(219, 15, "KOK"); row(220, 15, "KBK"); row(221, 15, "KOK")
+        row(224, 15, "KYK"); row(225, 15, "KYK")
+        coinLine(0f, 15f, 213, 216); coinLine(0f, 15f, 218, 221); coinLine(0f, 15f, 224, 225)
+        coin(0f, 16.4f, 217); coin(0f, 16.4f, 222); coin(0f, 16.4f, 223)
+        collapsible(200, 225)
+        // gate plaza
+        row(226, 15, "OKYKO", -2)
+        row(227, 15, "YKKKY", -2)
+        row(228, 15, "PKKKP", -2)
+        row(229, 15, "KKKKK", -2)
+        row(230, 15, "PKKKP", -2)
+        row(231, 15, "KKKKK", -2)
+        for (z in 228..231) { pillar(-2, 15, z, 3); pillar(2, 15, z, 3) }
+        w.portals.add(Portal(ox, 15f + lo, 230.5f))
+        // the Ancient Gate's arch
+        for (k in 0..3) { blk(-2f, 16f + k, 230, BC.BRICK, BT.BRICK); blk(2f, 16f + k, 230, BC.BRICK, BT.BRICK) }
+        for (x in -2..2) blk(x.toFloat(), 20f, 230, if (x == 0) BC.PURPLE else BC.BRICK, if (x == 0) BT.NORMAL else BT.BRICK)
     }
 }
