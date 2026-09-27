@@ -14,7 +14,8 @@ package com.blocktower.escape.core
  * Row string legend (lane x starts at x0, default centred):
  *  R G Y P O  normal coloured blocks      K brick        B blue TARGET block
  *  c cracked    d disappearing   f falling   b bouncing   s colour-shifting
- *  t spike trap * boost (star)   S save block   a appears on approach   . empty
+ *  t timed spike trap   ^ spike block (always armed)   * boost (star)   S save block
+ *  a appears on approach   . empty
  */
 object Level {
     fun build(): World {
@@ -41,7 +42,7 @@ private class LevelWriter(val w: World) {
             BT.DISAPPEAR -> b.alpha = 1f
             BT.COLORSHIFT -> { b.phase = rng.f(0f, 5f) }
             // spikes fire in a wave along the course so a row's rhythm can be read and timed
-            BT.TRAP -> { b.phase = ((z * 0.9f + x * 0.35f) % 2.6f + 2.6f) % 2.6f }
+            BT.TRAP -> { b.phase = ((z * 0.9f + x * 0.35f) % 2.6f + 2.6f) % 2.6f; b.speed = 1f }
             BT.APPEAR -> { b.rise = 1f; b.visible = false }
             else -> {}
         }
@@ -67,8 +68,9 @@ private class LevelWriter(val w: World) {
                 'B' -> blk(x, l, z, BC.BLUE, BT.TARGET)
                 'c' -> blk(x, l, z, BC.YELLOW, BT.CRACKED)
                 'd' -> blk(x, l, z, BC.PURPLE, BT.DISAPPEAR)
-                'f' -> blk(x, l, z, BC.ORANGE, BT.FALLING)
-                'b' -> blk(x, l, z, BC.MAGENTA, BT.BOUNCE)
+                'f' -> blk(x, l, z, BC.IRON, BT.FALLING)
+                'b' -> blk(x, l, z, BC.IRON, BT.BOUNCE)
+                '^' -> blk(x, l, z, BC.IRON, BT.TRAP).also { it.speed = 0f }
                 's' -> blk(x, l, z, BC.RED, BT.COLORSHIFT)
                 't' -> blk(x, l, z, BC.STONE, BT.TRAP)
                 '*' -> blk(x, l, z, BC.CYAN, BT.BOOST)
@@ -109,6 +111,9 @@ private class LevelWriter(val w: World) {
     }
 
     fun save(x: Float, lvl: Int, z: Int) = blk(x, lvl.toFloat(), z, BC.GOLD, BT.SAVE)
+
+    /** A floating power-up bubble one block above the walking surface [lvl]. */
+    fun bubble(x: Float, lvl: Float, z: Int, kind: Int) { w.bubbles.add(Bubble(kind, ox + x, lvl + lo + 1.05f, z + 0.5f)) }
 
     /** Hidden bridge block: invisible until the player comes within [reveal] lanes of it. */
     fun hidden(x: Float, lvl: Int, z: Int, c: Int, reveal: Float): Block {
@@ -296,7 +301,7 @@ private class LevelWriter(val w: World) {
         trig(104, Ev.FORK)
         // left: safe path with coins, and a bounce block up to a hidden heart
         for (z in 105..115) row(z, 7, if (z % 2 == 0) "GY" else "YG", -3, path = false)
-        for (b in w.row(109)!!) if (absf(b.x + 3f) < 0.01f) { b.type = BT.BOUNCE; b.color = BC.MAGENTA; b.remember() }
+        for (b in w.row(109)!!) if (absf(b.x + 3f) < 0.01f) { b.type = BT.BOUNCE; b.color = BC.IRON; b.remember() }
         row(111, 10, "PP", -3, path = false); row(112, 10, ".P", -3, path = false); row(113, 10, "PP", -3, path = false)
         mystery(-3f, 10f, 112, Reward.HEART, BC.GREEN)
         coinLine(-2.5f, 7f, 105, 108); coinLine(-2.5f, 7f, 114, 115); coin(-2.5f, 10f, 111)
@@ -390,9 +395,7 @@ private class LevelWriter(val w: World) {
         row(230, 15, "PKKKP", -2)
         row(231, 15, "KKKKK", -2)
         for (z in 228..231) { pillar(-2, 15, z, 3); pillar(2, 15, z, 3) }
-        w.portals.add(Portal(ox, 15f + lo, 230.5f))
-        // the Ancient Gate's arch
-        for (k in 0..3) { blk(-2f, 16f + k, 230, BC.BRICK, BT.BRICK); blk(2f, 16f + k, 230, BC.BRICK, BT.BRICK) }
-        for (x in -2..2) blk(x.toFloat(), 20f, 230, if (x == 0) BC.PURPLE else BC.BRICK, if (x == 0) BT.NORMAL else BT.BRICK)
+        // the Ancient Gate (the gate from the Screen 4 design) stands at the far edge of the plaza
+        w.portals.add(Portal(ox, 15f + lo, 231.2f))
     }
 }

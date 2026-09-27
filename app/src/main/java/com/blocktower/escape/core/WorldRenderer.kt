@@ -18,7 +18,7 @@ class WorldRenderer(val g: Game) {
     private val cam get() = g.cam
 
     private object K { const val BLOCK = 0; const val COIN = 1; const val PLAYER = 2; const val BEACON = 3; const val PORTAL = 4
-        const val GUARD = 5; const val ROCK = 8; const val RIDE = 9 }
+        const val GUARD = 5; const val ROCK = 8; const val RIDE = 9; const val BUBBLE = 10 }
 
     private var n = 0
     private var kinds = IntArray(2048)
@@ -47,6 +47,7 @@ class WorldRenderer(val g: Game) {
     fun render(gr: Gfx) {
         gfx = gr
         drawBackground(gr)
+        drawGate(gr)
         if (g.ev.lavaY > -50f) drawLava(gr)
         collect()
         java.util.Arrays.sort(keys, 0, n)
@@ -58,10 +59,10 @@ class WorldRenderer(val g: Game) {
                 K.COIN -> drawCoin(gr, r as Coin)
                 K.PLAYER -> drawPlayer(gr)
                 K.BEACON -> drawBeacon(gr, r as Checkpoint)
-                K.PORTAL -> drawPortal(gr, r as Portal)
                 K.GUARD -> drawGuard(gr)
                 K.ROCK -> drawRock(gr, r as Rock)
                 K.RIDE -> drawRidePlatform(gr)
+                K.BUBBLE -> drawBubble(gr, r as Bubble)
             }
         }
         for (i in 0 until n) refs[i] = null
@@ -117,16 +118,17 @@ class WorldRenderer(val g: Game) {
             if (d < 0.5f || d > maxDepth) continue
             push(K.COIN, c, cam.dist2(c.x, c.y, c.z))
         }
+        for (bb in g.world.bubbles) {
+            if (bb.taken && bb.pop <= 0f) continue
+            val d = cam.depthOf(bb.x, bb.y, bb.z)
+            if (d < 0.5f || d > maxDepth) continue
+            push(K.BUBBLE, bb, cam.dist2(bb.x, bb.y, bb.z))
+        }
         for (cp in g.world.checkpoints) {
             if (cp.id == 0) continue
             val d = cam.depthOf(cp.x, cp.y + 2.6f, cp.z)
             if (d < 0.5f || d > maxDepth) continue
             push(K.BEACON, cp, cam.dist2(cp.x, cp.y + 2.2f, cp.z - 0.2f))
-        }
-        for (po in g.world.portals) {
-            val d = cam.depthOf(po.x, po.y + 1.5f, po.z)
-            if (d < 0.5f || d > maxDepth + 6f) continue
-            push(K.PORTAL, po, cam.dist2(po.x, po.y + 1.3f, po.z))
         }
         if (p.state != PS.DEAD || p.y > p.lastGroundY - 20f) push(K.PLAYER, p, cam.dist2(p.x, p.y + 0.5f, p.z - 0.55f))
         if (p.state == PS.RESCUE_RIDE) push(K.RIDE, p, cam.dist2(p.x, p.y - 0.1f, p.z) + 0.5f)
@@ -232,7 +234,7 @@ class WorldRenderer(val g: Game) {
 
     private object OV { const val NONE = 0; const val MYSTERY_G = 1; const val MYSTERY_R = 2; const val BOOST = 3; const val SAVE = 4
         const val BOUNCE = 5; const val TRAP = 6; const val RUNE_OFF = 7; const val RUNE_ON = 8; const val CRACK1 = 9; const val CRACK2 = 10
-        const val CRACK3 = 11; const val SHIFT = 12; const val ENERGY = 13 }
+        const val CRACK3 = 11; const val SHIFT = 12; const val ENERGY = 13; const val SPRING = 14; const val LAVA = 15; const val TOOL = 16 }
 
     private val qq = FloatArray(8)
     /** Emblem drawn onto the face currently held in q. face: 1 back, 2 left, 3 right, 4 front, 5 top */
@@ -260,10 +262,49 @@ class WorldRenderer(val g: Game) {
             OV.CRACK3 -> { if (face != 5 && face != 4) return; img = art.cracks[2]; inset = 0f }
             OV.SHIFT -> { img = art.frameGlow; inset = 0f; oa = a * (0.55f + 0.45f * pulse(g.t, 6f)); add = 0xFFFFFFFF.toInt(); addA = 0.2f }
             OV.ENERGY -> { img = art.frameGlow; inset = 0f; oa = a * 0.9f }
+            OV.SPRING -> {
+                // blue plate with gold corner brackets on top of the dark block (the design's spring pad)
+                if (face != 5) { if (face == 4 || face == 2 || face == 3) goldBand(gr, a) ; return }
+                insetQuad(0.04f)
+                for (i in 0..7) poly[i] = qq[i]
+                gr.fillPolyGradient(poly, 4, qq[0], qq[1], qq[4], qq[5], Col.withA(0xFF3A7CF0.toInt(), a), Col.withA(0xFF1A3FA8.toInt(), a))
+                for (c in 0..3) {
+                    val cxp = qq[c * 2]; val cyp = qq[c * 2 + 1]
+                    val nx = qq[((c + 1) % 4) * 2]; val ny = qq[((c + 1) % 4) * 2 + 1]
+                    val px = qq[((c + 3) % 4) * 2]; val py = qq[((c + 3) % 4) * 2 + 1]
+                    poly[0] = cxp; poly[1] = cyp
+                    poly[2] = cxp + (nx - cxp) * 0.22f; poly[3] = cyp + (ny - cyp) * 0.22f
+                    poly[4] = cxp + (px - cxp) * 0.22f; poly[5] = cyp + (py - cyp) * 0.22f
+                    gr.fillPoly(poly, 3, Col.withA(0xFFF2C040.toInt(), a))
+                }
+                return
+            }
+            OV.LAVA -> {
+                if (face != 5 && face != 4 && face != 2 && face != 3) return
+                val glow = 0.75f + 0.25f * pulse(g.t, 3.5f)
+                val ci = art.cracks[if (face == 5) 2 else 1]
+                gr.setAdditive(true)
+                gr.imageQuad(ci, 0f, 0f, ci.w.toFloat(), ci.h.toFloat(), q, a * glow, 1f, 0xFFFF7A1A.toInt(), 1f)
+                gr.setAdditive(false)
+                gr.imageQuad(ci, 0f, 0f, ci.w.toFloat(), ci.h.toFloat(), q, a * 0.9f, 1f, 0xFFFFC040.toInt(), 1f)
+                return
+            }
+            OV.TOOL -> { if (toolIcon == null) return; img = toolIcon!!; inset = 0.16f }
             else -> return
         }
         insetQuad(inset)
         gr.imageQuad(img, 0f, 0f, img.w.toFloat(), img.h.toFloat(), qq, oa, 1f, add, addA)
+    }
+
+    private var toolIcon: Img? = null
+
+    /** Thin gold band along the top edge of a side face (spring pad trim). */
+    private fun goldBand(gr: Gfx, a: Float) {
+        // q holds the face as top-left, top-right, bottom-right, bottom-left
+        poly[0] = q[0]; poly[1] = q[1]; poly[2] = q[2]; poly[3] = q[3]
+        poly[4] = q[2] + (q[4] - q[2]) * 0.12f; poly[5] = q[3] + (q[5] - q[3]) * 0.12f
+        poly[6] = q[0] + (q[6] - q[0]) * 0.12f; poly[7] = q[1] + (q[7] - q[1]) * 0.12f
+        gr.fillPoly(poly, 4, Col.withA(0xFFD9A030.toInt(), a))
     }
 
     private fun insetQuad(t: Float) {
@@ -295,17 +336,21 @@ class WorldRenderer(val g: Game) {
         var grow = 1f
         val objective = g.target < Tune.TARGET_NEED
         when (b.type) {
-            BT.MYSTERY -> overlay = if (b.color == BC.RED) OV.MYSTERY_R else OV.MYSTERY_G
+            BT.MYSTERY -> {
+                val tool = b.reward - Reward.TOOL_MAGNET
+                if (b.color == BC.BLUE && tool in 0..3) { overlay = OV.TOOL; toolIcon = toolImg(tool); glowC = 0xFFFFF0A0.toInt(); glowA = 0.05f + 0.06f * pulse(t, 4f) }
+                else overlay = if (b.color == BC.RED || b.color == BC.YELLOW) OV.MYSTERY_R else OV.MYSTERY_G
+            }
             BT.BOOST -> { overlay = OV.BOOST; color = BC.BLUE; glowC = 0xFF7FE6FF.toInt(); glowA = 0.08f + 0.08f * pulse(t, 5f) }
             BT.SAVE -> { overlay = OV.SAVE; glowC = 0xFFFFFFD0.toInt(); glowA = 0.1f + 0.15f * pulse(t, 4f) }
-            BT.BOUNCE -> overlay = OV.BOUNCE
-            BT.TRAP -> { overlay = OV.TRAP
+            BT.BOUNCE -> overlay = OV.SPRING
+            BT.TRAP -> if (b.speed == 0f) overlay = OV.TRAP else { overlay = OV.TRAP
                 // armed: the trap glows red just before the spikes pop
                 val c = (t + b.phase) % 2.6f
                 if (c in 1.25f..1.85f) { glowC = 0xFFFF3A2A.toInt(); glowA = 0.28f * sin(((c - 1.25f) / 0.6f) * Math.PI.toFloat()) } }
             BT.CHECKPOINT -> overlay = if (g.world.checkpoints.getOrNull(b.checkpointId)?.active == true) OV.RUNE_ON else OV.RUNE_OFF
             BT.CRACKED -> overlay = when { b.damage > 0.75f -> OV.CRACK3; b.damage > 0.35f -> OV.CRACK2; else -> OV.CRACK1 }
-            BT.FALLING -> overlay = if (b.state >= 1) OV.CRACK2 else OV.CRACK1
+            BT.FALLING -> { overlay = OV.LAVA; if (b.state >= 1) { glowC = 0xFFFF5A10.toInt(); glowA = 0.25f } }
             BT.COLORSHIFT -> { color = g.shiftColor(b); overlay = OV.SHIFT }
             BT.TOOLBLOCK, BT.RESCUE -> { overlay = OV.ENERGY; glowC = Col.WHITE; glowA = 0.15f + 0.15f * pulse(t, 7f) }
             BT.TARGET -> { glowC = 0xFF9FD8FF.toInt(); glowA = if (objective) 0.07f + 0.09f * pulse(t + b.z * 0.7f, 3f) else 0.03f }
@@ -326,6 +371,7 @@ class WorldRenderer(val g: Game) {
             if (static) b else null, overlay, glowC, glowA)
         if (!ok) return
         if (b.type == BT.TRAP && b.spike > 0.02f) drawSpikes(gr, b)
+        if (b.type == BT.BOUNCE) drawSpring(gr, b, y0 + hy)
         if (b.type == BT.TARGET && objective) {
             // the current objective: a soft light breathing on the top face, and a twinkle now and then
             if (cam.project(b.x, b.y1 + 0.05f, b.z + 0.5f)) {
@@ -341,6 +387,65 @@ class WorldRenderer(val g: Game) {
                 star4(gr, cam.sx, cam.sy, sz, 0xFFFFFFFF.toInt())
             }
         }
+    }
+
+    private fun toolImg(k: Int) = when (k) { TK.MAGNET -> art.magnet; TK.SHIELD -> art.shield; TK.SPEED -> art.lightning; else -> art.blockTool }
+
+    /** Gold coil spring standing on a spring pad; squashes when used. */
+    private fun drawSpring(gr: Gfx, b: Block, top: Float) {
+        val sq = if (b.squash > 0f) sin(b.squash * Math.PI.toFloat()) else 0f
+        val coilH = 0.36f * (1f - 0.55f * sq)
+        val cx = b.x; val cz = b.z + b.sz * 0.5f
+        val rings = 4
+        for (k in 0..rings) {
+            val yy = top + 0.03f + coilH * k / rings
+            val rr = 0.3f - 0.02f * (k % 2)
+            var m = 0
+            for (i in 0 until 14) {
+                val a = i / 14f * TAU
+                if (!cam.project(cx + cos(a) * rr, yy, cz + sin(a) * rr * 0.9f)) return
+                poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
+            }
+            val sc = cam.scaleAt(cam.depth)
+            gr.strokePoly(poly, m, max(1.5f, 0.075f * sc), 0xFF8A5A10.toInt())
+            gr.strokePoly(poly, m, max(1f, 0.05f * sc), if (k == rings) 0xFFFFE27A.toInt() else 0xFFF0B838.toInt())
+        }
+        // top cap
+        var m = 0
+        for (i in 0 until 14) {
+            val a = i / 14f * TAU
+            if (!cam.project(cx + cos(a) * 0.22f, top + 0.05f + coilH, cz + sin(a) * 0.2f)) return
+            poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
+        }
+        gr.fillPoly(poly, m, 0xFFFFD050.toInt())
+        if (cam.project(cx, top + 0.3f, cz)) {
+            gr.setAdditive(true)
+            gr.glow(cam.sx, cam.sy, 0.5f * cam.scaleAt(cam.depth), Col.withA(0xFFFFC040.toInt(), 0.25f + 0.1f * pulse(g.t, 4f)))
+            gr.setAdditive(false)
+        }
+    }
+
+    /** Floating power-up bubble with a tool icon inside (as in the Screen 4 design). */
+    private fun drawBubble(gr: Gfx, bb: Bubble) {
+        val t = g.t
+        val bob = sin(t * 2.2f + bb.z) * 0.12f
+        if (!cam.project(bb.x, bb.y + bob, bb.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val popK = if (bb.taken) 1f + (1f - bb.pop) * 0.8f else 1f
+        val a = if (bb.taken) bb.pop else 1f
+        val r = 0.46f * sc * popK
+        val sx = cam.sx; val sy = cam.sy
+        gr.setAdditive(true)
+        gr.glow(sx, sy, r * 1.6f, Col.withA(0xFF7FC8FF.toInt(), 0.35f * a))
+        gr.setAdditive(false)
+        gr.fillCircle(sx, sy, r, Col.withA(0xFF3A78D8.toInt(), 0.35f * a))
+        if (!bb.taken) {
+            val img = toolImg(bb.kind)
+            val ih = r * 1.25f; val iw = ih * img.w / img.h
+            gr.image(img, sx - iw * 0.5f, sy - ih * 0.5f, iw, ih, a)
+        }
+        gr.strokeCircle(sx, sy, r, max(1.5f, r * 0.08f), Col.withA(0xFFD8F0FF.toInt(), 0.85f * a))
+        gr.arc(sx, sy, r * 0.8f, 200f, 60f, max(1.5f, r * 0.1f), Col.withA(Col.WHITE, 0.8f * a))
     }
 
     private fun drawSpikes(gr: Gfx, b: Block) {
@@ -537,74 +642,90 @@ class WorldRenderer(val g: Game) {
         }
     }
 
-    // ------------------------------------------------------------------ portals
-    private fun drawPortal(gr: Gfx, po: Portal) {
-        val t = g.t
-        val rad = 1.45f
-        val cyW = po.y + 1.9f
-        val spin = t * (1.6f + po.charge * 5f)
-        // swirl disc (rotating quad in the portal plane)
-        val rr = rad * 1.42f
-        for (k in 0..3) {
-            val a = spin + k * TAU / 4f + TAU / 8f
-            if (!cam.project(po.x + cos(a) * rr, cyW + sin(a) * rr, po.z)) return
-            q[k * 2] = cam.sx; q[k * 2 + 1] = cam.sy
-        }
-        if (!cam.project(po.x, cyW, po.z)) return
-        val csx = cam.sx; val csy = cam.sy
-        val s = cam.scaleAt(cam.depth)
-        gr.setAdditive(true)
-        gr.glow(csx, csy, rad * s * 1.9f, Col.withA(0xFFFF7AE0.toInt(), 0.55f + 0.3f * po.charge))
-        gr.setAdditive(false)
-        gr.imageQuad(art.swirl, 0f, 0f, art.swirl.w.toFloat(), art.swirl.h.toFloat(), q, 0.95f, 1f, Col.WHITE, po.charge * 0.5f)
-        // second counter-rotating layer
-        for (k in 0..3) {
-            val a = -spin * 1.3f + k * TAU / 4f
-            cam.project(po.x + cos(a) * rr * 0.75f, cyW + sin(a) * rr * 0.75f, po.z)
-            q[k * 2] = cam.sx; q[k * 2 + 1] = cam.sy
-        }
-        gr.setAdditive(true)
-        gr.imageQuad(art.swirl, 0f, 0f, art.swirl.w.toFloat(), art.swirl.h.toFloat(), q, 0.55f)
-        gr.setAdditive(false)
-        // glowing ring
-        var m = 0
-        for (i in 0 until 28) {
-            val a = i / 28f * TAU
-            cam.project(po.x + cos(a) * rad, cyW + sin(a) * rad, po.z)
-            poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
-        }
-        gr.strokePoly(poly, m, 0.16f * s, 0xFFFFB0F0.toInt())
-        gr.strokePoly(poly, m, 0.06f * s, Col.WHITE)
-        drawFlames(gr, po, rad, cyW)
-        // sparkles
-        for (k in 0..5) {
-            val a = t * 2f + k * TAU / 6f
-            if (cam.project(po.x + cos(a) * rad * 1.1f, cyW + sin(a) * rad * 1.1f, po.z)) star4(gr, cam.sx, cam.sy, 0.12f * s, 0xFFFFE0FF.toInt())
-        }
-    }
+    // ------------------------------------------------------------------ the Ancient Gate
+    /** Gate billboard size in world units and where its threshold sits in the picture (0 top, 1 bottom). */
+    private val gateW = 13.4f
+    private val gateThreshold = 0.647f
+    private val archU = 0.516f; private val archV = 0.4f; private val archR = 0.085f
+    private val gq = FloatArray(8)
 
-    private fun drawFlames(gr: Gfx, po: Portal, rad: Float, cyW: Float) {
-        val t = g.t
-        for (k in 0 until 9) {
-            val a = Math.PI.toFloat() * (k / 8f)
-            val fx0 = po.x + cos(a) * (rad + 0.55f); val fy0 = cyW + sin(a) * (rad + 0.45f)
-            if (!cam.project(fx0, fy0, po.z - 0.3f)) continue
-            val s = cam.scaleAt(cam.depth)
-            val h = (0.55f + 0.2f * sin(t * 9f + k * 1.7f)) * s
-            val w = 0.22f * s
-            flame(gr, cam.sx, cam.sy, w, h)
+    /**
+     * The gate from the Screen 4 design is the destination. Far away it is a landmark in the sky,
+     * exactly where the design shows it, growing as the player climbs; over the last stretch it
+     * slides onto its real place at the top of the grand staircase at the end of the path.
+     */
+    private fun drawGate(gr: Gfx) {
+        val po = g.world.portals.firstOrNull() ?: return
+        val fade = clamp01(1f - (abs(cam.yaw) - 0.5f) / 0.5f)
+        if (fade <= 0.01f) return
+        val img = art.gate
+        val aspect = img.h / img.w.toFloat()
+        val h = g.hud
+        // landmark: under the top bar, moving with the sky's parallax, growing with progress
+        val bs = h.bgS
+        val px = clamp(-g.camX * 7f, -60f, 60f) * bs
+        val climb = clamp((cam.ey - 3.17f) * 7f, 0f, 380f) * bs
+        val k = 1f + 0.32f * smooth(g.gateProgress())
+        val lw = gr.width * 0.5575f * k
+        val lcx = gr.width * 0.5f + px
+        val ltop = h.ayT(90f) + climb
+        // the real gate at the end of the path
+        val gh = gateW * aspect
+        val top = po.y + gh * gateThreshold
+        val dz = po.z - cam.ez
+        var w = if (dz < 54f) smooth((54f - dz) / 24f) else 0f
+        var ww = 0f; var wcx = 0f; var wtop = 0f
+        if (w > 0f) {
+            if (cam.project(po.x - gateW * 0.5f, top, po.z)) {
+                val x0 = cam.sx; val y0 = cam.sy
+                if (cam.project(po.x + gateW * 0.5f, top, po.z)) { ww = cam.sx - x0; wcx = (cam.sx + x0) * 0.5f; wtop = (cam.sy + y0) * 0.5f } else w = 0f
+            } else w = 0f
         }
-    }
-
-    private fun flame(gr: Gfx, x: Float, y: Float, w: Float, h: Float) {
+        val gw = lerp(lw, ww, w)
+        val cx = lerp(lcx, wcx, w)
+        val ty = lerp(ltop, wtop, w)
+        val gH = gw * aspect
+        val t = g.t
+        val open = g.target >= Tune.TARGET_NEED
+        val near = clamp01(1f - dz / 60f)
+        val ax = cx + (archU - 0.5f) * gw; val ay = ty + archV * gH
+        // warm light behind the gate, stronger as you get close and when the gate is open
         gr.setAdditive(true)
-        gr.glow(x, y - h * 0.3f, h * 0.8f, 0x66FF7A20)
+        gr.glow(ax, ay, gw * (0.55f + 0.1f * near), Col.withA(0xFFFF9A40.toInt(), fade * (0.18f + 0.18f * near + 0.1f * pulse(t, 2f))))
         gr.setAdditive(false)
-        poly[0] = x - w; poly[1] = y; poly[2] = x - w * 0.6f; poly[3] = y - h * 0.55f; poly[4] = x; poly[5] = y - h
-        poly[6] = x + w * 0.6f; poly[7] = y - h * 0.5f; poly[8] = x + w; poly[9] = y
-        gr.fillPolyGradient(poly, 5, x, y - h, x, y, 0xFFFFE070.toInt(), 0xFFFF5A10.toInt())
-        poly[0] = x - w * 0.45f; poly[1] = y; poly[2] = x; poly[3] = y - h * 0.55f; poly[4] = x + w * 0.45f; poly[5] = y
-        gr.fillPoly(poly, 3, 0xFFFFF6C0.toInt())
+        gr.image(img, cx - gw * 0.5f, ty, gw, gH, fade)
+        // the portal inside the arch: swirls, brightens as you approach, blazes when activated
+        val charge = po.charge
+        val r = archR * gw * (1f + 0.05f * sin(t * 3f))
+        val spin = t * (1.2f + 0.8f * near + 5f * charge)
+        val intensity = fade * (0.35f + 0.25f * near + (if (open) 0.15f else 0f) + 0.45f * charge)
+        gr.setAdditive(true)
+        for (layer in 0..1) {
+            val rr = r * (if (layer == 0) 1.25f else 0.85f)
+            val a0 = if (layer == 0) spin else -spin * 1.4f
+            for (i in 0..3) {
+                val a = a0 + i * TAU / 4f + TAU / 8f
+                gq[i * 2] = ax + cos(a) * rr * 1.414f; gq[i * 2 + 1] = ay + sin(a) * rr * 1.414f * 1.55f
+            }
+            gr.imageQuad(art.swirl, 0f, 0f, art.swirl.w.toFloat(), art.swirl.h.toFloat(), gq, intensity * (if (layer == 0) 0.9f else 0.6f))
+        }
+        gr.glow(ax, ay + r * 0.6f, r * (2.2f + 1.5f * charge), Col.withA(0xFFFFD27A.toInt(), intensity * 0.6f))
+        gr.setAdditive(false)
+        // sparkles drifting out of the portal
+        for (i in 0..5) {
+            val ph = fract(t * 0.35f + i / 6f)
+            val sx = ax + sin(i * 2.3f + t) * r * (0.6f + ph)
+            val sy = ay + r * 1.2f - ph * r * 3.2f
+            star4(gr, sx, sy, gw * 0.012f * (1f - ph) * (1f + near), Col.withA(0xFFFFF0C0.toInt(), fade * (1f - ph)))
+        }
+        // sealed: a magic barrier while the blue blocks are still missing and the player is close
+        if (!open && dz < 22f && g.state == GS.PLAY) {
+            val a = fade * clamp01((22f - dz) / 6f) * (0.35f + 0.15f * pulse(t, 4f))
+            gr.setAdditive(true)
+            gr.glow(ax, ay, r * 2.4f, Col.withA(0xFF60A8FF.toInt(), a))
+            gr.setAdditive(false)
+            gr.strokeCircle(ax, ay, r * 1.5f, gw * 0.008f, Col.withA(0xFFB8E0FF.toInt(), a * 1.6f))
+        }
     }
 
     // ------------------------------------------------------------------ guard (block golem)

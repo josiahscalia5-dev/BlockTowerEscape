@@ -12,6 +12,14 @@ class Coin(@JvmField var x: Float, @JvmField var y: Float, @JvmField var z: Floa
     @JvmField val oz = z
 }
 
+/** Floating power-up bubble (as in the Screen 4 design): touching it gives one use of a tool. */
+class Bubble(@JvmField val kind: Int, @JvmField var x: Float, @JvmField var y: Float, @JvmField var z: Float) {
+    @JvmField var taken = false
+    @JvmField var pulled = false
+    @JvmField var pop = 0f
+    @JvmField var sortKey = 0f
+}
+
 class Checkpoint(val id: Int, val x: Float, val y: Float, val z: Float) {
     var active = false
     var activeTime = 0f
@@ -43,6 +51,7 @@ class World {
     var rowMax = 240
     lateinit var rows: Array<ArrayList<Block>>
     val coins = ArrayList<Coin>()
+    val bubbles = ArrayList<Bubble>()
     val checkpoints = ArrayList<Checkpoint>()
     val portals = ArrayList<Portal>()
     val triggers = ArrayList<Trigger>()

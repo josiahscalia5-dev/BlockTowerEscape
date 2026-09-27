@@ -561,7 +561,8 @@ class Hud(val g: Game) {
         if (t < 0f || t > 3.6f) return
         val inU = easeOutCubic(clamp01(t / 0.35f)); val outU = clamp01((3.6f - t) / 0.35f)
         val a = inU * outU
-        val l = ax(170f); val r = ax(780f); val top = ayT(128f) - (1f - inU) * 30f * s; val b = top + 150f * s
+        // under the gate, over the far end of the path: never on the gate or near the player
+        val l = w * 0.5f - 300f * s; val r = w * 0.5f + 300f * s; val top = h * 0.34f - 75f * s - (1f - inU) * 30f * s; val b = top + 150f * s
         gr.fillRoundRect(l, top, r, b, 22f * s, Col.withA(0xFF0A1438.toInt(), 0.82f * a))
         gr.strokeRoundRect(l, top, r, b, 22f * s, 3f * s, Col.withA(0xFFFFE14A.toInt(), 0.9f * a))
         gr.text("MISSION", (l + r) * 0.5f, top + 28f * s, 30f * s, Font.TITLE, Col.withA(0xFFFFE14A.toInt(), a), Align.CENTER, 4f * s, Col.withA(0xFF1A0A20.toInt(), a))

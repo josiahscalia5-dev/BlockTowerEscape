@@ -27,15 +27,30 @@ class BoyRig(val legs: RigPart, val body: RigPart, val armL: RigPart, val armR: 
 
         fun build(p: Platform, src: Pixels): BoyRig {
             val w = src.w; val h = src.h
-            // sprite-space regions (see boy.png): left fist/forearm, right forearm/fist, legs below the jacket
-            fun armLAlpha(x: Int, y: Int): Float = if (y < 140 || y >= 240 || x >= 62) 0f else min(1f, (62 - x) / 10f)
-            fun armRAlpha(x: Int, y: Int): Float = if (y < 168 || y >= 278 || x < 160) 0f else
-                min(1f, (x - 160) / 10f) * min(1f, (y - 168) / 10f)
+            // hand-traced outlines of the two arms in sprite pixels (sleeve, forearm and fist); the torso
+            // edge and backpack straps stay with the body. The arms overlap the body only at the shoulder,
+            // where the arm fades out so a swinging arm blends into the static shoulder.
+            val polyL = floatArrayOf(62f, 148f, 67f, 165f, 65f, 186f, 58f, 198f, 52f, 205f, 49f, 222f, 20f, 233f, 0f, 229f, 0f, 168f, 20f, 158f, 40f, 149f)
+            val polyR = floatArrayOf(158f, 153f, 190f, 158f, 216f, 183f, 241f, 198f, 242f, 240f, 241f, 270f, 204f, 270f, 194f, 246f, 185f, 221f, 178f, 214f, 170f, 205f, 159f, 190f)
+            fun inside(poly: FloatArray, x: Float, y: Float): Boolean {
+                var c = false
+                var j = poly.size / 2 - 1
+                for (i in 0 until poly.size / 2) {
+                    val xi = poly[i * 2]; val yi = poly[i * 2 + 1]; val xj = poly[j * 2]; val yj = poly[j * 2 + 1]
+                    if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c
+                    j = i
+                }
+                return c
+            }
+            fun inL(x: Int, y: Int) = inside(polyL, x + 0.5f, y + 0.5f)
+            fun inR(x: Int, y: Int) = inside(polyR, x + 0.5f, y + 0.5f)
+            fun armLAlpha(x: Int, y: Int): Float = if (!inL(x, y)) 0f else if (x < 54) 1f else clamp01((65 - x) / 11f)
+            fun armRAlpha(x: Int, y: Int): Float = if (!inR(x, y)) 0f else if (x >= 172) 1f else clamp01((x - 160) / 12f)
             fun legsAlpha(x: Int, y: Int): Float = if (y < 258 || x > 176) 0f else min(1f, (y - 258) / 12f)
             fun bodyAlpha(x: Int, y: Int): Float {
                 if (y >= 294) return 0f
-                if (y in 140 until 240 && x < 52) return 0f
-                if (y in 178 until 278 && x > 170) return 0f
+                if (x < 54 && inL(x, y)) return 0f
+                if (x >= 172 && inR(x, y)) return 0f
                 return if (y > 278) (294 - y) / 16f else 1f
             }
             fun part(l: Int, t: Int, r: Int, b: Int, px: Float, py: Float, alpha: (Int, Int) -> Float): RigPart {
@@ -52,8 +67,8 @@ class BoyRig(val legs: RigPart, val body: RigPart, val armL: RigPart, val armR: 
             return BoyRig(
                 legs = part(0, 258, 178, h, HIP_X, HIP_Y, ::legsAlpha),
                 body = part(0, 0, w, 294, HIP_X, HIP_Y, ::bodyAlpha),
-                armL = part(0, 140, 62, 240, 58f, 176f, ::armLAlpha),
-                armR = part(160, 168, w, 278, 168f, 192f, ::armRAlpha),
+                armL = part(0, 145, 68, 236, 60f, 176f, ::armLAlpha),
+                armR = part(156, 150, w, 272, 170f, 180f, ::armRAlpha),
                 w = w, h = h
             )
         }

@@ -37,6 +37,8 @@ class Art(p: Platform) {
     val cracks = arrayOf(p.loadImage("emb/cracks1.png"), p.loadImage("emb/cracks2.png"), p.loadImage("emb/cracks3.png"))
     val lava = p.loadImage("emb/lava.png")
     val swirl = p.loadImage("emb/portal_swirl.png")
+    /** The Ancient Gate cut from the Screen 4 design: the level's final destination. */
+    val gate = p.loadImage("img/gate.png")
     val guardFace = p.loadImage("emb/guard_face.png")
 
     /** [colour][variant] */

@@ -448,7 +448,9 @@ class Game(val platform: Platform) {
                         3 -> { b.alpha = min(1f, b.alpha + dt * 2.5f); if (b.alpha >= 1f) b.state = 0 }
                     }
                     BT.FALLING -> when (b.state) {
-                        1 -> { b.timer += dt; b.shake = 0.1f; if (b.timer > 0.45f) { b.state = 2; b.timer = 0f; b.vy = 0f; fx.dust(b.x, b.y, b.z + 0.5f, 5)
+                        1 -> { b.timer += dt; b.shake = 0.1f
+                            if (fx.rng.f() < dt * 14f) crumbleBit(b)
+                            if (b.timer > 0.45f) { b.state = 2; b.timer = 0f; b.vy = 0f; fx.dust(b.x, b.y, b.z + 0.5f, 5); for (k in 0 until 4) crumbleBit(b)
                             shake = max(shake, 0.12f) } }
                         2 -> { b.vy -= Tune.GRAVITY * 0.7f * dt; b.y += b.vy * dt; b.alpha = clamp01(1f - (b.origY - b.y) / 10f)
                             if (b.y < b.origY - 10f) { b.state = 3; b.visible = false; b.timer = 0f } }
@@ -459,7 +461,7 @@ class Game(val platform: Platform) {
                         2 -> { b.timer += dt; if (b.timer > 4.5f && !playerInside(b)) { b.state = 3; b.visible = true; b.alpha = 0f; b.damage = 0f } }
                         3 -> { b.alpha = min(1f, b.alpha + dt * 2.5f); if (b.alpha >= 1f) b.state = 0 }
                     }
-                    BT.TRAP -> {
+                    BT.TRAP -> if (b.speed == 0f) b.spike = 1f else {
                         val c = (t + b.phase) % 2.6f
                         val prev = b.spike
                         b.spike = when {
@@ -508,6 +510,16 @@ class Game(val platform: Platform) {
             }
         }
         removeList?.forEach { world.remove(it) }
+    }
+
+    /** A glowing chunk breaking off a lava-cracked block. */
+    private fun crumbleBit(b: Block) {
+        val q = fx.spawn()
+        q.x = b.x + fx.rng.f(-0.45f, 0.45f); q.y = b.y + fx.rng.f(0f, 0.6f); q.z = b.z + fx.rng.f(0.1f, 0.9f)
+        q.vx = fx.rng.f(-1f, 1f); q.vy = fx.rng.f(-0.5f, 1.5f); q.vz = fx.rng.f(-1f, 1f)
+        q.life = fx.rng.f(0.6f, 1f); q.maxLife = q.life; q.size = fx.rng.f(0.1f, 0.18f)
+        q.color = if (fx.rng.f() < 0.6f) 0xFFE0301A.toInt() else 0xFFFF8A20.toInt(); q.kind = PK.SHARD; q.gravity = 18f
+        q.rot = fx.rng.f(0f, TAU); q.vrot = fx.rng.f(-9f, 9f)
     }
 
     private fun playerInside(b: Block): Boolean {
@@ -843,6 +855,15 @@ class Game(val platform: Platform) {
             }
             if (d < 0.8f && (p.state == PS.NORMAL || p.state == PS.RESCUE_FALL)) collectCoin(c)
         }
+        for (bb in world.bubbles) {
+            if (bb.taken) { bb.pop = max(0f, bb.pop - dt * 3f); continue }
+            if (abs(bb.z - pz) > 12f) continue
+            val dx = px - bb.x; val dy = py - bb.y; val dz = pz - bb.z
+            val d = len3(dx, dy, dz)
+            if (magR > 0f && d < magR && p.state == PS.NORMAL) bb.pulled = true
+            if (bb.pulled) { val k = min(1f, 12f * dt / max(d, 0.001f)); bb.x += dx * k; bb.y += dy * k; bb.z += dz * k }
+            if (d < 0.95f && p.state == PS.NORMAL) takeBubble(bb)
+        }
         // the magnet also pulls in blue target blocks (their shells fly to the player)
         if (magnetOn && p.state == PS.NORMAL) {
             magnetPullT -= dt
@@ -876,6 +897,21 @@ class Game(val platform: Platform) {
             fx.fly(FK.COIN, cam.sx, cam.sy, hud.coinIconX(), hud.coinIconY(), 0, 0f, 0.55f)
             fx.burst(c.x, c.y, c.z, 6, PK.SPARK, 0xFFFFE070.toInt(), 2.5f, 0.1f, 0.35f)
         }
+    }
+
+    private fun takeBubble(bb: Bubble) {
+        bb.taken = true; bb.pop = 1f
+        val k = bb.kind
+        tools[k].count++
+        score += 50
+        platform.sound(Sfx.TOOLGET); platform.sound(Sfx.SHIELD, 0.4f, 1.6f)
+        fx.burst(bb.x, bb.y, bb.z, 18, PK.STAR, 0xFFD8F0FF.toInt(), 4f, 0.13f, 0.6f)
+        fx.popupWorld("+1 ${toolName(k)}", bb.x, bb.y + 1.1f, bb.z, 0xFFB8F2FF.toInt(), 40f)
+        if (cam.project(bb.x, bb.y, bb.z)) {
+            fx.fly(FK.TOOL, cam.sx, cam.sy, hud.toolX(k), hud.toolY(k), k, 0f, 0.7f)
+            fx.ring(cam.sx, cam.sy, 0xFFB8F2FF.toInt(), 20f * hud.s, 120f * hud.s, 0.4f, 8f * hud.s)
+        }
+        player.collectT = 0f
     }
 
     private fun arrive(f: Flyer) {
@@ -1295,6 +1331,12 @@ class Game(val platform: Platform) {
         if (!camInit) updateCamera(0.016f)
         view.render(g)
         hud.render(g)
+    }
+
+    /** 0 at the start of the course .. 1 at the Ancient Gate. */
+    fun gateProgress(): Float {
+        val po = world.portals.firstOrNull() ?: return 0f
+        return clamp01((player.z - world.spawnZ) / (po.z - world.spawnZ))
     }
 
     fun timeText(): String {
