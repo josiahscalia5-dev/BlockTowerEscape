@@ -21,6 +21,7 @@ package com.blocktower.escape.core
  *  R G Y P O  normal coloured blocks      K brick        B blue TARGET block
  *  c cracked    d disappearing   f lava-cracked (falling)   b spring pad   s colour-shifting
  *  t timed spike trap   ^ spike block (always armed)   * boost (star)   S save block
+ *  p speed pad (Level 5)
  *  a appears on approach   . empty
  */
 object Level {
@@ -85,6 +86,7 @@ internal open class CourseWriter(val w: World, seed: Int = 23) {
                 't' -> blk(x, l, z, BC.STONE, BT.TRAP)
                 '*' -> blk(x, l, z, BC.CYAN, BT.BOOST)
                 'S' -> blk(x, l, z, BC.GOLD, BT.SAVE)
+                'p' -> blk(x, l, z, BC.BLUE, BT.PAD)
                 'a' -> blk(x, l, z, pick(), BT.APPEAR)
                 '.' -> {}
             }

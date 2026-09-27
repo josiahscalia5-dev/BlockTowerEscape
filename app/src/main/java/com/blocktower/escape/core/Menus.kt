@@ -17,7 +17,8 @@ class Menus(private val app: App) {
         arrayOf(app.pf.loadImage("home/icon_daily.png"), app.pf.loadImage("home/icon_missions.png"),
             app.pf.loadImage("home/icon_vault.png"), app.pf.loadImage("home/icon_settings.png"))
     }
-    private val guardian by lazy { app.pf.loadImage("l5/guardian.png") }
+    private val guardian by lazy { app.pf.loadImage("l5v/guardian.png") }
+    private val runaway by lazy { app.pf.loadImage("l5v/relic.png") }
     private var claimFlash = 0f
     private var lastClaimed = -1
 
@@ -156,6 +157,12 @@ class Menus(private val app: App) {
                 gr.setAdditive(true); gr.glow(icx, icy, 70f * s, Col.withA(0xFFFFE070.toInt(), 0.35f + 0.15f * pulse(app.t + i, 2f))); gr.setAdditive(false)
                 relicIcon(gr, rel.level, icx, icy, 92f * s)
                 gr.text(rel.name, icx, y0 + 165f * s, 22f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 3f * s, 0xFF10205A.toInt())
+                // Level 5's bonus: the Runaway Relic sits beside the level's relic once caught
+                if (rel.level == 5 && pr.runawayRelic) {
+                    val rh = 58f * s; val rw = rh * runaway.w / runaway.h
+                    gr.setAdditive(true); gr.glow(x0 + cw - 22f * s, y0 + 36f * s, 40f * s, Col.withA(0xFFFFE070.toInt(), 0.5f)); gr.setAdditive(false)
+                    gr.image(runaway, x0 + cw - 22f * s - rw * 0.5f, y0 + 36f * s - rh * 0.5f, rw, rh)
+                }
             } else {
                 gr.text("?", icx, icy, 80f * s, Font.TITLE, 0xFF3A4A80.toInt())
                 gr.text("Level ${rel.level}", icx, y0 + 165f * s, 24f * s, Font.UI, 0xFF9FB4E0.toInt())
@@ -190,8 +197,8 @@ class Menus(private val app: App) {
         val art = app.baseArt
         val img = when (level) { 1 -> art.star; 2 -> art.magnet; 3 -> art.shield; 4 -> art.guardFace; else -> guardian }
         if (level == 5) {
-            // the Temple Guardian's head
-            val u0 = 95f; val v0 = 0f; val u1 = 175f; val v1 = 85f
+            // the lava Guardian's face
+            val u0 = 178f; val v0 = 118f; val u1 = 358f; val v1 = 290f
             val hh = size; val ww = hh * (u1 - u0) / (v1 - v0)
             val q = floatArrayOf(x - ww / 2, y - hh / 2, x + ww / 2, y - hh / 2, x + ww / 2, y + hh / 2, x - ww / 2, y + hh / 2)
             gr.imageQuad(img, u0, v0, u1, v1, q, 1f)

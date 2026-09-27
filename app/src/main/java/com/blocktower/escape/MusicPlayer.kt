@@ -26,7 +26,7 @@ class MusicPlayer {
     private val renderer = Thread({
         try {
             val synth = MusicSynth()
-            for (t in intArrayOf(Music.HOME, Music.SKY, Music.JUNGLE)) {
+            for (t in intArrayOf(Music.HOME, Music.SKY, Music.VOLCANO)) {
                 if (!running) return@Thread
                 val layers = synth.render(t)
                 themes[t] = Array(layers.size) { l -> ShortArray(layers[l].size) { i -> (layers[l][i] * 32767f).toInt().coerceIn(-32768, 32767).toShort() } }

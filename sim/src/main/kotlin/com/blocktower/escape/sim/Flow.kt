@@ -199,7 +199,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
         check("Level $n: tools available: ${open.joinToString().ifEmpty { "none" }}", open == expected)
         g.hud.layout(w, h)
         var maxI = 0f; var early = -1f; var wrongTrack = 0
-        val theme = if (g.spec.jungle) Music.JUNGLE else Music.SKY
+        val theme = if (g.spec.volcano) Music.VOLCANO else Music.SKY
         val ap = Autopilot(assets, out, mapOf("scenario" to "clear"), external = g, stepper = { app.update(it); frame++ }, frameHook = {
             record(false)
             if (g.state == GS.PLAY) {
@@ -209,7 +209,7 @@ class Flow(val assets: File, val out: File, val opts: Map<String, String>) {
             }
         })
         val done = ap.playLevel(420)
-        check("Level $n: its theme plays (${if (theme == Music.JUNGLE) "jungle" else "sky"}), calm at first, building to flat out",
+        check("Level $n: its theme plays (${if (theme == Music.VOLCANO) "volcano" else "sky"}), calm at first, building to flat out",
             wrongTrack == 0 && early in 0f..0.3f && maxI >= 0.95f, "start %.2f, peak %.2f".format(early, maxI))
         val r = g.results
         step(30)

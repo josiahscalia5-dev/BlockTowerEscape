@@ -168,7 +168,7 @@ class App(platform: Platform, showSplash: Boolean = true) : GameHost {
                 g.state == GS.RESULTS -> 0.5f
                 else -> 1f
             }
-            pf.music(if (g.spec.jungle) Music.JUNGLE else Music.SKY, g.musicIntensity(), vol)
+            pf.music(if (g.spec.volcano) Music.VOLCANO else Music.SKY, g.musicIntensity(), vol)
         } else pf.music(Music.HOME, 0f, if (popup != Pop.NONE) 0.8f else 1f)
     }
 
@@ -321,6 +321,7 @@ class App(platform: Platform, showSplash: Boolean = true) : GameHost {
         val n = g.spec.number
         val opened = progress.recordLevel(n, r.stars, r.totalScore, r.earnedCoins + r.rewardCoins, r.earnedGems + r.gemReward,
             r.targetGot, r.coinsCollected, g.toolUses, g.ev.chase == Chase.ESCAPED, g.mysteryOpened, !g.heartLost)
+        if (g.relic.caught && !progress.runawayRelic) { progress.runawayRelic = true; progress.save() }
         if (opened && n + 1 <= Levels.count) justUnlocked = n + 1
     }
 

@@ -32,6 +32,7 @@ fun main(args: Array<String>) {
         "flow" -> Flow(assets, out, opts).run()
         "devices" -> Devices(assets, out, opts).run()
         "music" -> musicFiles(out)
+        "l5art" -> L5Art(File("."), File(out, "l5art")).run()
         else -> error("unknown mode ${args[0]}")
     }
 }
@@ -188,7 +189,7 @@ fun appShots(assets: File, out: File, w: Int, h: Int) {
 
 /** Renders every music theme to WAV (calm and flat-out mixes, two loops each) and prints levels and timing. */
 fun musicFiles(out: File) {
-    val names = mapOf(com.blocktower.escape.core.Music.HOME to "home", com.blocktower.escape.core.Music.SKY to "sky", com.blocktower.escape.core.Music.JUNGLE to "jungle")
+    val names = mapOf(com.blocktower.escape.core.Music.HOME to "home", com.blocktower.escape.core.Music.SKY to "sky", com.blocktower.escape.core.Music.VOLCANO to "volcano")
     val gains = FloatArray(com.blocktower.escape.core.Music.LAYERS)
     for ((track, name) in names) {
         val t0 = System.nanoTime()

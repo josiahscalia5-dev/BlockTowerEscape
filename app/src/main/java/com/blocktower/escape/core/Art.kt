@@ -2,13 +2,13 @@ package com.blocktower.escape.core
 
 /** All bitmaps used by the game. Block skins are colourised at load time from grey tone maps. */
 class Art(p: Platform, val theme: Int = Theme.SKY_TOWER) {
-    private val jungle = theme == Theme.JUNGLE_TEMPLE
-    val bg = p.loadImage(if (jungle) "l5/bg_plate.jpg" else "img/bg_plate.jpg")
+    private val volcano = theme == Theme.VOLCANO
+    val bg = p.loadImage(if (volcano) "l5v/bg_plate.jpg" else "img/bg_plate.jpg")
     /** Where the design sits inside the background plate, and the design's size. */
-    val bgArtX = if (jungle) 74f else 64f
-    val bgArtY = if (jungle) 500f else 480f
-    val artW = if (jungle) 852f else 1024f
-    val artH = if (jungle) 1846f else 1536f
+    val bgArtX = if (volcano) 0f else 64f
+    val bgArtY = if (volcano) 0f else 480f
+    val artW = if (volcano) 941f else 1024f
+    val artH = if (volcano) 1672f else 1536f
 
     val boy = p.loadImage("img/boy.png")
     /** Boy sprite placement in the original artwork (for sizing). */
@@ -40,19 +40,17 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER) {
     val cracks = arrayOf(p.loadImage("emb/cracks1.png"), p.loadImage("emb/cracks2.png"), p.loadImage("emb/cracks3.png"))
     val lava = p.loadImage("emb/lava.png")
     val swirl = p.loadImage("emb/portal_swirl.png")
-    /** The destination cut from the level's design: the Ancient Gate (Level 23) or the temple portal (Level 5). */
-    val gate = p.loadImage(if (jungle) "l5/gate.png" else "img/gate.png")
-
-    // ---- Level 5 (jungle temple) art, cut from its design
-    val guardian = if (jungle) p.loadImage("l5/guardian.png") else null
-    val checkpointArch = if (jungle) p.loadImage("l5/checkpoint.png") else null
-    val spikedLog = if (jungle) p.loadImage("l5/log.png") else null
-    val bridgeLeft = if (jungle) p.loadImage("l5/bridge_left.png") else null
-    val bridgeRight = if (jungle) p.loadImage("l5/bridge_right.png") else null
-    val ropeIsland = if (jungle) p.loadImage("l5/rope_island.png") else null
-    /** Gold medallion carved into temple stones (Level 5). */
-    val emblem = if (jungle) p.loadImage("l5/emblem.png") else null
+    /** The destination cut from the level's design: the Ancient Gate (Level 4) or the volcano fortress (Level 5). */
+    val gate = p.loadImage(if (volcano) "l5v/gate.png" else "img/gate.png")
     val guardFace = p.loadImage("emb/guard_face.png")
+
+    // ---- Level 5 (volcanic sky fortress) art, cut from its design by `sim l5art`
+    val guardian = if (volcano) p.loadImage("l5v/guardian.png") else null
+    val relic = if (volcano) p.loadImage("l5v/relic.png") else null
+    val mace = if (volcano) p.loadImage("l5v/mace.png") else null
+    val banner = if (volcano) p.loadImage("l5v/banner.png") else null
+    /** Tall fortress-stone texture (the brick courses repeated) for the pillars that rise out of the lava. */
+    val pillarSide: Img?
 
     /** [colour][variant] */
     val top: Array<Array<Img>>
@@ -64,24 +62,14 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER) {
         val sideT = Array(3) { p.loadPixels("tex/side$it.png") }
         val brick = p.loadPixels("tex/brick.png")
         texSize = topT[0].w
-        top = Array(BC.COUNT) { c -> Array(3) { v ->
-            if (c == BC.TEMPLE && jungle) p.loadImage("l5/temple_top$v.png")
-            else if (c == BC.TEMPLE_DARK && jungle) p.createImage(darken(p.loadPixels("l5/temple_top$v.png"), 0.55f))
-            else p.createImage(colorize(if (c == BC.BRICK || c == BC.TEMPLE) brick else topT[v], BC.ramps[c], true)) } }
-        side = Array(BC.COUNT) { c -> Array(3) { v ->
-            if (c == BC.TEMPLE && jungle) p.loadImage("l5/temple_side$v.png")
-            else if (c == BC.TEMPLE_DARK && jungle) p.createImage(darken(p.loadPixels("l5/temple_side$v.png"), 0.55f))
-            else p.createImage(colorize(if (c == BC.BRICK || c == BC.TEMPLE) brick else sideT[v], BC.ramps[c], false)) } }
-    }
-
-    private fun darken(src: Pixels, k: Float): Pixels {
-        val out = IntArray(src.argb.size)
-        for (i in out.indices) {
-            val c = src.argb[i]
-            val r = (((c shr 16) and 255) * k).toInt(); val g = (((c shr 8) and 255) * k).toInt(); val b = ((c and 255) * k * 1.05f).toInt().coerceAtMost(255)
-            out[i] = (c and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+        top = Array(BC.COUNT) { c -> Array(3) { v -> p.createImage(colorize(if (BC.bricky(c)) brick else topT[v], BC.ramps[c], true)) } }
+        side = Array(BC.COUNT) { c -> Array(3) { v -> p.createImage(colorize(if (BC.bricky(c)) brick else sideT[v], BC.ramps[c], false)) } }
+        pillarSide = if (!volcano) null else {
+            val reps = 8
+            val tall = IntArray(brick.w * brick.h * reps)
+            for (k in 0 until reps) System.arraycopy(brick.argb, 0, tall, k * brick.w * brick.h, brick.w * brick.h)
+            p.createImage(colorize(Pixels(brick.w, brick.h * reps, tall), BC.ramps[BC.FORT], false))
         }
-        return Pixels(src.w, src.h, out)
     }
 
     private fun colorize(src: Pixels, ramp: IntArray, isTop: Boolean): Pixels {

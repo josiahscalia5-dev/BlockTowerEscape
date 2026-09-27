@@ -52,7 +52,7 @@ class Autopilot(
 
     /**
      * Where the scripted moments happen on each level, and the lane to steer for from each z onward.
-     * Levels 1-3 are the early sky levels, Level 4 the sky tower, Level 5 the jungle temple.
+     * Levels 1-3 are the early sky levels, Level 4 the sky tower, Level 5 the volcanic sky fortress.
      */
     private class Plan(
         val route: FloatArray,
@@ -88,16 +88,17 @@ class Autopilot(
         pathA = floatArrayOf(120f, 127f, 1.7f, 9f), pathB = floatArrayOf(131f, 134f, -1.3f, 1.3f),
     ) else Plan(
         route = floatArrayOf(
-            -9f, 0f, 1.6f, 0.2f, 2.6f, -0.3f, 4.6f, 0f, 8.7f, 0.6f, 9.6f, 0.5f, 10.6f, 1.0f,
-            13.3f, 1.4f, 14.6f, 0.9f, 15.6f, 0.4f, 17.2f, 0.2f, 20.2f, 0.9f, 21.6f, 1.2f, 23.2f, 1.9f,
-            // the coin trail up toward the portal
-            24.6f, 1.8f, 25.6f, 1.5f, 26.6f, 1.2f, 27.6f, 0.9f, 28.6f, 1.0f, 29.6f, 1.3f, 30.6f, 1.6f, 31.6f, 1.7f, 32.6f, 1.5f,
-            33.6f, 0f,
-            // the vanishing stepping stones in the moving-stones section
-            78.3f, 1f, 79.4f, 0f, 80.4f, 1f, 81.6f, 0f),
-        fallZ = 36.2f, steerZ = 160.5f, speedZ = 38f, captureZ = 125f, magnetZ = 92.5f, shieldZ = 104.5f,
-        blockZ0 = 96.5f, blockZ1 = 98.2f, trapZ0 = 57f, trapZ1 = 90f,
-        pathA = floatArrayOf(18f, 20f, -9f, 0.6f), pathB = floatArrayOf(24f, 25.2f, 1.2f, 9f),
+            -9f, 0f,
+            26.3f, 1f, 28.6f, 0f,                  // round the spikes in the middle lane
+            45.3f, -3f, 57.2f, 0f,                 // the fork: the safe bridge on the left, then back
+            73.5f, 3f, 83.0f, 1f, 84.5f, 0f,       // out of the loop on the right, then back across
+            183.3f, 1f, 185.6f, 0f,                // round the spikes during the chase
+            202.6f, 1f, 203.7f, 0f, 204.7f, 1f, 205.9f, 0f,   // vanishing stepping stones
+            238.6f, 1f, 239.7f, 0f,
+            268.6f, 1f, 269.7f, 0f),
+        fallZ = 3.0f, steerZ = 10.5f, speedZ = 160f, captureZ = 166f, magnetZ = 110f, shieldZ = 200f,
+        blockZ0 = 30.2f, blockZ1 = 31.6f, trapZ0 = 19f, trapZ1 = 31f,
+        pathA = floatArrayOf(46.5f, 56f, -4f, -1.8f), pathB = floatArrayOf(57.5f, 60.5f, -2.6f, 2.6f),
     )
     private fun routeX(z: Float): Float {
         val route = plan.route
@@ -159,6 +160,7 @@ class Autopilot(
         if (videoFile != null) video = VideoWriter(File(videoFile), w, h, opts["ffmpeg"] ?: "ffmpeg")
         val frameDir = opts["frames"]?.let { File(it).apply { mkdirs() } }
         var lastState = -1; var lastHearts = g.hearts; var lastTarget = 0; var lastCp = 0; var lastChase = Chase.NONE; var lastPs = PS.NORMAL
+        var lastRelic = com.blocktower.escape.core.RS.NONE
         val maxFrames = 60 * 60 * 6
         var doneAt = -1
         while (frame < maxFrames) {
@@ -175,9 +177,21 @@ class Autopilot(
             if (g.target != lastTarget) { if (g.target % 3 == 0 || g.target == g.spec.targetNeed) note("blue blocks ${g.target}/${g.spec.targetNeed}"); lastTarget = g.target }
             if (g.checkpoint != lastCp) { note("checkpoint ${g.checkpoint} activated"); lastCp = g.checkpoint; seen.add("checkpoint") }
             if (g.ev.chase != lastChase) { note("chase ${chaseName(g.ev.chase)}"); lastChase = g.ev.chase; seen.add("chase:" + chaseName(g.ev.chase)) }
-            if (p.state != lastPs) { note("player ${psName(p.state)}"); lastPs = p.state; seen.add("ps:" + psName(p.state)) }
+            if (p.state != lastPs) {
+                if (lastPs == PS.LOOP && p.state == PS.NORMAL) { seen.add("loop done"); note("out of the loop at x=${"%.1f".format(p.x)} (lane ${"%.1f".format(p.loopLat)})") }
+                note("player ${psName(p.state)}"); lastPs = p.state; seen.add("ps:" + psName(p.state))
+            }
             if (g.ev.lavaOn) seen.add("lava")
             if (g.ev.finalOn) seen.add("final escape")
+            val rs = g.relic.state
+            if (rs != lastRelic) {
+                when (rs) {
+                    com.blocktower.escape.core.RS.APPEAR -> { seen.add("relic:appear"); note("Runaway Relic appears ${"%.1f".format(g.relic.z - p.z)} ahead") }
+                    com.blocktower.escape.core.RS.CAUGHT -> { seen.add("relic:caught"); note("Runaway Relic CAUGHT at z=${"%.1f".format(p.z)} (coins ${g.coins}, gems ${g.gems}, score ${g.score})") }
+                    com.blocktower.escape.core.RS.ESCAPED -> { seen.add("relic:escaped"); note("Runaway Relic got away (hearts ${g.hearts}, checkpoint ${g.checkpoint})") }
+                }
+                lastRelic = rs
+            }
             // render
             val gr = gfx
             if (gr != null && (frame % 2 == 0)) {
@@ -295,6 +309,7 @@ class Autopilot(
             GS.PLAY -> {}
             else -> return
         }
+        if (p.state == PS.LOOP) { loopHands(); return }
         if (p.state != PS.NORMAL) { wantRun = true; return }
         if (scenario == "hearts" && !seen.contains("continue")) { if (thumbFree && p.grounded && g.playT > 0.5f) leapOffTheSide(); return }
         if (startStep < 99) { if (joyMode) joyStartTests() else startTests(); return }
@@ -317,13 +332,15 @@ class Autopilot(
         }
         if (g.ev.chase == Chase.CAUGHT) captureTestDone = true
         if (captureTestDone) idleUntil = -1f
+        // "relic=miss": dawdle when the Runaway Relic appears, so it gets away (it must not cost anything)
+        if (opts["relic"] == "miss" && g.relic.state == com.blocktower.escape.core.RS.RUN && g.relic.z - p.z < 30f && g.relic.t < 6f) { wantRun = false; keepPace(); return }
         if (!magnetUsed && z > plan.magnetZ && p.grounded) { tapTool(TK.MAGNET); magnetUsed = true }
         if (!shieldUsed && z > plan.shieldZ && p.grounded) { tapTool(TK.SHIELD); shieldUsed = true }
 
         wantRun = true
         // --- a swinging log will be in the way when we get there: wait for it to swing clear
         if (logInWay()) {
-            if (!logWaitNoted) { note("waiting for the swinging log"); logWaitNoted = true; logWaits++ }
+            if (!logWaitNoted) { note("waiting for the swinging mace"); logWaitNoted = true; logWaits++ }
             wantRun = false; keepPace(); return
         }
         logWaitNoted = false
@@ -374,9 +391,31 @@ class Autopilot(
         keepPace()
     }
 
+    /**
+     * Round the loop: keep pushing forward, and pick a lane with no spike plate coming up (or hop the plate when
+     * there is no time to steer).
+     */
+    private fun loopHands() {
+        val lp = p.loop ?: return
+        if (!seen.contains("loop")) { note("entered the great loop at ${"%.1f".format(len2(p.vx, p.vz))}/s"); seen.add("loop") }
+        wantRun = true
+        if (thumbFree && g.swipe.cruise < 0.85f) flickUp()
+        val ahead = lp.spikes.filter { it[0] > p.loopU && (it[0] - p.loopU) * lp.length < 3.2f }
+        if (ahead.isEmpty()) return
+        val sp = ahead.minByOrNull { it[0] }!!
+        if (abs(sp[1] - p.loopLat) < 0.7f) {
+            val free = floatArrayOf(0f, -1f, 1f).filter { l -> lp.spikes.none { s2 -> s2[0] > p.loopU && (s2[0] - p.loopU) * lp.length < 3.2f && abs(s2[1] - l) < 0.7f } }
+            val dist = (sp[0] - p.loopU) * lp.length
+            if (free.isNotEmpty() && dist > 1.2f && thumbFree && frame - lastSteerFrame > 10) {
+                val l = free.minByOrNull { abs(it - p.loopLat) }!!
+                steerSwipe(l - p.loopLat); note("loop: steering round a spike plate")
+            } else if (dist < 0.9f) { pressJump(); note("loop: hopping a spike plate") }
+        }
+    }
+
     private var logWaitNoted = false
     private var logWaits = 0
-    /** Predicts whether a swinging log sweeps through our lane while we pass under it. */
+    /** Predicts whether a swinging mace sweeps through our lane while we pass under it. */
     private fun logInWay(): Boolean {
         for (l in g.world.logs) {
             val dz = l.pz - p.z
@@ -388,7 +427,7 @@ class Autopilot(
             while (k <= 4) {
                 val a = l.amp * sin(w * (t0 + k * 0.1f) + l.phase)
                 val cx = l.px + sin(a) * l.len; val cy = l.py - kotlin.math.cos(a) * l.len
-                if (abs(p.x - cx) < l.size * 0.5f + 0.6f && cy - l.radius < p.y + Tune.HEIGHT + 0.25f) return true
+                if (abs(p.x - cx) < l.radius + 0.7f && cy - l.radius < p.y + Tune.HEIGHT + 0.25f) return true
                 k++
             }
         }
@@ -671,6 +710,10 @@ class Autopilot(
             "chase: escaped at the checkpoint" to seen.contains("chase:ESCAPED"),
             "final climb (lava)" to seen.contains("lava"),
             "final escape (collapse)" to seen.contains("final escape"),
+            "the great loop (ran all the way round)" to seen.contains("loop done"),
+            "Runaway Relic: CHASE & COLLECT appeared" to seen.contains("relic:appear"),
+            (if (opts["relic"] == "miss") "Runaway Relic: got away, nothing lost" else "Runaway Relic: caught, bonus paid") to
+                (if (opts["relic"] == "miss") seen.contains("relic:escaped") && !seen.contains("relic:caught") else seen.contains("relic:caught")),
             "entered the ${g.spec.gateName}" to seen.contains("ps:WIN"),
             "LEVEL COMPLETE results" to (g.state == GS.RESULTS),
         ).filter { (name, _) ->
@@ -684,7 +727,8 @@ class Autopilot(
                 "chase: captured -> game over", "game over -> continue from checkpoint" -> chase && !clear
                 "final climb (lava)" -> hasEvent(com.blocktower.escape.core.Ev.LAVA)
                 "final escape (collapse)" -> hasEvent(com.blocktower.escape.core.Ev.FINAL)
-                else -> true
+                "the great loop (ran all the way round)" -> g.world.loops.isNotEmpty()
+                else -> if (name.startsWith("Runaway Relic")) g.world.relicZ1 > 0 else true
             }
         }
         var ok = true
@@ -698,8 +742,8 @@ class Autopilot(
             result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the right-hand path: $forkRight, steered back to the main path: $forkRejoined")
             result("7 moving around obstacles", box != null && !box.used && trapHurts == 0, "trapped ? box untouched: ${box?.used == false}, hits in the trap section: $trapHurts")
         } else if (level == 5) {
-            result("6 steering across block paths", forkRight && forkRejoined, "the left cluster by the guardian's ruins: $forkRight, then the right cluster toward the portal: $forkRejoined")
-            result("7 moving around obstacles", logHits == 0 && trapHurts == 0 && g.world.logs.isNotEmpty(), "waited for the swinging logs $logWaits times, log hits: $logHits, hits in the hazard section: $trapHurts")
+            result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the safe bridge on the left: $forkRight, steered back to the main path: $forkRejoined")
+            result("7 moving around obstacles", logHits == 0 && trapHurts == 0 && g.world.logs.isNotEmpty(), "waited for the swinging maces $logWaits times, mace hits: $logHits, hits in the hazard section: $trapHurts")
         } else if (plan.trapZ0 < 9999f) {
             result("7 moving around obstacles", trapHurts == 0, "hits in the hazard section: $trapHurts")
         }
@@ -721,7 +765,7 @@ class Autopilot(
 
     private fun stateName(s: Int) = when (s) { GS.INTRO -> "INTRO"; GS.PLAY -> "PLAY"; GS.COMPLETE -> "COMPLETE"; GS.RESULTS -> "RESULTS"; GS.FAILED -> "GAME OVER"; else -> "$s" }
     private fun chaseName(c: Int) = when (c) { Chase.NONE -> "NONE"; Chase.WARNING -> "WARNING"; Chase.REVEAL -> "REVEAL"; Chase.RUN -> "RUN"; Chase.ESCAPED -> "ESCAPED"; Chase.CAUGHT -> "CAUGHT"; else -> "$c" }
-    private fun psName(s: Int) = when (s) { PS.NORMAL -> "NORMAL"; PS.RESCUE_FALL -> "RESCUE_FALL"; PS.RESCUE_RIDE -> "RESCUE_RIDE"; PS.CAUGHT -> "CAUGHT"; PS.WIN -> "WIN"; PS.DEAD -> "DEAD"; else -> "$s" }
+    private fun psName(s: Int) = when (s) { PS.NORMAL -> "NORMAL"; PS.RESCUE_FALL -> "RESCUE_FALL"; PS.RESCUE_RIDE -> "RESCUE_RIDE"; PS.CAUGHT -> "CAUGHT"; PS.WIN -> "WIN"; PS.DEAD -> "DEAD"; PS.LOOP -> "LOOP"; else -> "$s" }
     private fun len2(x: Float, y: Float) = sqrt(x * x + y * y)
 
     // runs last, after every property above has its initial value

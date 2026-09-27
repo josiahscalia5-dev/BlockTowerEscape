@@ -1,12 +1,6 @@
-# Level 5 art pipeline
+# Level 5 — earlier jungle-temple design (superseded)
 
-Scripts that cut the Level 5 art out of `../level5_reference.png` (the approved design).
-Run them from this folder with Python 3, NumPy, Pillow and OpenCV (contrib, for GrabCut):
-
-- `guardian.py`, `checkpoint.py`, `log.py`, `gate.py`, `bridges.py`, `island.py`: cut the Temple Guardian,
-  the CHECKPOINT arch, the spiked log, the portal temple, the mossy log bridges, the rope island and a
-  floating island (traced outlines refined with GrabCut). Each writes `*_try.png` plus a preview.
-- `plate_mask.py`: marks the HUD, the path and every gameplay object to take out of the background.
-- `plate2.py`: builds the background plate from the design (jungle cliffs, waterfalls, mist, sky).
-
-The results are copied into `app/src/main/assets/l5/`.
+These scripts cut the art for the first Level 5 (the jungle temple, `design/level5_reference.png`).
+Level 5 is now the **volcanic sky fortress** from the approved `design/level5_volcano_reference.png`; its art is
+cut by `./gradlew :sim:run --args="l5art"` (`sim/src/main/kotlin/com/blocktower/escape/sim/L5Art.kt`) into
+`app/src/main/assets/l5v/`. The jungle-temple art is no longer in the app; these files are kept for reference.

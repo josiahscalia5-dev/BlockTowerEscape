@@ -9,7 +9,7 @@ import kotlin.math.sin
 
 /** The music: which theme is playing and how its layers follow the action. */
 object Music {
-    const val NONE = 0; const val HOME = 1; const val SKY = 2; const val JUNGLE = 3
+    const val NONE = 0; const val HOME = 1; const val SKY = 2; const val VOLCANO = 3
     const val RATE = 22050
     /** Every theme is three layers of the same length, played in sync: the tune, the drums, the rush. */
     const val LAYERS = 3
@@ -167,7 +167,7 @@ class MusicSynth(private val rate: Int = Music.RATE) {
     fun render(track: Int): Array<FloatArray> {
         when (track) {
             Music.HOME -> home()
-            Music.JUNGLE -> jungle()
+            Music.VOLCANO -> volcano()
             else -> sky()
         }
         normalise()
@@ -240,8 +240,8 @@ class MusicSynth(private val rate: Int = Music.RATE) {
         melody(0, tune) { m, beat, len -> note(0, square, m, beat, len * 0.92f, 0.2f, 0.006f, 0.18f, 0.55f, 0.07f, vibrato = 0.006f) }
     }
 
-    /** The jungle temple: D minor (Dm Bb F C Dm Bb C A), marimba tune, toms and shakers. */
-    private fun jungle() {
+    /** The volcano fortress: D minor (Dm Bb F C Dm Bb C A), a bold lead over marimba chords, toms and shakers. */
+    private fun volcano() {
         begin(118f, 8)
         val prog = listOf(
             intArrayOf(57, 62, 65), intArrayOf(58, 62, 65), intArrayOf(57, 60, 65), intArrayOf(55, 60, 64),
@@ -274,7 +274,7 @@ class MusicSynth(private val rate: Int = Music.RATE) {
             intArrayOf(82, 2, 81, 1, 79, 1, 77, 2, 74, 2),
             intArrayOf(76, 1, 79, 1, 84, 2, 82, 2, 79, 2),
             intArrayOf(81, 2, 76, 2, 73, 2, 76, 2))
-        melody(0, tune) { m, beat, len -> pluck(0, marimba, m, beat, 0.3f, 0.2f + 0.08f * len) }
+        melody(0, tune) { m, beat, len -> note(0, square, m, beat, len * 0.9f, 0.17f, 0.008f, 0.16f, 0.5f, 0.08f, vibrato = 0.007f) }
     }
 
     /** Scales the layers so that all of them together at full volume stay just under full scale. */

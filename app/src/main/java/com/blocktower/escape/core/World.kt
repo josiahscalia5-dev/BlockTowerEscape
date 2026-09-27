@@ -32,28 +32,58 @@ class Portal(val x: Float, val y: Float, val z: Float) {
     var charge = 0f
 }
 
-/** Kinds of design pictures standing in the world (Level 5). */
-object DK { const val BRIDGE_L = 0; const val BRIDGE_R = 1; const val ISLAND = 2; const val TORCH = 3 }
+/** Kinds of scenery standing in the world (Level 5). */
+object DK {
+    /** A fire bowl on a fortress-stone post. */
+    const val TORCH = 3
+    /** The design's red banner with the gold crown, hanging on the front (-z) face of a pillar; w = width. */
+    const val BANNER = 4
+    /** Chain railing along a bridge: posts at z and z + w, a sagging chain between them. */
+    const val RAIL = 5
+}
 
 /**
- * A piece of scenery cut from the level's design, standing in the world as a camera-facing picture:
- * bottom centre at (x, y, z), [w] world units wide. Purely visual.
+ * A piece of scenery (purely visual): kind [DK], base at (x, y, z), [w] world units wide (or long, for rails).
  */
 class Deco(@JvmField val kind: Int, @JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float, @JvmField val w: Float)
 
 /**
- * A spiked log hanging from two ropes that swings across the path (Level 5). It swings in the x-y plane
- * around the pivot (px, py, pz): angle = amp * sin(2π t / period + phase). The log lies along x.
+ * A spiked iron ball on a chain that swings across the path (Level 5), hanging from a stone beam between two
+ * pillars. It swings in the x-y plane around the pivot (px, py, pz): angle = amp * sin(2π t / period + phase).
  */
 class SwingLog(@JvmField val px: Float, @JvmField val py: Float, @JvmField val pz: Float, @JvmField val len: Float,
                @JvmField val amp: Float, @JvmField val period: Float, @JvmField val phase: Float) {
     @JvmField var angle = 0f
     @JvmField var omega = 0f
-    /** Log length along x and its radius (spikes included). */
-    @JvmField val size = 2.8f
-    @JvmField val radius = 0.5f
+    /** The ball's radius, spikes included. */
+    @JvmField val radius = 0.62f
     val cx get() = px + kotlin.math.sin(angle) * len
     val cy get() = py - kotlin.math.cos(angle) * len
+}
+
+/**
+ * A fortress-stone pillar rising out of the lava sea (Level 5): centre (x, z), top height, width (x) and depth
+ * (z). Purely visual: the course's blocks stand on top of it.
+ */
+class Pillar(@JvmField val x: Float, @JvmField val z: Float, @JvmField val top: Float, @JvmField val w: Float, @JvmField val d: Float)
+
+/**
+ * The great block loop (Level 5): a ring of coloured blocks standing up along the course (in the y-z plane).
+ * The boy runs in at the bottom (going +z), up the far side, over the top upside down, down the near side and
+ * out at the bottom again, [shift] further to the right: the ring is a slight corkscrew, so the way out passes
+ * beside the way in. [r] is the radius of the running surface; u = 0..1 is the way round.
+ */
+class Loop(@JvmField val x0: Float, @JvmField val y0: Float, @JvmField val z0: Float, @JvmField val r: Float, @JvmField val shift: Float) {
+    /** Width of the track across (three lanes). */
+    @JvmField val width = 3f
+    /** Spike plates on the track: u, lane offset from the track's centre (steer round them, or hop over). */
+    val spikes = ArrayList<FloatArray>()
+    fun cx(u: Float) = x0 + shift * smooth(u)
+    fun angle(u: Float) = u * TAU
+    /** Height and depth of the running surface at [u], [hop] units in from the track (toward the centre). */
+    fun sy(u: Float, hop: Float = 0f) = y0 + r - (r - hop) * kotlin.math.cos(angle(u))
+    fun sz(u: Float, hop: Float = 0f) = z0 + (r - hop) * kotlin.math.sin(angle(u))
+    val length get() = TAU * r
 }
 
 /** Z-range with a section name and x origin (used for background parallax and camera framing). */
@@ -67,6 +97,8 @@ object Ev {
     const val TUT = 18
     /** Magical wind: gusts push the boy sideways until WIND_STOP. */
     const val WIND = 19; const val WIND_STOP = 20
+    /** Level 5: the Runaway Relic appears and runs off along the course (CHASE & COLLECT). */
+    const val RELIC = 21
 }
 
 class Trigger(val z: Float, val xMin: Float, val xMax: Float, val event: Int, val text: String = "", val text2: String = "") {
@@ -86,8 +118,12 @@ class World {
     val sections = ArrayList<Section>()
     val decos = ArrayList<Deco>()
     val logs = ArrayList<SwingLog>()
-    /** Level 5: where the Temple Guardian watches from before the chase (x, y, z), or null. */
-    var guardianLair: FloatArray? = null
+    val pillars = ArrayList<Pillar>()
+    val loops = ArrayList<Loop>()
+    /** Level 5: the Runaway Relic's route, as rows (z) it runs from and to; 0 = none. */
+    var relicZ0 = 0; var relicZ1 = 0
+    /** Level 5: height of the lava sea below the course, relative to the path (it follows the climb). */
+    var seaDepth = 0f
     /** Walking-surface height of the main path per row (for the guard / collapse / camera). */
     val pathLevel = HashMap<Int, Float>()
     val pathX = HashMap<Int, Float>()

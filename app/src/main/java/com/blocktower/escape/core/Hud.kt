@@ -95,6 +95,13 @@ class Hud(val g: Game) {
     fun toolFx(k: Int) { toolBurst[k] = 1f; g.fx.ring(toolX(k), toolY(k), toolColor(k), 50f * s, 150f * s, 0.45f, 9f * s) }
     fun objectiveDone() { objectiveFlash = 1f; g.fx.ring(targetIconX(), targetIconY(), 0xFF7CFFA8.toInt(), 30f * s, 200f * s, 0.7f, 10f * s) }
     fun resultsStarted() { overlayT = 0f; lastScoreTick = 0; skipResults = false; starPlayed.fill(false) }
+    // ---- Level 5: the Runaway Relic's panel
+    private var relicIn = 0f; private var relicBump = 0f; private var relicState = 0
+    fun relicShow() { relicState = 1; relicBump = 1f }
+    fun relicCaught() { relicState = 2; relicBump = 1f; g.fx.ring(ax(70f), ayT(268f), 0xFFFFE680.toInt(), 30f * s, 220f * s, 0.7f, 10f * s) }
+    fun relicEscaped() { relicState = 3; relicBump = 0.6f }
+    /** The relic panel's icon (where the reward sparkles land). */
+    fun relicIconX() = ax(70f); fun relicIconY() = ayT(268f)
 
     fun update(dt: Float) {
         targetBump = max(0f, targetBump - dt * 3f); coinBump = max(0f, coinBump - dt * 5f)
@@ -102,6 +109,9 @@ class Hud(val g: Game) {
         jumpDown = max(0f, jumpDown - dt * 6f); pausePress = max(0f, pausePress - dt * 5f)
         for (i in 0..3) { toolPress[i] = max(0f, toolPress[i] - dt * 5f); toolDenied[i] = max(0f, toolDenied[i] - dt * 3f); toolBurst[i] = max(0f, toolBurst[i] - dt * 2.2f) }
         objectiveFlash = max(0f, objectiveFlash - dt * 0.6f)
+        relicBump = max(0f, relicBump - dt * 1.6f)
+        if (!g.relic.active) relicState = 0
+        relicIn = approach(relicIn, if (relicState > 0) 1f else 0f, dt * 3f)
         overlayT += dt
         if (toolId >= 0) toolPress[toolK] = 1f
         // the pad's knob follows the thumb while swiping and leans forward while the boy keeps running
@@ -208,6 +218,7 @@ class Hud(val g: Game) {
     // ------------------------------------------------------------------ render
     fun render(gr: Gfx) {
         drawTopBar(gr)
+        if (g.spec.volcano) drawLevel5Panels(gr)
         drawTargetPanel(gr)
         for (k in 0..3) drawTool(gr, k)
         drawJoystick(gr)
@@ -283,6 +294,55 @@ class Hud(val g: Game) {
         gr.fillRoundRect(pcx - half + 6f * s, pcy - half + 4f * s, pcx + half - 6f * s, pcy - 6f * s, 12f * s, 0x2EFFFFFF)
         gr.fillRoundRect(pcx - 17f * s, pcy - 22f * s, pcx - 5f * s, pcy + 22f * s, 6f * s, Col.WHITE)
         gr.fillRoundRect(pcx + 5f * s, pcy - 22f * s, pcx + 17f * s, pcy + 22f * s, 6f * s, Col.WHITE)
+    }
+
+    /**
+     * Level 5 (the design's HUD): the route to the distant portal as a progress strip under the hearts, the score,
+     * and the Runaway Relic's CHASE & COLLECT panel (0/1) from the moment it appears. All in the left column,
+     * clear of the timer, the wallet, the target panel and the tools.
+     */
+    private fun drawLevel5Panels(gr: Gfx) {
+        // route progress: boy marker sliding toward the portal
+        val pl = ax(14f); val pr = ax(314f); val pt = ayT(102f); val pb = ayT(124f)
+        gr.fillRoundRect(pl, pt, pr, pb, 11f * s, 0xD90A1438.toInt())
+        val bl = pl + 8f * s; val br = pr - 30f * s; val bt = pt + 6f * s; val bb = pb - 6f * s
+        gr.fillRoundRect(bl, bt, br, bb, 6f * s, 0xFF223058.toInt())
+        val prog = g.gateProgress()
+        if (prog > 0.01f) gr.fillRoundRect(bl, bt, bl + (br - bl) * prog, bb, 6f * s, 0xFFFFB02A.toInt())
+        val mx = bl + (br - bl) * prog; val my = (bt + bb) * 0.5f
+        gr.fillCircle(mx, my, 9f * s, 0xFF1C5AE0.toInt()); gr.fillCircle(mx, my + 1f * s, 7f * s, 0xFFF0B080.toInt()); gr.fillCircle(mx, my - 3f * s, 7f * s, 0xFF6A3418.toInt())
+        val gx = pr - 15f * s
+        gr.setAdditive(true); gr.glow(gx, my, 16f * s, Col.withA(0xFFC060FF.toInt(), 0.6f + 0.2f * pulse(g.t, 3f))); gr.setAdditive(false)
+        gr.fillCircle(gx, my, 8f * s, 0xFFB060FF.toInt()); gr.fillCircle(gx, my, 4f * s, 0xFFF4E0FF.toInt())
+        // score
+        val sl = ax(14f); val st = ayT(134f); val sr = ax(214f); val sb = ayT(208f)
+        gr.fillRoundRect(sl - 2f * s, st - 2f * s, sr + 2f * s, sb + 2f * s, 16f * s, 0xFF06122E.toInt())
+        drawRR(gr, sl, st, sr, sb, 14f * s, 0xFF15306C.toInt(), 0xFF0A1A44.toInt())
+        gr.text("Score", ax(114f), ayT(154f), 28f * s, Font.UI, Col.WHITE)
+        gr.text(fmt(g.score), ax(114f), ayT(186f), 40f * s, Font.TITLE, 0xFFFFD23A.toInt(), Align.CENTER, 4f * s, 0xFF1A0A20.toInt())
+        // CHASE & COLLECT
+        val a = relicIn
+        if (a <= 0.01f) return
+        val img = g.art.relic ?: return
+        val ox = -(1f - easeOutBack(a)) * 260f * s
+        val rl = ax(14f) + ox; val rt = ayT(218f); val rr = ax(254f) + ox; val rb = ayT(318f)
+        val caught = relicState == 2; val gone = relicState == 3
+        if (relicBump > 0f) { gr.setAdditive(true); gr.glow((rl + rr) * 0.5f, (rt + rb) * 0.5f, 150f * s, Col.withA(0xFFFFD040.toInt(), relicBump * 0.6f)); gr.setAdditive(false) }
+        gr.fillRoundRect(rl - 2f * s, rt - 2f * s, rr + 2f * s, rb + 2f * s, 18f * s, 0xFF06122E.toInt())
+        drawRR(gr, rl, rt, rr, rb, 16f * s, if (caught) 0xFF3A7A3A.toInt() else 0xFF2A2A3A.toInt(), if (caught) 0xFF1A4A22.toInt() else 0xFF15151F.toInt())
+        gr.strokeRoundRect(rl, rt, rr, rb, 16f * s, 3f * s, if (caught) 0xFF7CFFA8.toInt() else 0xFFFFC23A.toInt())
+        val ih = 84f * s * (1f + 0.15f * relicBump); val iw = ih * img.w / img.h
+        val icx = rl + 56f * s; val icy = (rt + rb) * 0.5f
+        gr.setAdditive(true); gr.glow(icx, icy, 50f * s, Col.withA(0xFFFFD050.toInt(), if (gone) 0.15f else 0.45f + 0.15f * pulse(g.t, 3f))); gr.setAdditive(false)
+        gr.image(img, icx - iw * 0.5f, icy - ih * 0.5f, iw, ih, if (gone) 0.45f else 1f)
+        gr.text("CHASE &", rl + 170f * s, rt + 24f * s, 24f * s, Font.TITLE, Col.WHITE, Align.CENTER, 3f * s, 0xFF10101A.toInt())
+        gr.text("COLLECT", rl + 170f * s, rt + 48f * s, 24f * s, Font.TITLE, Col.WHITE, Align.CENTER, 3f * s, 0xFF10101A.toInt())
+        val cl = rl + 112f * s; val cr = rr - 12f * s; val ct = rt + 60f * s; val cb = rb - 8f * s
+        gr.fillRoundRect(cl, ct, cr, cb, 10f * s, if (caught) 0xFF1E8A3E.toInt() else 0xFFE89A00.toInt())
+        gr.fillRoundRect(cl + 3f * s, ct + 3f * s, cr - 3f * s, cb - 3f * s, 8f * s, 0xFF0A0F1C.toInt())
+        val label = if (gone) "ESCAPED" else "${if (caught) 1 else 0}/1"
+        gr.text(label, (cl + cr) * 0.5f, (ct + cb) * 0.5f, (if (gone) 22f else 30f) * s * (1f + 0.2f * relicBump), Font.TITLE,
+            if (caught) 0xFF7CFFA8.toInt() else if (gone) 0xFF9FA8C0.toInt() else Col.WHITE)
     }
 
     /** Rounded rect with a vertical 2-colour gradient. */

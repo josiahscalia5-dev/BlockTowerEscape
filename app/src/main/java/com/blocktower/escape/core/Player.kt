@@ -1,6 +1,10 @@
 package com.blocktower.escape.core
 
-object PS { const val NORMAL = 0; const val RESCUE_FALL = 1; const val RESCUE_RIDE = 2; const val CAUGHT = 4; const val WIN = 5; const val DEAD = 6 }
+object PS {
+    const val NORMAL = 0; const val RESCUE_FALL = 1; const val RESCUE_RIDE = 2; const val CAUGHT = 4; const val WIN = 5; const val DEAD = 6
+    /** Running round the great loop (Level 5). */
+    const val LOOP = 7
+}
 
 class Player {
     var x = 0f; var y = 0f; var z = 0.45f
@@ -30,6 +34,11 @@ class Player {
     var hurtFlash = 0f
     var airTime = 0f
     var boostT = 0f
+    /** Speed pad burst left (seconds). */
+    var dashT = 0f
+    /** On the loop: which loop, how far round (0..1), speed along the track, offset across it, hop in from it. */
+    var loop: Loop? = null
+    var loopU = 0f; var loopV = 0f; var loopLat = 0f; var loopHop = 0f; var loopHopV = 0f
     var portalScale = 1f
     var spin = 0f
     var sortKey = 0f
@@ -48,7 +57,8 @@ class Player {
         x = x0; y = y0; z = z0; vx = 0f; vy = 0f; vz = 0f
         grounded = true; ground = null; lastGroundY = y0; coyote = 0f; jumpBuffer = 0f; jumping = false
         state = PS.NORMAL; stateT = 0f; lean = 0f; invuln = 0f; hurtFlash = 0f
-        portalScale = 1f; spin = 0f; airTime = 0f; boostT = 0f; runW = 0f; airW = 0f
+        portalScale = 1f; spin = 0f; airTime = 0f; boostT = 0f; dashT = 0f; runW = 0f; airW = 0f
+        loop = null; loopU = 0f; loopV = 0f; loopLat = 0f; loopHop = 0f; loopHopV = 0f
         landT = 9f; jumpT = 9f; skidT = 9f; collectT = 9f; castT = 9f; hurtT = 9f; celebrateT = 9f
         safeX = x0; safeY = y0; safeZ = z0; safeBlock = null
     }

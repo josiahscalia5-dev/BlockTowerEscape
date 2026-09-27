@@ -1,7 +1,7 @@
 package com.blocktower.escape.core
 
 /** Which art set a level uses (world plate, landmark gate, chaser, checkpoints, block trims). */
-object Theme { const val SKY_TOWER = 0; const val JUNGLE_TEMPLE = 1 }
+object Theme { const val SKY_TOWER = 0; const val VOLCANO = 1 }
 
 /**
  * Everything that differs from one level to the next: the numbers on the HUD, the objective, the tools
@@ -43,7 +43,8 @@ class LevelSpec(
     val rewardGems: Int = 5,
     val build: () -> World,
 ) {
-    val jungle get() = theme == Theme.JUNGLE_TEMPLE
+    /** Level 5: the volcanic sky fortress (its own plate, fortress gate, lava sea, golem and runaway relic). */
+    val volcano get() = theme == Theme.VOLCANO
     /** Coins needed for the second star. */
     fun coinGoal(total: Int) = kotlin.math.ceil(total * coinStar).toInt()
 }
@@ -93,16 +94,19 @@ object Levels {
         coinStar = 0.55f, timeStar = 20, rewardCoins = 250, rewardGems = 6,
     ) { Level.build() }
 
-    /** Level 5: the jungle temple, the Temple Guardian and the golden portal. */
+    /**
+     * Level 5: the volcanic sky fortress from the approved Level 5 design (design/level5_volcano_reference.png):
+     * a long route over the lava to the portal in the distant fortress, the great block loop, the Runaway Relic
+     * and the Guardian chase.
+     */
     val level5 = LevelSpec(
-        number = 5, name = "Jungle Temple", theme = Theme.JUNGLE_TEMPLE, targetNeed = 10, startTime = 75f,
+        number = 5, name = "Volcano Fortress", theme = Theme.VOLCANO, targetNeed = 12, startTime = 150f,
         startHearts = 3, maxHearts = 3, toolCounts = intArrayOf(3, 2, 3, 2),
-        guardName = "TEMPLE GUARDIAN", gateName = "Temple Portal",
-        // fitted to the Level 5 design: a closer, lower camera looking down on chunky blocks
-        camDist = 3.35f, camHeight = 2.4f, camPitch = 0.70f, camFocal = 0.892f, camCy = 0.823f, boyH = 1.75f,
-        extraObjective = "Survive the Temple Guardian",
-        newThings = listOf("Temple Guardian", "Swinging logs", "Spring buttons"),
-        coinStar = 0.55f, timeStar = 15, rewardCoins = 300, rewardGems = 8,
+        guardName = "GUARDIAN", gateName = "Fortress Portal",
+        camDist = 4.6f, camHeight = 3.3f, camPitch = 0.34f, camFocal = 1.0f,
+        extraObjective = "Survive the Guardian",
+        newThings = listOf("Runaway Relic (bonus)", "The great loop", "Speed pads", "Swinging maces", "Lava Guardian"),
+        coinStar = 0.5f, timeStar = 40, rewardCoins = 320, rewardGems = 8,
     ) { Level5.build() }
 
     /** Levels that exist so far (1..5). */

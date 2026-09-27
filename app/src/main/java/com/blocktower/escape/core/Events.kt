@@ -64,8 +64,8 @@ class Events(val g: Game) {
     val guard = Guard()
     val chaseCollapse = Collapse()
     val chaseActive get() = chase == Chase.RUN
-    /** Level 23 stops the boy while the camera turns around; in Level 5 the Guardian appears ahead and he keeps running. */
-    val revealing get() = chase == Chase.REVEAL && !g.spec.jungle
+    /** Level 4 stops the boy while the camera turns around; in Level 5 the Guardian rises beside him and he keeps running. */
+    val revealing get() = chase == Chase.REVEAL && !g.spec.volcano
     /** 0 = normal follow camera, 1 = camera turned around (guard reveal / capture). */
     var camBlend = 0f
 
@@ -96,13 +96,6 @@ class Events(val g: Game) {
     val rocks = Array(6) { Rock() }
     private var rockT = 0f
 
-    // ---- Level 5: the Temple Guardian watching from its ruins before the chase
-    /** 1 while it watches; fades out as it leaves. */
-    var lairShow = 0f
-    /** 0 watching .. 1 gone (leapt back into the jungle). */
-    var lairLeave = 0f
-    private var lairState = 0      // 0 none, 1 watching, 2 leaving, 3 gone
-
     // ---- danger meter (guard / collapse / lava)
     var meter = 0f
     var meterShow = 0f
@@ -112,8 +105,6 @@ class Events(val g: Game) {
     fun reset() {
         resetChase(); resetFinal(); resetLava(); resetWind()
         meter = 0f; meterShow = 0f; camBlend = 0f
-        val watching = g.world.guardianLair != null
-        lairState = if (watching) 1 else 0; lairShow = if (watching) 1f else 0f; lairLeave = 0f
     }
 
     private fun resetChase() {
@@ -136,14 +127,11 @@ class Events(val g: Game) {
         if (triggerZ(Ev.LAVA) > cpZ) resetLava() else if (lavaOn) lavaY = min(lavaY, cpY - 5f)
         if (triggerZ(Ev.WIND) > cpZ || triggerZ(Ev.WIND_STOP) <= cpZ) resetWind() else { windT = 0f; gust = 0f }
         camBlend = 0f
-        val lair = g.world.guardianLair
-        if (lair != null && cpZ > lair[2] - 7f) { lairState = 3; lairShow = 0f; lairLeave = 1f }
     }
 
     /** Called when a fall-recovery ride puts the player back on the course at (x, y, z). */
     fun onRecovered(x: Float, y: Float, z: Float) {
-        if (chase == Chase.RUN && g.spec.jungle) { meter = max(0f, meter - 0.3f); guard.x = min(guard.x, -5f) }
-        else if (chase == Chase.RUN && guard.z > z - 7.5f) {
+        if (chase == Chase.RUN && guard.z > z - 7.5f) {
             guard.z = z - 7.5f; guard.stun = 0.8f
             guard.y = g.world.levelAt(floor(guard.z).toInt())
         }
@@ -164,10 +152,8 @@ class Events(val g: Game) {
                 guard.on = true; guard.falling = false; guard.stun = 0f; guard.grab = 0f
                 guard.z = p.z - 9f; guard.x = 0f; guard.y = g.world.levelAt(floor(guard.z).toInt())
                 guard.step = 0f; guard.rise = 0f
-                if (g.spec.jungle) {
-                    // the Temple Guardian comes out of the ruins ahead on the left, as in the design
-                    guard.x = -4.8f; guard.z = p.z + 10f; guard.y = g.world.levelAt(floor(guard.z).toInt()); meter = 0f
-                }
+                // the lava Guardian climbs out of the lava sea behind the boy, on the left of the path
+                if (g.spec.volcano) guard.x = sideX()
                 for (r in rocks) r.on = false
                 rockT = 3f
             }
@@ -175,7 +161,7 @@ class Events(val g: Game) {
                 chase = Chase.ESCAPED; phaseT = 0f; camBlend = 0f
                 // the tower gives way under the guard
                 chaseCollapse.on = true; chaseCollapse.speed = 16f; chaseCollapse.maxSpeed = 16f
-                g.fx.banner("CHASE COMPLETE!", if (g.spec.jungle) "THE GUARDIAN FELL BEHIND" else "THE GUARD FELL BEHIND", 0xFF7FFFA0.toInt(), 2.2f)
+                g.fx.banner("CHASE COMPLETE!", if (g.spec.volcano) "THE GUARDIAN FELL BEHIND" else "THE GUARD FELL BEHIND", 0xFF7FFFA0.toInt(), 2.2f)
                 g.addScore(500, p.x, p.y + 2.6f, p.z, "ESCAPE BONUS")
                 g.platform.sound(Sfx.CHECKPOINT, 1f, 1.1f)
                 g.fx.confetti(p.x, p.y + 2.2f, p.z + 0.5f, 40)
@@ -200,7 +186,7 @@ class Events(val g: Game) {
                 val c = finalCollapse
                 c.on = true; c.z = p.z - 6f; c.speed = 3.0f; c.maxSpeed = 5.0f; c.accel = 0.4f
                 c.endZ = g.world.finalSafeZ - 0.5f
-                g.fx.banner("FINAL ESCAPE!", "THE TOWER IS FALLING — RUN TO THE GATE!", 0xFFFFB04A.toInt(), 2.4f, true)
+                g.fx.banner("FINAL ESCAPE!", if (g.spec.volcano) "THE BRIDGE IS FALLING — RUN FOR THE PORTAL!" else "THE TOWER IS FALLING — RUN TO THE GATE!", 0xFFFFB04A.toInt(), 2.4f, true)
                 g.platform.sound(Sfx.CRUMBLE); g.platform.sound(Sfx.WARNING, 0.7f); g.platform.haptic(true)
                 g.shake = max(g.shake, 0.6f)
             }
@@ -230,8 +216,7 @@ class Events(val g: Game) {
     fun update(dt: Float) {
         updateWind(dt)
         updateChase(dt)
-        updateLair(dt)
-        updateCollapse(chaseCollapse, dt, if (chase == Chase.RUN) (if (g.spec.jungle) p0().z - (8.5f - 4.5f * meter) else guard.z - 2.6f) else null)
+        updateCollapse(chaseCollapse, dt, if (chase == Chase.RUN) guard.z - 2.6f else null)
         if (finalOn) {
             finalT += dt
             if (g.state == GS.PLAY && g.player.state == PS.NORMAL) updateCollapse(finalCollapse, dt, null)
@@ -249,23 +234,6 @@ class Events(val g: Game) {
         meterShow = approach(meterShow, want, dt * 3f)
     }
 
-    // ------------------------------------------------------------------ Level 5: the watching guardian
-    private fun updateLair(dt: Float) {
-        val lair = g.world.guardianLair ?: return
-        val p = g.player
-        if (lairState == 1 && g.state == GS.PLAY && p.z > lair[2] - 7f) {
-            // it has seen you: a roar, then it leaps back into the jungle (it will be back...)
-            lairState = 2
-            g.platform.sound(Sfx.ROAR, 0.7f, 1.05f); g.shake = max(g.shake, 0.3f)
-            g.fx.toast("THE GUARDIAN IS WATCHING...", "KEEP CLIMBING!", 0xFFFFB04A.toInt(), 2.2f)
-        }
-        if (lairState == 2) {
-            lairLeave = min(1f, lairLeave + dt / 1.3f)
-            lairShow = 1f - smooth((lairLeave - 0.45f) / 0.55f)
-            if (lairLeave >= 1f) lairState = 3
-        }
-    }
-
     // ------------------------------------------------------------------ chase
     private fun updateChase(dt: Float) {
         val p = g.player
@@ -274,13 +242,13 @@ class Events(val g: Game) {
         when (chase) {
             Chase.WARNING -> {
                 g.rumble = max(g.rumble, 0.18f + 0.1f * phaseT)
-                if (g.spec.jungle) keepAhead(dt, 10f)
                 if (phaseT > 1.1f) {
                     chase = Chase.REVEAL; phaseT = 0f
-                    if (!g.spec.jungle) { guard.z = p.z - 8f; guard.y = g.world.levelAt(floor(guard.z).toInt()) }
+                    guard.z = p.z - (if (g.spec.volcano) 6.5f else 8f); guard.y = g.world.levelAt(floor(guard.z).toInt())
+                    if (g.spec.volcano) guard.x = sideX()
                 }
             }
-            Chase.REVEAL -> if (g.spec.jungle) revealAhead(dt) else {
+            Chase.REVEAL -> if (g.spec.volcano) revealBeside(dt) else {
                 val before = phaseT - dt
                 camBlend = if (phaseT < 2.0f) smooth(phaseT / 0.45f) else 1f - smooth((phaseT - 2.0f) / 0.45f)
                 guard.x = lerp(guard.x, 0f, damp(4f, dt))
@@ -301,10 +269,10 @@ class Events(val g: Game) {
                     g.platform.sound(Sfx.GO, 0.9f, 0.9f)
                 }
             }
-            Chase.RUN -> if (g.spec.jungle) runChaseAhead(dt) else runChase(dt)
+            Chase.RUN -> runChase(dt)
             Chase.ESCAPED -> {
-                if (g.spec.jungle && guard.on && !guard.falling) {
-                    // its ledge gives way: the Guardian tumbles into the jungle below
+                if (g.spec.volcano && guard.on && !guard.falling) {
+                    // the bridge behind gives way: the Guardian sinks back into the lava
                     guard.falling = true; guard.vy = 2f; guard.fallT = 0f
                     g.platform.sound(Sfx.ROAR, 0.9f, 0.8f); g.platform.sound(Sfx.CRUMBLE)
                     g.shake = max(g.shake, 0.45f)
@@ -321,7 +289,7 @@ class Events(val g: Game) {
                     if (guard.fallT > 3f) guard.on = false
                 }
             }
-            Chase.CAUGHT -> if (g.spec.jungle) caughtAhead(dt) else {
+            Chase.CAUGHT -> {
                 guard.grab = min(1f, guard.grab + dt * 2.5f)
                 guard.reach = 1f
                 camBlend = smooth(phaseT / 0.7f)
@@ -337,96 +305,38 @@ class Events(val g: Game) {
         if (guard.on && (chase == Chase.RUN || chase == Chase.CAUGHT || chase == Chase.REVEAL)) updateRocks(dt)
     }
 
-    // ---- Level 5: the Temple Guardian bounds along the ruins ahead on the left and closes in on the path
-    private val guardFar = -4.3f
-    private val guardNear = -1.5f
+    /** Level 5: where the Guardian runs, beside the path on the left (it closes in on the boy as it catches up). */
+    private fun sideX(): Float = g.world.pathXAt(floor(g.player.z).toInt()) - 3.3f
 
-    /** Keeps the Guardian [ahead] units in front of the boy, on the ruins beside the path. */
-    private fun keepAhead(dt: Float, ahead: Float) {
+    /** Level 5: the Guardian bursts up out of the lava beside the path, a few blocks behind; he keeps running. */
+    private fun revealBeside(dt: Float) {
         val p = g.player
-        val want = p.z + ahead
-        val before = guard.z
-        guard.z = lerp(guard.z, want, damp(2.2f, dt))
-        guard.y = lerp(guard.y, g.world.levelAt(floor(guard.z).toInt()), damp(3f, dt))
-        guard.step += abs(guard.z - before) * 0.45f
-    }
-
-    private fun revealAhead(dt: Float) {
         val before = phaseT - dt
-        keepAhead(dt, 10f)
+        guard.z = max(guard.z, p.z - 6.5f)
+        guard.x = lerp(guard.x, sideX(), damp(3f, dt))
+        guard.y = lerp(guard.y, g.world.levelAt(floor(guard.z).toInt()), damp(3f, dt))
         guard.rise = easeOutCubic(phaseT / 0.9f)
-        if (phaseT < 0.9f) { g.rumble = max(g.rumble, 0.35f); if (rng.f() < dt * 20f) g.fx.dust(guard.x + rng.f(-2f, 2f), guard.y, guard.z, 1, 0xFFC8A080.toInt()) }
+        if (phaseT < 0.9f) {
+            g.rumble = max(g.rumble, 0.35f)
+            if (rng.f() < dt * 30f) {
+                val q = g.fx.spawn()
+                q.x = guard.x + rng.f(-1.8f, 1.8f); q.y = guard.y - 1f; q.z = guard.z + rng.f(-1f, 1f)
+                q.vx = rng.f(-1f, 1f); q.vy = rng.f(3f, 7f); q.vz = rng.f(-0.5f, 0.5f)
+                q.life = rng.f(0.6f, 1.2f); q.maxLife = q.life; q.size = rng.f(0.08f, 0.18f); q.color = 0xFFFFA030.toInt(); q.kind = PK.EMBER
+            }
+        }
         if (before < 0.8f && phaseT >= 0.8f) {
             g.platform.sound(Sfx.ROAR); g.shake = max(g.shake, 0.6f); g.platform.haptic(true)
-            g.fx.burst(guard.x, guard.y + 0.2f, guard.z, 22, PK.DUST, 0xFFC8A080.toInt(), 5f, 0.4f, 0.9f)
+            g.fx.burst(guard.x, guard.y + 0.2f, guard.z, 26, PK.FIRE, 0xFFFFB040.toInt(), 5f, 0.4f, 0.9f)
         }
         if (phaseT >= 1.6f) {
             chase = Chase.RUN; phaseT = 0f; chaseT = 0f; guard.rise = 1f
-            chaseCollapse.on = true; chaseCollapse.z = g.player.z - 9f; chaseCollapse.speed = 0f
-            chaseCollapse.endZ = (g.world.triggers.firstOrNull { it.event == Ev.CHASE_END }?.z ?: (g.player.z + 40f)) - 2.5f
+            chaseCollapse.on = true; chaseCollapse.z = guard.z - 2.6f; chaseCollapse.speed = 0f
+            chaseCollapse.endZ = (g.world.triggers.firstOrNull { it.event == Ev.CHASE_END }?.z ?: (p.z + 40f)) - 2.5f
             g.fx.banner("RUN!", "", 0xFFFFE14A.toInt(), 1.1f)
             g.platform.sound(Sfx.GO, 0.9f, 0.9f)
-            rockT = 1.6f
+            rockT = 1.8f
         }
-    }
-
-    /**
-     * The chase in the temple: the Guardian keeps pace a few blocks ahead on the ruins to the left and
-     * edges toward the path whenever the boy slows down (it backs off while he keeps running). When it
-     * reaches the path it lunges and grabs him. It throws boulders onto the path ahead as it goes.
-     */
-    private fun runChaseAhead(dt: Float) {
-        val p = g.player
-        if (g.state != GS.PLAY || p.state != PS.NORMAL) return
-        chaseT += dt
-        val sp = len2(p.vx, p.vz)
-        val rate = when {
-            guard.stun > 0f -> -0.2f
-            sp < 1.5f -> 0.30f                  // standing still: it comes for you
-            sp < 3.8f -> 0.12f
-            else -> 0.035f - 0.02f * clamp01((sp - 4.5f) / 3f)   // running: it barely keeps up
-        }
-        if (guard.stun > 0f) guard.stun -= dt
-        meter = clamp01(meter + rate * dt)
-        keepAhead(dt, lerp(9.5f, 4.5f, meter))
-        guard.x = lerp(guard.x, lerp(guardFar, guardNear, meter), damp(2.5f, dt))
-        val stepBefore = guard.step
-        if (floor(stepBefore) != floor(guard.step)) {
-            g.platform.sound(Sfx.STOMP, 0.3f + 0.6f * meter)
-            g.shake = max(g.shake, 0.1f + 0.25f * meter)
-            if (meter > 0.6f) g.platform.haptic(false)
-        }
-        g.rumble = max(g.rumble, 0.08f + 0.12f * meter)
-        guard.reach = approach(guard.reach, if (meter > 0.75f) 1f else 0f, dt * 3f)
-        if (meter >= 1f) {
-            if (g.shieldOn) {
-                g.breakShield()
-                meter = 0.35f; guard.x = guardFar; guard.stun = 1.2f
-                g.fx.popupWorld("BLOCKED!", p.x, p.y + 2.3f, p.z, 0xFF9FE8FF.toInt(), 46f)
-                g.platform.sound(Sfx.ROAR, 0.8f, 1.2f)
-                g.shake = max(g.shake, 0.5f)
-            } else {
-                chase = Chase.CAUGHT; phaseT = 0f
-                g.beginCapture()
-            }
-        }
-    }
-
-    /** It lunges onto the path in front of the boy and lifts him up. */
-    private fun caughtAhead(dt: Float) {
-        val p = g.player
-        guard.grab = min(1f, guard.grab + dt * 2.5f)
-        guard.reach = 1f
-        val k = damp(7f, dt)
-        guard.x = lerp(guard.x, p.x, k); guard.z = lerp(guard.z, p.z + 1.6f, k)
-        guard.y = lerp(guard.y, g.world.levelAt(floor(guard.z).toInt()), k)
-        if (phaseT > 0.3f) {
-            val kk = damp(5f, dt)
-            p.x = lerp(p.x, guard.x, kk); p.y = lerp(p.y, guard.y + 1.9f, kk); p.z = lerp(p.z, guard.z - 0.8f, kk)
-        }
-        p.vx = 0f; p.vy = 0f; p.vz = 0f
-        if (phaseT in 0.2f..0.3f) g.rumble = max(g.rumble, 0.6f)
-        if (phaseT > 2.4f) g.fail("CAUGHT BY THE ${g.spec.guardName}!")
     }
 
     private fun runChase(dt: Float) {
@@ -440,11 +350,13 @@ class Events(val g: Game) {
         if (guard.stun > 0f) { guard.stun -= dt; sp = 0f }
         guard.speed = sp
         guard.z += sp * dt
-        guard.x = lerp(guard.x, clamp(p.x, -1.2f, 1.2f), damp(1.5f, dt))
+        val close = 1f - clamp01((dist - 2f) / 10f)
+        // Level 5: it runs beside the path on the left and closes in on the boy as it catches up
+        val gx = if (g.spec.volcano) lerp(sideX(), p.x - 1.5f, smooth((4.5f - dist) / 3f)) else clamp(p.x, -1.2f, 1.2f)
+        guard.x = lerp(guard.x, gx, damp(1.5f, dt))
         guard.y = lerp(guard.y, g.world.levelAt(floor(guard.z).toInt()), damp(3f, dt))
         val stepBefore = guard.step
         guard.step += dt * max(sp, 1f) * 0.75f
-        val close = 1f - clamp01((dist - 2f) / 10f)
         if (floor(stepBefore) != floor(guard.step)) {
             g.platform.sound(Sfx.STOMP, 0.3f + 0.7f * close)
             g.shake = max(g.shake, 0.14f + 0.3f * close)
@@ -483,8 +395,8 @@ class Events(val g: Game) {
                     r.x = lane; r.z = row + 0.5f; r.ground = ground
                     r.y = r.ground + 11f; r.vy = -2f; r.vx = 0f; r.vz = 0f
                     r.tx = r.x; r.tz = r.z
-                    if (g.spec.jungle) {
-                        // the Guardian hurls it from its raised hand in a high arc onto the path
+                    if (g.spec.volcano) {
+                        // the Guardian hurls a lava rock from its raised fist in a high arc onto the path ahead
                         val T = 1.0f
                         val x0 = guard.x + 1.2f; val y0 = guard.y + 3.4f; val z0 = guard.z - 0.3f
                         r.x = x0; r.y = y0; r.z = z0
