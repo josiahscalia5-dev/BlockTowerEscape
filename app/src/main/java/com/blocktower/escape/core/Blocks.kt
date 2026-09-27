@@ -4,8 +4,8 @@ package com.blocktower.escape.core
 object BC {
     const val RED = 0; const val GREEN = 1; const val YELLOW = 2; const val BLUE = 3; const val PURPLE = 4
     const val ORANGE = 5; const val BRICK = 6; const val GOLD = 7; const val CYAN = 8; const val MAGENTA = 9
-    const val STONE = 10; const val IRON = 11; const val ENERGY = 12
-    const val COUNT = 13
+    const val STONE = 10; const val IRON = 11; const val ENERGY = 12; const val TEMPLE = 13
+    const val COUNT = 14
 
     /** 5-stop colour ramps: shadow, base, bright, highlight, white-hot. */
     val ramps: Array<IntArray> = arrayOf(
@@ -22,6 +22,7 @@ object BC {
         intArrayOf(0xFF2A2436.toInt(), 0xFF4E4660.toInt(), 0xFF7A7090.toInt(), 0xFFA89CBC.toInt(), 0xFFE0DAEA.toInt()),  // stone (trap)
         intArrayOf(0xFF14161E.toInt(), 0xFF2A2E3C.toInt(), 0xFF484E62.toInt(), 0xFF7C8498.toInt(), 0xFFC8D0E0.toInt()),  // iron (guard)
         intArrayOf(0xFF1060B0.toInt(), 0xFF40A8F0.toInt(), 0xFF90E0FF.toInt(), 0xFFD0F8FF.toInt(), 0xFFFFFFFF.toInt()),  // energy (tool block)
+        intArrayOf(0xFF3A342A.toInt(), 0xFF6E6452.toInt(), 0xFF9C8F74.toInt(), 0xFFC8BA98.toInt(), 0xFFEAE0C8.toInt()),  // temple stone (Level 5)
     )
 
     /** Representative colours (for particles, far LOD and silhouettes). */
@@ -88,6 +89,7 @@ class Block(
     @JvmField var wasContact = false
     @JvmField var crackT = 0f        // collected blue block: 0 idle, 0..1 cracking, then it shatters
     @JvmField var pop = 0f           // scale pop after a shell shatters / a block is built
+    @JvmField var star = false       // decorative star emblem on the front face (Level 5 start block)
 
     val x0 get() = x - sx * 0.5f
     val x1 get() = x + sx * 0.5f
@@ -112,10 +114,6 @@ object Tune {
     const val AIR_ACCEL = 20f
     const val RADIUS = 0.28f
     const val HEIGHT = 1.45f
-    const val START_TIME = 102f      // 01:42
     const val FALL_DEPTH = 4.6f      // how far below the last ground a fall triggers the rescue
-    const val TARGET_NEED = 12
-    const val START_COINS = 4250
-    const val START_GEMS = 320
     const val COIN_VALUE = 10
 }

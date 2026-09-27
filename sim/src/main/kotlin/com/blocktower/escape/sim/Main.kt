@@ -12,14 +12,17 @@ fun main(args: Array<String>) {
     val out = File(opts["out"] ?: "sim-out").apply { mkdirs() }
     when (args.firstOrNull() ?: "shot") {
         "shot" -> {
-            val game = Game(SimPlatform(assets))
+            val game = Game(SimPlatform(assets), (opts["level"] ?: "5").toInt())
             val gfx = J2DGfx(assets, w, h)
             game.hud.layout(w, h)
+            game.hud.plain = opts["plain"] != null
             val frames = (opts["frames"] ?: "30").toInt()
             for (i in 0 until frames) game.update(1f / 60f)
             gfx.clear(); game.render(gfx)
             ImageIO.write(gfx.image, "png", File(out, opts["name"] ?: "shot.png"))
             println("wrote ${File(out, opts["name"] ?: "shot.png")}")
+            val c = game.cam
+            println("cam e=(%.2f, %.2f, %.2f) yaw=%.3f pitch=%.3f f=%.1f cy=%.1f  player=(%.2f, %.2f, %.2f)".format(c.ex, c.ey, c.ez, c.yaw, c.pitch, c.f, c.cy, game.player.x, game.player.y, game.player.z))
         }
         "poses" -> posesSheet(assets, out)
         "play" -> Autopilot(assets, out, opts).run()

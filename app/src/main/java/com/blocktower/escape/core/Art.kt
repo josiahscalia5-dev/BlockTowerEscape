@@ -1,11 +1,14 @@
 package com.blocktower.escape.core
 
 /** All bitmaps used by the game. Block skins are colourised at load time from grey tone maps. */
-class Art(p: Platform) {
-    val bg = p.loadImage("img/bg_plate.jpg")
-    /** Where the 1024x1536 artwork sits inside the background plate. */
-    val bgArtX = 64f
-    val bgArtY = 480f
+class Art(p: Platform, val theme: Int = Theme.SKY_TOWER) {
+    private val jungle = theme == Theme.JUNGLE_TEMPLE
+    val bg = p.loadImage(if (jungle) "l5/bg_plate.jpg" else "img/bg_plate.jpg")
+    /** Where the design sits inside the background plate, and the design's size. */
+    val bgArtX = if (jungle) 74f else 64f
+    val bgArtY = if (jungle) 500f else 480f
+    val artW = if (jungle) 852f else 1024f
+    val artH = if (jungle) 1846f else 1536f
 
     val boy = p.loadImage("img/boy.png")
     /** Boy sprite placement in the original artwork (for sizing). */
@@ -37,8 +40,18 @@ class Art(p: Platform) {
     val cracks = arrayOf(p.loadImage("emb/cracks1.png"), p.loadImage("emb/cracks2.png"), p.loadImage("emb/cracks3.png"))
     val lava = p.loadImage("emb/lava.png")
     val swirl = p.loadImage("emb/portal_swirl.png")
-    /** The Ancient Gate cut from the Screen 4 design: the level's final destination. */
-    val gate = p.loadImage("img/gate.png")
+    /** The destination cut from the level's design: the Ancient Gate (Level 23) or the temple portal (Level 5). */
+    val gate = p.loadImage(if (jungle) "l5/gate.png" else "img/gate.png")
+
+    // ---- Level 5 (jungle temple) art, cut from its design
+    val guardian = if (jungle) p.loadImage("l5/guardian.png") else null
+    val checkpointArch = if (jungle) p.loadImage("l5/checkpoint.png") else null
+    val spikedLog = if (jungle) p.loadImage("l5/log.png") else null
+    val bridgeLeft = if (jungle) p.loadImage("l5/bridge_left.png") else null
+    val bridgeRight = if (jungle) p.loadImage("l5/bridge_right.png") else null
+    val ropeIsland = if (jungle) p.loadImage("l5/rope_island.png") else null
+    /** Gold medallion carved into temple stones (Level 5). */
+    val emblem = if (jungle) p.loadImage("l5/emblem.png") else null
     val guardFace = p.loadImage("emb/guard_face.png")
 
     /** [colour][variant] */
@@ -51,8 +64,12 @@ class Art(p: Platform) {
         val sideT = Array(3) { p.loadPixels("tex/side$it.png") }
         val brick = p.loadPixels("tex/brick.png")
         texSize = topT[0].w
-        top = Array(BC.COUNT) { c -> Array(3) { v -> p.createImage(colorize(if (c == BC.BRICK) brick else topT[v], BC.ramps[c], true)) } }
-        side = Array(BC.COUNT) { c -> Array(3) { v -> p.createImage(colorize(if (c == BC.BRICK) brick else sideT[v], BC.ramps[c], false)) } }
+        top = Array(BC.COUNT) { c -> Array(3) { v ->
+            if (c == BC.TEMPLE && jungle) p.loadImage("l5/temple_top$v.png")
+            else p.createImage(colorize(if (c == BC.BRICK || c == BC.TEMPLE) brick else topT[v], BC.ramps[c], true)) } }
+        side = Array(BC.COUNT) { c -> Array(3) { v ->
+            if (c == BC.TEMPLE && jungle) p.loadImage("l5/temple_side$v.png")
+            else p.createImage(colorize(if (c == BC.BRICK || c == BC.TEMPLE) brick else sideT[v], BC.ramps[c], false)) } }
     }
 
     private fun colorize(src: Pixels, ramp: IntArray, isTop: Boolean): Pixels {

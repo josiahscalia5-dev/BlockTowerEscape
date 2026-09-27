@@ -46,6 +46,8 @@ class Hud(val g: Game) {
     private var lastScoreTick = 0
 
     fun setInsets(top: Float, bottom: Float) { topInset = top; bottomInset = bottom }
+    /** Tools only: hide the countdown, mission card and hints (for comparing the view with the design). */
+    var plain = false
 
     fun layout(width: Int, height: Int) {
         w = width.toFloat(); h = height.toFloat()
@@ -165,7 +167,7 @@ class Hud(val g: Game) {
         when {
             g.paused -> g.togglePause()
             g.state == GS.FAILED -> { g.continueFromCheckpoint(); overlayT = 0f }
-            g.state == GS.RESULTS -> g.fx.popupScreen("LEVEL 24 — COMING SOON", w * 0.5f, btnA[1] - 50f * s, 0xFFBFD8FF.toInt(), 36f)
+            g.state == GS.RESULTS -> g.fx.popupScreen("LEVEL ${g.spec.number + 1} — COMING SOON", w * 0.5f, btnA[1] - 50f * s, 0xFFBFD8FF.toInt(), 36f)
         }
     }
     private fun pressB() {
@@ -191,9 +193,11 @@ class Hud(val g: Game) {
         drawFlyers(gr)
         drawScreenPopups(gr)
         drawBanner(gr)
-        drawToast(gr)
-        drawMission(gr)
-        drawCountdown(gr)
+        if (!plain) {
+            drawToast(gr)
+            drawMission(gr)
+            drawCountdown(gr)
+        }
         if (g.paused) drawPause(gr)
         else if (g.state == GS.RESULTS) drawResults(gr)
         else if (g.state == GS.FAILED && g.stateT > (if (g.failReason.startsWith("CAUGHT")) 0.5f else 1.1f)) drawFail(gr)
@@ -210,7 +214,7 @@ class Hud(val g: Game) {
         drawRR(gr, l, t, r, b, 14f * s, 0xFF3FA9FF.toInt(), 0xFF1D5FE0.toInt())
         drawRR(gr, l + 5f * s, t + 5f * s, r - 5f * s, b - 5f * s, 10f * s, 0xFF15306C.toInt(), 0xFF0A1A44.toInt())
         gr.text("Lv", ax(59f), ayT(44f), 33f * s, Font.UI, Col.WHITE)
-        gr.text("23", ax(59f), ayT(84f), 48f * s, Font.UI, Col.WHITE)
+        gr.text(g.spec.number.toString(), ax(59f), ayT(84f), 48f * s, Font.UI, Col.WHITE)
 
         // hearts
         panel(gr, 112f, 20f, 314f, 92f, 16f, 0x8C0A1434.toInt())
@@ -280,7 +284,7 @@ class Hud(val g: Game) {
 
     private fun drawTargetPanel(gr: Gfx) {
         val l = ax(810f); val t = ayT(118f); val r = ax(1004f); val b = ayT(392f)
-        val done = g.shownTarget >= Tune.TARGET_NEED
+        val done = g.shownTarget >= g.spec.targetNeed
         if (objectiveFlash > 0f) { gr.setAdditive(true); gr.glow((l + r) * 0.5f, (t + b) * 0.5f, (r - l) * 0.9f, Col.withA(0xFF4AF08A.toInt(), objectiveFlash * 0.7f)); gr.setAdditive(false) }
         gr.fillRoundRect(l - 2f * s, t - 2f * s, r + 2f * s, b + 2f * s, 20f * s, 0xFF06122E.toInt())
         drawRR(gr, l, t, r, b, 18f * s, if (done) 0xFF4AF08A.toInt() else 0xFF3A9CFF.toInt(), if (done) 0xFF18B050.toInt() else 0xFF1E62E6.toInt())
@@ -292,8 +296,8 @@ class Hud(val g: Game) {
         if (targetBump > 0f) { gr.setAdditive(true); gr.glow(targetIconX(), targetIconY(), cw * 0.9f, Col.withA(0xFF60B8FF.toInt(), targetBump)); gr.setAdditive(false) }
         gr.image(cube, targetIconX() - cw * 0.5f, targetIconY() - cw * 0.5f * cube.h / cube.w, cw, cw * cube.h / cube.w)
         gr.text("Collect", ax(907f), ayT(282f), 33f * s, Font.UI, Col.WHITE)
-        gr.text("12 Blue Blocks", ax(907f), ayT(314f), 30f * s, Font.UI, Col.WHITE)
-        val cnt = "${min(g.shownTarget, Tune.TARGET_NEED)}/${Tune.TARGET_NEED}"
+        gr.text("${g.spec.targetNeed} Blue Blocks", ax(907f), ayT(314f), 30f * s, Font.UI, Col.WHITE)
+        val cnt = "${min(g.shownTarget, g.spec.targetNeed)}/${g.spec.targetNeed}"
         val cs = 46f * s * (1f + 0.35f * sin(targetBump * PI.toFloat()))
         gr.text(cnt, ax(907f), ayT(360f), cs, Font.UI, if (done) 0xFF7CFFA8.toInt() else Col.WHITE)
         if (done) check(gr, ax(978f), ayT(360f), 13f * s, 0xFF7CFFA8.toInt(), 1f)
@@ -569,7 +573,7 @@ class Hud(val g: Game) {
         val top = h * 0.5f - 260f * s; val bot = h * 0.5f + 260f * s
         overlayPanel(gr, top, bot)
         gr.text("PAUSED", w * 0.5f, top + 90f * s, 80f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 8f * s, 0xFF1A0A20.toInt())
-        gr.text("Level 23  •  ${g.timeText()} left  •  ${g.target}/12 blue", w * 0.5f, top + 170f * s, 32f * s, Font.UI, 0xFFCFE0FF.toInt())
+        gr.text("Level ${g.spec.number}  •  ${g.timeText()} left  •  ${g.target}/${g.spec.targetNeed} blue", w * 0.5f, top + 170f * s, 32f * s, Font.UI, 0xFFCFE0FF.toInt())
         button(gr, w * 0.5f, top + 290f * s, 520f * s, 100f * s, "RESUME", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
         button(gr, w * 0.5f, top + 420f * s, 520f * s, 100f * s, "RESTART", 0xFFFFB84A.toInt(), 0xFFE0701A.toInt(), btnB)
     }
@@ -619,12 +623,12 @@ class Hud(val g: Game) {
         val cube = g.art.targetCube
         val iw = 40f * s
         gr.image(cube, l + 40f * s, top + 50f * s, iw, iw * cube.h / cube.w, a)
-        gr.text("Collect 12 Blue Blocks", l + 96f * s, top + 71f * s, 32f * s, Font.UI, Col.withA(Col.WHITE, a), Align.LEFT)
+        gr.text("Collect ${g.spec.targetNeed} Blue Blocks", l + 96f * s, top + 71f * s, 32f * s, Font.UI, Col.withA(Col.WHITE, a), Align.LEFT)
         // a small gate glyph
         val gx = l + 60f * s; val gy = top + 118f * s
         gr.fillRoundRect(gx - 16f * s, gy - 18f * s, gx + 16f * s, gy + 18f * s, 14f * s, Col.withA(0xFFFFB040.toInt(), a))
         gr.fillRoundRect(gx - 9f * s, gy - 10f * s, gx + 9f * s, gy + 18f * s, 9f * s, Col.withA(0xFFB04AE8.toInt(), a))
-        gr.text("Reach the Ancient Gate", l + 96f * s, gy, 32f * s, Font.UI, Col.withA(Col.WHITE, a), Align.LEFT)
+        gr.text("Reach the ${g.spec.gateName}", l + 96f * s, gy, 32f * s, Font.UI, Col.withA(Col.WHITE, a), Align.LEFT)
     }
 
     private fun drawToast(gr: Gfx) {
@@ -688,8 +692,8 @@ class Hud(val g: Game) {
             if (value.isEmpty()) check(gr, cxp + 345f * s, y, 13f * s, Col.withA(0xFF7CFFA8.toInt(), a), 1f)
             else gr.text(value, cxp + 360f * s, y, 34f * s, Font.UI, Col.withA(if (done) 0xFF7CFFA8.toInt() else Col.WHITE, a), Align.RIGHT)
         }
-        objective(0, r.targetGot >= Tune.TARGET_NEED, "Collect 12 Blue Blocks", "${r.targetGot}/12")
-        objective(1, true, "Reach the Ancient Gate", "")
+        objective(0, r.targetGot >= g.spec.targetNeed, "Collect ${g.spec.targetNeed} Blue Blocks", "${r.targetGot}/${g.spec.targetNeed}")
+        objective(1, true, "Reach the ${g.spec.gateName}", "")
         // stars pop in one by one
         for (i in 0..2) {
             val st = t - rStars - i * 0.3f

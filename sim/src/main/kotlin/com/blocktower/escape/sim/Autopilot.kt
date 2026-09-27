@@ -35,7 +35,7 @@ import kotlin.math.sqrt
  */
 class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) {
     private val sim = SimPlatform(assets)
-    private val g = Game(sim)
+    private val g = Game(sim, (opts["level"] ?: "23").toInt())
     private val p get() = g.player
     private val dt = 1f / 60f
     private var frame = 0
@@ -99,7 +99,7 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
             // timeline
             if (g.state != lastState) { note("state ${stateName(g.state)}"); lastState = g.state }
             if (g.hearts != lastHearts) { note("hearts ${lastHearts} -> ${g.hearts}"); lastHearts = g.hearts }
-            if (g.target != lastTarget) { if (g.target % 3 == 0 || g.target == Tune.TARGET_NEED) note("blue blocks ${g.target}/12"); lastTarget = g.target }
+            if (g.target != lastTarget) { if (g.target % 3 == 0 || g.target == g.spec.targetNeed) note("blue blocks ${g.target}/${g.spec.targetNeed}"); lastTarget = g.target }
             if (g.checkpoint != lastCp) { note("checkpoint ${g.checkpoint} activated"); lastCp = g.checkpoint; seen.add("checkpoint") }
             if (g.ev.chase != lastChase) { note("chase ${chaseName(g.ev.chase)}"); lastChase = g.ev.chase; seen.add("chase:" + chaseName(g.ev.chase)) }
             if (p.state != lastPs) { note("player ${psName(p.state)}"); lastPs = p.state; seen.add("ps:" + psName(p.state)) }

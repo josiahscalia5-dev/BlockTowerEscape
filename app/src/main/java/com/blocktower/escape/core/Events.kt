@@ -75,15 +75,24 @@ class Events(val g: Game) {
     val rocks = Array(6) { Rock() }
     private var rockT = 0f
 
+    // ---- Level 5: the Temple Guardian watching from its ruins before the chase
+    /** 1 while it watches; fades out as it leaves. */
+    var lairShow = 0f
+    /** 0 watching .. 1 gone (leapt back into the jungle). */
+    var lairLeave = 0f
+    private var lairState = 0      // 0 none, 1 watching, 2 leaving, 3 gone
+
     // ---- danger meter (guard / collapse / lava)
     var meter = 0f
     var meterShow = 0f
-    var meterLabel = "TOWER GUARD"
+    var meterLabel = ""
     var meterKind = 0
 
     fun reset() {
         resetChase(); resetFinal(); resetLava()
         meter = 0f; meterShow = 0f; camBlend = 0f
+        val watching = g.world.guardianLair != null
+        lairState = if (watching) 1 else 0; lairShow = if (watching) 1f else 0f; lairLeave = 0f
     }
 
     private fun resetChase() {
@@ -104,6 +113,8 @@ class Events(val g: Game) {
         if (triggerZ(Ev.FINAL) > cpZ) resetFinal()
         if (triggerZ(Ev.LAVA) > cpZ) resetLava() else if (lavaOn) lavaY = min(lavaY, cpY - 5f)
         camBlend = 0f
+        val lair = g.world.guardianLair
+        if (lair != null && cpZ > lair[2] - 7f) { lairState = 3; lairShow = 0f; lairLeave = 1f }
     }
 
     /** Called when a fall-recovery ride puts the player back on the course at (x, y, z). */
@@ -122,7 +133,7 @@ class Events(val g: Game) {
         when (e) {
             Ev.CHASE -> if (chase == Chase.NONE) {
                 chase = Chase.WARNING; phaseT = 0f
-                g.fx.banner("DANGER!", "TOWER GUARD APPROACHING!", 0xFFFF5A4A.toInt(), 2.3f, true)
+                g.fx.banner("DANGER!", "${g.spec.guardName} APPROACHING!", 0xFFFF5A4A.toInt(), 2.3f, true)
                 g.platform.sound(Sfx.WARNING); g.platform.haptic(true)
                 guard.on = true; guard.falling = false; guard.stun = 0f; guard.grab = 0f
                 guard.z = p.z - 9f; guard.x = 0f; guard.y = g.world.levelAt(floor(guard.z).toInt())
@@ -134,7 +145,7 @@ class Events(val g: Game) {
                 chase = Chase.ESCAPED; phaseT = 0f; camBlend = 0f
                 // the tower gives way under the guard
                 chaseCollapse.on = true; chaseCollapse.speed = 16f; chaseCollapse.maxSpeed = 16f
-                g.fx.banner("CHASE COMPLETE!", "THE GUARD FELL BEHIND", 0xFF7FFFA0.toInt(), 2.2f)
+                g.fx.banner("CHASE COMPLETE!", if (g.spec.jungle) "THE GUARDIAN FELL BEHIND" else "THE GUARD FELL BEHIND", 0xFF7FFFA0.toInt(), 2.2f)
                 g.addScore(500, p.x, p.y + 2.6f, p.z, "ESCAPE BONUS")
                 g.platform.sound(Sfx.CHECKPOINT, 1f, 1.1f)
                 g.fx.confetti(p.x, p.y + 2.2f, p.z + 0.5f, 40)
@@ -162,6 +173,7 @@ class Events(val g: Game) {
 
     fun update(dt: Float) {
         updateChase(dt)
+        updateLair(dt)
         updateCollapse(chaseCollapse, dt, if (chase == Chase.RUN) guard.z - 2.6f else null)
         if (finalOn) {
             finalT += dt
@@ -170,7 +182,7 @@ class Events(val g: Game) {
         updateLava(dt)
         val p = g.player
         val want = when {
-            chase == Chase.RUN || chase == Chase.CAUGHT || (chase == Chase.REVEAL && phaseT > 1.8f) -> { meterKind = 0; meterLabel = "TOWER GUARD"; 1f }
+            chase == Chase.RUN || chase == Chase.CAUGHT || (chase == Chase.REVEAL && phaseT > 1.8f) -> { meterKind = 0; meterLabel = g.spec.guardName; 1f }
             finalOn && finalCollapse.z < finalCollapse.endZ - 0.5f && g.state == GS.PLAY -> {
                 meterKind = 1; meterLabel = "COLLAPSE"; meter = 1f - clamp01((p.z - finalCollapse.z - 1f) / 9f); 1f
             }
@@ -178,6 +190,23 @@ class Events(val g: Game) {
             else -> 0f
         }
         meterShow = approach(meterShow, want, dt * 3f)
+    }
+
+    // ------------------------------------------------------------------ Level 5: the watching guardian
+    private fun updateLair(dt: Float) {
+        val lair = g.world.guardianLair ?: return
+        val p = g.player
+        if (lairState == 1 && g.state == GS.PLAY && p.z > lair[2] - 7f) {
+            // it has seen you: a roar, then it leaps back into the jungle (it will be back...)
+            lairState = 2
+            g.platform.sound(Sfx.ROAR, 0.7f, 1.05f); g.shake = max(g.shake, 0.3f)
+            g.fx.toast("THE GUARDIAN IS WATCHING...", "KEEP CLIMBING!", 0xFFFFB04A.toInt(), 2.2f)
+        }
+        if (lairState == 2) {
+            lairLeave = min(1f, lairLeave + dt / 1.3f)
+            lairShow = 1f - smooth((lairLeave - 0.45f) / 0.55f)
+            if (lairLeave >= 1f) lairState = 3
+        }
     }
 
     // ------------------------------------------------------------------ chase
@@ -234,7 +263,7 @@ class Events(val g: Game) {
                 p.x = lerp(p.x, hx, k); p.y = lerp(p.y, hy, k); p.z = lerp(p.z, hz, k)
                 p.vx = 0f; p.vy = 0f; p.vz = 0f
                 if (phaseT in 0.2f..0.3f) g.rumble = max(g.rumble, 0.6f)
-                if (phaseT > 2.4f) g.fail("CAUGHT BY THE TOWER GUARD!")
+                if (phaseT > 2.4f) g.fail("CAUGHT BY THE ${g.spec.guardName}!")
             }
         }
         if (guard.on && (chase == Chase.RUN || chase == Chase.CAUGHT || chase == Chase.REVEAL)) updateRocks(dt)

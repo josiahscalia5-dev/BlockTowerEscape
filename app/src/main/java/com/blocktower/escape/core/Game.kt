@@ -51,9 +51,11 @@ class Input {
 /** Auto step-up height: half-block stairs can be walked, full blocks need a jump. */
 private const val STEP = 0.56f
 
-class Game(val platform: Platform) {
-    val art = Art(platform)
-    var world = Level.build()
+class Game(val platform: Platform, levelNumber: Int = 5) {
+    /** The level being played (Level 5 by default; Level 23 is still available). */
+    val spec = Levels.get(levelNumber)
+    val art = Art(platform, spec.theme)
+    var world = spec.build()
     val player = Player()
     val cam = Camera()
     val fx = Fx()
@@ -71,11 +73,11 @@ class Game(val platform: Platform) {
     var playT = 99f
     var paused = false
     var t = 0f                 // game clock (animation)
-    var time = Tune.START_TIME // countdown
-    var hearts = 2
-    val maxHearts = 3
-    var coins = Tune.START_COINS
-    var gems = Tune.START_GEMS
+    var time = spec.startTime // countdown
+    var hearts = spec.startHearts
+    val maxHearts = spec.maxHearts
+    var coins = spec.startCoins
+    var gems = spec.startGems
     var target = 0
     var score = 0
     var shownCoins = coins
@@ -111,10 +113,10 @@ class Game(val platform: Platform) {
     var camDist = 4.0f
     var camHeight = 3.17f
     var camPitch = 0.28f
-    var baseDist = 4.4f
-    var baseHeight = 3.6f
-    var basePitch = 0.30f
-    var baseFocal = 1.0f
+    var baseDist = spec.camDist
+    var baseHeight = spec.camHeight
+    var basePitch = spec.camPitch
+    var baseFocal = spec.camFocal
     var camX = 0f; var camY = 0f; var camZ = 0f
     var camYaw = 0f
     private var camFov = 1f
@@ -140,14 +142,14 @@ class Game(val platform: Platform) {
 
     // ------------------------------------------------------------------ lifecycle
     fun restartLevel(first: Boolean = false) {
-        if (!first) world = Level.build()
+        if (!first) world = spec.build()
         player.reset(world.spawnX, world.spawnY, world.spawnZ)
-        state = GS.INTRO; stateT = 0f; playT = 99f; paused = false; time = Tune.START_TIME
+        state = GS.INTRO; stateT = 0f; playT = 99f; paused = false; time = spec.startTime
         introCountFrom = 0f; introSwoop = true
-        hearts = 2; coins = Tune.START_COINS; gems = Tune.START_GEMS; target = 0; score = 0
+        hearts = spec.startHearts; coins = spec.startCoins; gems = spec.startGems; target = 0; score = 0
         shownCoins = coins; shownGems = gems; shownTarget = 0
         coinsCollected = 0; mysteryOpened = 0; falls = 0; checkpoint = 0
-        tools[0].count = 3; tools[1].count = 2; tools[2].count = 3; tools[3].count = 3
+        for (k in 0..3) tools[k].count = spec.toolCounts[k]
         for (tl in tools) { tl.active = 0f; tl.cooldown = 0f; tl.anim = 0f; tl.gain = 0f; tl.readyFlash = 0f }
         fx.clear(); ev.reset()
         results = null; failReason = ""
@@ -156,6 +158,7 @@ class Game(val platform: Platform) {
         combo = 0; lastTargetT = -9f
         kickY = 0f; kickV = 0f; camLead = 0f; camRoll = 0f; camFov = 1f
         swipe.reset(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f; movedYet = false
+        logT = 0f
         markSpawnContacts()
     }
 
@@ -244,6 +247,7 @@ class Game(val platform: Platform) {
         swipe.update(dt)
         updateTools(sdt)
         updateBlocks(sdt)
+        updateLogs(sdt)
         ev.update(sdt)
         updatePlayer(sdt)
         updateCoins(sdt)
@@ -759,6 +763,44 @@ class Game(val platform: Platform) {
         }
     }
 
+    // ------------------------------------------------------------------ swinging logs (Level 5)
+    private var logT = 0f
+    private val logWhoosh = BooleanArray(8)
+
+    /** Swings the spiked logs; one that sweeps through the boy knocks him back (the shield blocks it). */
+    private fun updateLogs(dt: Float) {
+        if (world.logs.isEmpty()) return
+        logT += dt
+        val p = player
+        for ((i, l) in world.logs.withIndex()) {
+            val w = TAU / l.period
+            val before = l.angle
+            l.angle = l.amp * sin(logT * w + l.phase)
+            l.omega = l.amp * w * cos(logT * w + l.phase)
+            val near = 1f - clamp01((abs(p.z - l.pz) - 2f) / 10f)
+            if (i < logWhoosh.size && before * l.angle < 0f && near > 0.05f) platform.sound(Sfx.WHOOSH, 0.25f + 0.5f * near, 0.8f)
+            if (p.state != PS.NORMAL || state != GS.PLAY || p.invuln > 0f) continue
+            if (abs(p.z - l.pz) > l.radius + Tune.RADIUS) continue
+            // distance in the swing plane between the log's axis and the boy's body
+            val ca = cos(l.angle); val sa = sin(l.angle); val hl = l.size * 0.5f
+            var best = 99f
+            for (k in 0..4) {
+                val by = p.y + 0.2f + k * (Tune.HEIGHT - 0.3f) / 4f
+                val u = clamp((p.x - l.cx) * ca + (by - l.cy) * sa, -hl, hl)
+                best = min(best, len2(p.x - (l.cx + ca * u), by - (l.cy + sa * u)))
+            }
+            if (best < l.radius + Tune.RADIUS * 0.8f) {
+                shake = max(shake, 0.4f)
+                platform.sound(Sfx.STOMP, 0.8f, 1.3f)
+                fx.burst(p.x, p.y + 1f, p.z, 10, PK.SHARD, 0xFFB07A40.toInt(), 4f, 0.08f, 0.5f)
+                hurt("log", null)
+                // knocked back down the path (never sideways off it)
+                p.vy = 6.5f; p.vz = -4f; p.vx = 0f; p.grounded = false; p.jumping = false
+                swipe.stop()
+            }
+        }
+    }
+
     /** Remembers where the player last stood on solid, stable ground (fall recovery returns there). */
     private fun rememberSafeSpot(b: Block) {
         val p = player
@@ -958,8 +1000,8 @@ class Game(val platform: Platform) {
         platform.sound(Sfx.CRACK, 0.9f, 1.1f)
         platform.haptic(false)
         player.collectT = 0f
-        if (target == Tune.TARGET_NEED) {
-            fx.banner("TARGET COMPLETE!", "THE ANCIENT GATE IS OPEN", 0xFF7FFFA0.toInt(), 2.2f)
+        if (target == spec.targetNeed) {
+            fx.banner("TARGET COMPLETE!", "THE ${spec.gateName.uppercase()} IS OPEN", 0xFF7FFFA0.toInt(), 2.2f)
             platform.sound(Sfx.WIN, 0.7f, 1.2f)
             hud.objectiveDone()
         }
@@ -1314,12 +1356,12 @@ class Game(val platform: Platform) {
         }
         for (po in world.portals) {
             if (abs(p.x - po.x) < 1.75f && abs(p.z - po.z) < 0.6f && p.y > po.y - 0.5f && p.y < po.y + 2.8f) {
-                if (target >= Tune.TARGET_NEED) { beginComplete(po); break }
+                if (target >= spec.targetNeed) { beginComplete(po); break }
                 // sealed until the objective is complete: the barrier pushes the player back
                 p.z = po.z - 0.62f; if (p.vz > 0f) p.vz = -4f
                 if (t - sealedMsgT > 2.2f) {
                     sealedMsgT = t
-                    fx.toast("THE GATE IS SEALED", "COLLECT ${Tune.TARGET_NEED - target} MORE BLUE BLOCKS", 0xFF9FDBFF.toInt(), 2.4f)
+                    fx.toast("THE GATE IS SEALED", "COLLECT ${spec.targetNeed - target} MORE BLUE BLOCKS", 0xFF9FDBFF.toInt(), 2.4f)
                     platform.sound(Sfx.WRONG); platform.sound(Sfx.SHIELD, 0.5f, 0.6f)
                     shake = max(shake, 0.2f)
                     if (cam.project(po.x, po.y + 1.2f, po.z)) fx.ring(cam.sx, cam.sy, 0xFF9FDBFF.toInt(), 30f * hud.s, 220f * hud.s, 0.5f, 10f * hud.s)
@@ -1431,7 +1473,7 @@ class Game(val platform: Platform) {
         val p = player
         var dist = baseDist; var height = baseHeight; var pitch = basePitch; var fov = 1f; var roll = 0f; var yaw = 0f
         if (state == GS.INTRO && introSwoop) {
-            val u = smooth(stateT / 2.8f)
+            val u = smooth(stateT / (if (spec.jungle) 2.0f else 2.8f))
             dist = lerp(9.2f, baseDist, u); height = lerp(7.8f, baseHeight, u); pitch = lerp(0.46f, basePitch, u); yaw = lerp(-0.22f, 0f, u)
         }
         if (ev.chase == Chase.RUN || ev.chase == Chase.WARNING) {
@@ -1492,7 +1534,7 @@ class Game(val platform: Platform) {
         val tr = max(shake, rumble)
         val amp = tr * tr * 24f * hud.s
         cam.cx = hud.w * 0.5f + amp * noise(t * 29f)
-        cam.cy = hud.sceneCY + amp * noise(t * 31f + 7f)
+        cam.cy = (if (spec.camCy > 0f) hud.h * spec.camCy else hud.sceneCY) + amp * noise(t * 31f + 7f)
         cam.roll = camRoll + tr * tr * 0.035f * noise(t * 21f + 3f)
         ev.applyCamera(this)
         cam.update()
@@ -1531,10 +1573,10 @@ class Results(
         fun compute(g: Game): Results {
             val tl = kotlin.math.ceil(g.time).toInt()
             var stars = 1
-            if (g.target >= Tune.TARGET_NEED) stars++
+            if (g.target >= g.spec.targetNeed) stars++
             if (tl >= 20) stars++
             return Results(stars, g.target, g.coinsCollected, g.world.coinTotal, tl, g.hearts, g.mysteryOpened, g.world.mysteryTotal,
-                g.score, tl * 20, g.hearts * 250, if (g.target >= Tune.TARGET_NEED) 1000 else 0,
+                g.score, tl * 20, g.hearts * 250, if (g.target >= g.spec.targetNeed) 1000 else 0,
                 200 + stars * 100, stars * 5)
         }
     }

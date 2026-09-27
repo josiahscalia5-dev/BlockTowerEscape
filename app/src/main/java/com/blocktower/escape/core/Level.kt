@@ -33,13 +33,14 @@ object Level {
     }
 }
 
-private class LevelWriter(val w: World) {
+/** Course-building helpers shared by every level (rows of blocks, coins, checkpoints, events). */
+internal open class CourseWriter(val w: World, seed: Int = 23) {
     var ox = 0f
     /** Height offset applied to a section's "lvl" values. */
     var lo = 0f
     /** Row offset applied to a section's "z" values (lets each phase be written with its own numbering). */
     var zo = 0
-    private val rng = Rng(23)
+    protected val rng = Rng(seed.toLong())
 
     fun blk(x: Float, lvl: Float, zIn: Int, c: Int, t: BT = BT.NORMAL): Block {
         val z = zIn + zo
@@ -93,7 +94,7 @@ private class LevelWriter(val w: World) {
 
     fun setPath(z: Int, lvl: Float) { w.pathLevel[z + zo] = lvl + lo; w.pathX[z + zo] = ox }
 
-    private val palette = intArrayOf(BC.RED, BC.GREEN, BC.YELLOW, BC.PURPLE, BC.RED, BC.GREEN, BC.YELLOW)
+    protected val palette = intArrayOf(BC.RED, BC.GREEN, BC.YELLOW, BC.PURPLE, BC.RED, BC.GREEN, BC.YELLOW)
     fun pick() = palette[rng.i(palette.size)]
 
     fun spikes(x: Float, lvl: Float, z: Int): Block = blk(x, lvl, z, BC.IRON, BT.TRAP).also { it.speed = 0f }
@@ -167,6 +168,9 @@ private class LevelWriter(val w: World) {
     /** Marks every block in rows z0..z1 as part of a collapsing stretch of the tower. */
     fun collapsible(z0: Int, z1: Int) { for (b in w.blocks) if (b.row in (z0 + zo)..(z1 + zo)) b.eventTag = Ev.COLLAPSE }
 
+}
+
+private class LevelWriter(w: World) : CourseWriter(w) {
     fun write() {
         // ================= PHASE 1 : EASY OPENING — the Screen 4 design =================
         // the view from the start reproduces the design: a winding half-step climb toward the gate

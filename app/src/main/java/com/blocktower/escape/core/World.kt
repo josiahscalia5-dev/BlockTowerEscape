@@ -32,6 +32,30 @@ class Portal(val x: Float, val y: Float, val z: Float) {
     var charge = 0f
 }
 
+/** Kinds of design pictures standing in the world (Level 5). */
+object DK { const val BRIDGE_L = 0; const val BRIDGE_R = 1; const val ISLAND = 2 }
+
+/**
+ * A piece of scenery cut from the level's design, standing in the world as a camera-facing picture:
+ * bottom centre at (x, y, z), [w] world units wide. Purely visual.
+ */
+class Deco(@JvmField val kind: Int, @JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float, @JvmField val w: Float)
+
+/**
+ * A spiked log hanging from two ropes that swings across the path (Level 5). It swings in the x-y plane
+ * around the pivot (px, py, pz): angle = amp * sin(2π t / period + phase). The log lies along x.
+ */
+class SwingLog(@JvmField val px: Float, @JvmField val py: Float, @JvmField val pz: Float, @JvmField val len: Float,
+               @JvmField val amp: Float, @JvmField val period: Float, @JvmField val phase: Float) {
+    @JvmField var angle = 0f
+    @JvmField var omega = 0f
+    /** Log length along x and its radius (spikes included). */
+    @JvmField val size = 2.8f
+    @JvmField val radius = 0.5f
+    val cx get() = px + kotlin.math.sin(angle) * len
+    val cy get() = py - kotlin.math.cos(angle) * len
+}
+
 /** Z-range with a section name and x origin (used for background parallax and camera framing). */
 class Section(val name: String, val z0: Int, val z1: Int, val originX: Float)
 
@@ -56,6 +80,10 @@ class World {
     val portals = ArrayList<Portal>()
     val triggers = ArrayList<Trigger>()
     val sections = ArrayList<Section>()
+    val decos = ArrayList<Deco>()
+    val logs = ArrayList<SwingLog>()
+    /** Level 5: where the Temple Guardian watches from before the chase (x, y, z), or null. */
+    var guardianLair: FloatArray? = null
     /** Walking-surface height of the main path per row (for the guard / collapse / camera). */
     val pathLevel = HashMap<Int, Float>()
     val pathX = HashMap<Int, Float>()
