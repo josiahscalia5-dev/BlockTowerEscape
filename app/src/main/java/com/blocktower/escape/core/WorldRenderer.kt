@@ -47,8 +47,8 @@ class WorldRenderer(val g: Game) {
     fun render(gr: Gfx) {
         gfx = gr
         drawBackground(gr)
-        drawGate(gr)
         if (g.ev.lavaY > -50f) drawLava(gr)
+        drawGate(gr)
         collect()
         java.util.Arrays.sort(keys, 0, n)
         for (i in n - 1 downTo 0) {
@@ -164,6 +164,9 @@ class WorldRenderer(val g: Game) {
         val depth = (cd[4] + cd[6]) * 0.5f
         val haze = hazeFor(depth)
         var a = alpha
+        // anything right in front of the lens fades out instead of filling the screen
+        val near = cam.depthOf((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, (z0 + z1) * 0.5f)
+        if (near < 1.8f) a *= smooth((near - 0.7f) / 1.1f)
         if (depth > maxDepth - 10f) a *= 1f - smooth((depth - (maxDepth - 10f)) / 10f)
         if (a <= 0.01f) return false
 
@@ -328,6 +331,7 @@ class WorldRenderer(val g: Game) {
         if (b.squash > 0f) sy *= 1f - 0.22f * sin(b.squash * Math.PI.toFloat())
         var alpha = b.alpha
         if (b.rise > 0f) alpha *= 1f - b.rise * 0.8f
+
         var color = b.color
         var overlay = OV.NONE
         var glowC = 0; var glowA = 0f
@@ -615,13 +619,14 @@ class WorldRenderer(val g: Game) {
         val s = cam.scaleAt(cam.depth)
         val sx = cam.sx; val sy = cam.sy
         val on = cp.active
+        val close = smooth((cam.depth - 3f) / 5f)
         if (on) {
             // light beam
             if (cam.project(cp.x, cp.y, cp.z)) {
                 val by = cam.sy
                 val bw = 0.55f * s
                 gr.setAdditive(true)
-                gr.fillRectGradient(sx - bw, sy - 3.5f * s, sx + bw, by, 0x00FFE070, 0x66FFE070)
+                gr.fillRectGradient(sx - bw, sy - 3.5f * s, sx + bw, by, 0x00FFE070, Col.withA(0xFFFFE070.toInt(), 0.4f * close))
                 gr.setAdditive(false)
             }
         }
@@ -629,7 +634,7 @@ class WorldRenderer(val g: Game) {
         val col = if (on) 0xFFFFD84A.toInt() else 0xFF8FB4F0.toInt()
         val hi = if (on) 0xFFFFF6C0.toInt() else 0xFFE0ECFF.toInt()
         gr.setAdditive(true)
-        gr.glow(sx, sy, r * (if (on) 3.2f else 2f), Col.withA(col, if (on) 0.7f else 0.35f))
+        gr.glow(sx, sy, r * (if (on) 3.2f else 2f), Col.withA(col, (if (on) 0.7f else 0.35f) * (0.3f + 0.7f * close)))
         gr.setAdditive(false)
         val w = r * (0.65f + 0.35f * abs(cos(t * 1.8f)))
         poly[0] = sx; poly[1] = sy - r * 1.4f; poly[2] = sx + w; poly[3] = sy; poly[4] = sx; poly[5] = sy + r * 1.4f; poly[6] = sx - w; poly[7] = sy

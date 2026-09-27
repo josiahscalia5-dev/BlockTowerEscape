@@ -57,6 +57,9 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
     private var idleUntil = -1f
     private var speedUsed = false; private var magnetUsed = false; private var blockUsed = false; private var shieldUsed = false
     private var jumpHold = 0f
+    /** "hearts": keep falling off the path until every heart is gone, then continue and stop. */
+    private val scenario = opts["scenario"] ?: "full"
+    private var heartsGameOver = false
     private var ffmpeg: Process? = null
     private var videoOut: OutputStream? = null
     private var gfx: J2DGfx? = null
@@ -95,6 +98,10 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
                 }
             }
             if (g.state == GS.RESULTS && doneAt < 0) doneAt = frame
+            if (scenario == "hearts") {
+                if (g.state == GS.FAILED) heartsGameOver = true
+                if (seen.contains("continue") && g.state == GS.PLAY && g.stateT > 1f) break
+            }
             if (doneAt >= 0 && frame - doneAt > 60 * 7) break
         }
         stopVideo()
@@ -117,6 +124,7 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
         }
         if (p.state != PS.NORMAL) return
         val z = p.z
+        if (scenario == "hearts" && !seen.contains("continue")) { inp.joyX = -1f; inp.joyY = 0.3f; return }
         // --- scripted tests
         if (!fallTestDone && z > 15.2f && z < 17f) {
             // walk off the left edge on purpose: the safety net should catch us
@@ -221,6 +229,12 @@ class Autopilot(val assets: File, val out: File, val opts: Map<String, String>) 
     }
 
     private fun report() {
+        if (scenario == "hearts") {
+            println("================ HEARTS SCENARIO ================")
+            println("  [${if (heartsGameOver) "PASS" else "FAIL"}] every fall costs a heart; no hearts left -> GAME OVER (${g.failReason.ifEmpty { "reason cleared after continue" }})")
+            println("  [${if (seen.contains("continue") && g.hearts == g.maxHearts && g.state == GS.PLAY) "PASS" else "FAIL"}] CONTINUE -> back at checkpoint ${g.checkpoint} with ${g.hearts} hearts, playing")
+            return
+        }
         val r = g.results
         println()
         println("================ AUTOPILOT REPORT ================")

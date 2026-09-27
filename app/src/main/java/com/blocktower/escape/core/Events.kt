@@ -364,9 +364,15 @@ class Events(val g: Game) {
     private fun updateLava(dt: Float) {
         if (!lavaOn) return
         val p = g.player
+        if (lavaStop) {
+            // you made it above the flood: the lava drains away and the sky opens up again
+            lavaSpeed = min(6f, lavaSpeed + dt * 3f)
+            lavaY -= lavaSpeed * dt
+            if (lavaY < p.y - 45f) { lavaOn = false; lavaY = -100f }
+            return
+        }
         if (g.state == GS.PLAY && p.state == PS.NORMAL) {
             if (!lavaStop) { lavaSpeed = min(0.9f, lavaSpeed + dt * 0.03f); lavaY += lavaSpeed * dt }
-            else lavaY = max(lavaY - dt * 0.5f, p.y - 7f)
             if (p.y < lavaY + 0.05f) g.startRescue("lava")
             val near = 1f - clamp01((p.y - lavaY) / 5f)
             if (!lavaStop) g.rumble = max(g.rumble, 0.05f + 0.1f * near)

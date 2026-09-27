@@ -102,6 +102,8 @@ class Game(val platform: Platform) {
     private var combo = 0
     private var lastTargetT = -9f
     var introCountFrom = 0f    // stateT where the INTRO countdown starts (0 = full 3-2-1)
+    /** The mission card is shown at the level start only (not when continuing from a checkpoint). */
+    val showMission get() = introSwoop
     private var introSwoop = true
 
     // camera tuning: base framing matches the Screen 4 artwork
@@ -707,7 +709,7 @@ class Game(val platform: Platform) {
             else -> false
         }
         if (!stable || b.destroyed || b.sx != 1f) return
-        if (abs(p.x - b.x) > 0.3f || p.z < b.z + 0.2f || p.z > b.z1 - 0.2f) return
+        if (abs(p.x - b.x) > 0.42f || p.z < b.z + 0.08f || p.z > b.z1 - 0.08f) return
         p.safeX = b.x; p.safeY = b.y1; p.safeZ = b.z + 0.5f; p.safeBlock = b
     }
 
@@ -1307,11 +1309,16 @@ class Game(val platform: Platform) {
             dist = baseDist - 0.3f; height = baseHeight - 0.85f; pitch = basePitch - 0.07f; fov = 0.88f; roll = sin(t * 1.6f) * 0.022f
         }
         if (speedOn) fov *= 0.93f
+        if (p.state == PS.RESCUE_FALL || p.state == PS.DEAD) {
+            // follow the fall from above so the tower does not get between the camera and the boy
+            dist += 1.4f; height += 2.6f; pitch += 0.3f
+        }
         if (state == GS.COMPLETE || state == GS.RESULTS) {
-            val u = if (state == GS.RESULTS) 1f else smooth(stateT / 1.9f)
-            val push = if (state == GS.COMPLETE) smooth((stateT - 1.1f) / 0.9f) * 0.25f else 0.25f
-            dist = lerp(baseDist, 8.6f, u) * (1f - push); height = lerp(baseHeight, 4.9f, u) * (1f - push * 0.6f); pitch = lerp(basePitch, 0.25f, u)
-            yaw = 0.2f * u + (if (state == GS.RESULTS) sin(stateT * 0.35f) * 0.05f else 0f)
+            // pull back until the whole gate is framed, then ease in toward the portal as the boy enters
+            val u = if (state == GS.RESULTS) 1f else smooth(stateT / 1.7f)
+            val push = if (state == GS.COMPLETE) smooth((stateT - 1.1f) / 1.2f) * 0.22f else 0.22f
+            dist = lerp(baseDist, 15f, u) * (1f - push); height = lerp(baseHeight, 3.4f, u); pitch = lerp(basePitch, 0.13f, u)
+            yaw = 0.1f * u + (if (state == GS.RESULTS) sin(stateT * 0.35f) * 0.04f else 0f)
         }
         if (!camInit) { camDist = dist; camHeight = height; camPitch = pitch; camFov = fov; camYaw = yaw }
         val k3 = damp(3f, dt)

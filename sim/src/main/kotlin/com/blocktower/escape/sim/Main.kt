@@ -24,6 +24,7 @@ fun main(args: Array<String>) {
         "poses" -> posesSheet(assets, out)
         "play" -> Autopilot(assets, out, opts).run()
         "profile" -> profile(assets)
+        "finish" -> finishFrames(assets, out)
         else -> error("unknown mode ${args[0]}")
     }
 }
@@ -78,4 +79,26 @@ fun profile(assets: File) {
     for (i in 0 until 10) { game.update(1f / 60f); gfx.clear(); game.render(gfx) }
     println("ms/frame: " + (System.nanoTime() - t0) / 1e7)
     gfx.profileDump()
+}
+
+/** Starts on the gate plaza with the objective complete and renders the finish sequence. */
+fun finishFrames(assets: File, out: File) {
+    val game = Game(SimPlatform(assets))
+    val gfx = J2DGfx(assets, 540, 1170)
+    game.hud.layout(540, 1170)
+    for (i in 0 until 200) game.update(1f / 60f)
+    val po = game.world.portals.first()
+    game.player.reset(0f, po.y, po.z - 3.2f)
+    game.target = 12
+    game.input.joyY = 1f
+    var f = 0
+    while (game.state != com.blocktower.escape.core.GS.COMPLETE && f < 600) { game.update(1f / 60f); f++ }
+    game.input.joyY = 0f
+    println("complete after $f frames, cam z=${game.cam.ez} y=${game.cam.ey} gate z=${po.z} y=${po.y}")
+    for (k in 0 until 8) {
+        for (i in 0 until 30) game.update(1f / 60f)
+        gfx.clear(); game.render(gfx)
+        ImageIO.write(gfx.image, "png", File(out, "finish$k.png"))
+        println("t=${"%.1f".format(game.stateT)} state=${game.state} cam z=${"%.2f".format(game.cam.ez)} y=${"%.2f".format(game.cam.ey)} yaw=${"%.2f".format(game.cam.yaw)} pitch=${"%.2f".format(game.cam.pitch)} f=${"%.0f".format(game.cam.f)}")
+    }
 }
