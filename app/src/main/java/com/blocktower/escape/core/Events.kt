@@ -64,8 +64,8 @@ class Events(val g: Game) {
     val guard = Guard()
     val chaseCollapse = Collapse()
     val chaseActive get() = chase == Chase.RUN
-    /** Level 4 stops the boy while the camera turns around; in Level 5 the Guardian rises beside him and he keeps running. */
-    val revealing get() = chase == Chase.REVEAL && !g.spec.volcano
+    /** Level 4 stops the boy while the camera turns around; in Levels 5 and 6 the Guardian rises beside him and he keeps running. */
+    val revealing get() = chase == Chase.REVEAL && !g.spec.plate
     /** 0 = normal follow camera, 1 = camera turned around (guard reveal / capture). */
     var camBlend = 0f
 
@@ -152,8 +152,8 @@ class Events(val g: Game) {
                 guard.on = true; guard.falling = false; guard.stun = 0f; guard.grab = 0f
                 guard.z = p.z - 9f; guard.x = 0f; guard.y = g.world.levelAt(floor(guard.z).toInt())
                 guard.step = 0f; guard.rise = 0f
-                // the lava Guardian climbs out of the lava sea behind the boy, on the left of the path
-                if (g.spec.volcano) guard.x = sideX()
+                // the Guardian climbs out of the lava sea (or rises out of the clouds) behind the boy, on the left of the path
+                if (g.spec.plate) guard.x = sideX()
                 for (r in rocks) r.on = false
                 rockT = 3f
             }
@@ -161,7 +161,7 @@ class Events(val g: Game) {
                 chase = Chase.ESCAPED; phaseT = 0f; camBlend = 0f
                 // the tower gives way under the guard
                 chaseCollapse.on = true; chaseCollapse.speed = 16f; chaseCollapse.maxSpeed = 16f
-                g.fx.banner("CHASE COMPLETE!", if (g.spec.volcano) "THE GUARDIAN FELL BEHIND" else "THE GUARD FELL BEHIND", 0xFF7FFFA0.toInt(), 2.2f)
+                g.fx.banner("CHASE COMPLETE!", if (g.spec.plate) "THE GUARDIAN FELL BEHIND" else "THE GUARD FELL BEHIND", 0xFF7FFFA0.toInt(), 2.2f)
                 g.addScore(500, p.x, p.y + 2.6f, p.z, "ESCAPE BONUS")
                 g.platform.sound(Sfx.CHECKPOINT, 1f, 1.1f)
                 g.fx.confetti(p.x, p.y + 2.2f, p.z + 0.5f, 40)
@@ -186,7 +186,7 @@ class Events(val g: Game) {
                 val c = finalCollapse
                 c.on = true; c.z = p.z - 6f; c.speed = 3.0f; c.maxSpeed = 5.0f; c.accel = 0.4f
                 c.endZ = g.world.finalSafeZ - 0.5f
-                g.fx.banner("FINAL ESCAPE!", if (g.spec.volcano) "THE BRIDGE IS FALLING — RUN FOR THE PORTAL!" else "THE TOWER IS FALLING — RUN TO THE GATE!", 0xFFFFB04A.toInt(), 2.4f, true)
+                g.fx.banner("FINAL ESCAPE!", when { g.spec.volcano -> "THE BRIDGE IS FALLING — RUN FOR THE PORTAL!"; g.spec.temple -> "THE ISLANDS ARE FALLING — RUN FOR THE PORTAL!"; else -> "THE TOWER IS FALLING — RUN TO THE GATE!" }, 0xFFFFB04A.toInt(), 2.4f, true)
                 g.platform.sound(Sfx.CRUMBLE); g.platform.sound(Sfx.WARNING, 0.7f); g.platform.haptic(true)
                 g.shake = max(g.shake, 0.6f)
             }
@@ -244,11 +244,11 @@ class Events(val g: Game) {
                 g.rumble = max(g.rumble, 0.18f + 0.1f * phaseT)
                 if (phaseT > 1.1f) {
                     chase = Chase.REVEAL; phaseT = 0f
-                    guard.z = p.z - (if (g.spec.volcano) 6.5f else 8f); guard.y = g.world.levelAt(floor(guard.z).toInt())
-                    if (g.spec.volcano) guard.x = sideX()
+                    guard.z = p.z - (if (g.spec.plate) 6.5f else 8f); guard.y = g.world.levelAt(floor(guard.z).toInt())
+                    if (g.spec.plate) guard.x = sideX()
                 }
             }
-            Chase.REVEAL -> if (g.spec.volcano) revealBeside(dt) else {
+            Chase.REVEAL -> if (g.spec.plate) revealBeside(dt) else {
                 val before = phaseT - dt
                 camBlend = if (phaseT < 2.0f) smooth(phaseT / 0.45f) else 1f - smooth((phaseT - 2.0f) / 0.45f)
                 guard.x = lerp(guard.x, 0f, damp(4f, dt))
@@ -271,8 +271,8 @@ class Events(val g: Game) {
             }
             Chase.RUN -> runChase(dt)
             Chase.ESCAPED -> {
-                if (g.spec.volcano && guard.on && !guard.falling) {
-                    // the bridge behind gives way: the Guardian sinks back into the lava
+                if (g.spec.plate && guard.on && !guard.falling) {
+                    // the bridge behind gives way: the Guardian sinks back into the lava (or the clouds)
                     guard.falling = true; guard.vy = 2f; guard.fallT = 0f
                     g.platform.sound(Sfx.ROAR, 0.9f, 0.8f); g.platform.sound(Sfx.CRUMBLE)
                     g.shake = max(g.shake, 0.45f)
@@ -292,7 +292,8 @@ class Events(val g: Game) {
             Chase.CAUGHT -> {
                 guard.grab = min(1f, guard.grab + dt * 2.5f)
                 guard.reach = 1f
-                camBlend = smooth(phaseT / 0.7f)
+                // (Level 6's Guardian is in front of the camera already: no need to turn round to it)
+                camBlend = if (g.spec.temple) 0f else smooth(phaseT / 0.7f)
                 // the guard lifts the boy up in front of its face
                 val hx = guard.x; val hy = guard.y + 3.05f; val hz = guard.z + 1.35f
                 val k = damp(6f, dt)
@@ -305,10 +306,25 @@ class Events(val g: Game) {
         if (guard.on && (chase == Chase.RUN || chase == Chase.CAUGHT || chase == Chase.REVEAL)) updateRocks(dt)
     }
 
-    /** Level 5: where the Guardian runs, beside the path on the left (it closes in on the boy as it catches up). */
+    /**
+     * Level 6: where the stone Guardian is seen. It hovers beside the path on the left, level with the boy and a
+     * little ahead (looming over him, as in the design), and drifts in toward the path as it catches up (the chase
+     * itself is measured from [Guard.z], behind him). Writes x, z into out.
+     */
+    fun guardView(out: FloatArray) {
+        val p = g.player
+        if (!g.spec.temple || chase == Chase.CAUGHT) { out[0] = guard.x; out[1] = guard.z; return }
+        val px = g.world.pathXAt(floor(p.z).toInt())
+        val k = if (chase == Chase.RUN) meter else 0f
+        out[0] = px - lerp(4.8f, 2.9f, smooth(k))
+        out[1] = p.z + 2.6f + 0.4f * kotlin.math.sin(g.t * 0.9f)
+    }
+    private val gv = FloatArray(2)
+
+    /** Levels 5 and 6: where the Guardian runs, beside the path on the left (it closes in on the boy as it catches up). */
     private fun sideX(): Float = g.world.pathXAt(floor(g.player.z).toInt()) - 3.3f
 
-    /** Level 5: the Guardian bursts up out of the lava beside the path, a few blocks behind; he keeps running. */
+    /** Levels 5 and 6: the Guardian bursts up out of the lava (or the clouds) beside the path, a few blocks behind; he keeps running. */
     private fun revealBeside(dt: Float) {
         val p = g.player
         val before = phaseT - dt
@@ -322,12 +338,15 @@ class Events(val g: Game) {
                 val q = g.fx.spawn()
                 q.x = guard.x + rng.f(-1.8f, 1.8f); q.y = guard.y - 1f; q.z = guard.z + rng.f(-1f, 1f)
                 q.vx = rng.f(-1f, 1f); q.vy = rng.f(3f, 7f); q.vz = rng.f(-0.5f, 0.5f)
-                q.life = rng.f(0.6f, 1.2f); q.maxLife = q.life; q.size = rng.f(0.08f, 0.18f); q.color = 0xFFFFA030.toInt(); q.kind = PK.EMBER
+                q.life = rng.f(0.6f, 1.2f); q.maxLife = q.life; q.size = rng.f(0.08f, 0.18f)
+                if (g.spec.temple) { q.color = if (rng.f() < 0.5f) 0xFFF0ECFF.toInt() else 0xFFC070FF.toInt(); q.kind = if (q.color == 0xFFC070FF.toInt()) PK.SPARK else PK.DUST }
+                else { q.color = 0xFFFFA030.toInt(); q.kind = PK.EMBER }
             }
         }
         if (before < 0.8f && phaseT >= 0.8f) {
             g.platform.sound(Sfx.ROAR); g.shake = max(g.shake, 0.6f); g.platform.haptic(true)
-            g.fx.burst(guard.x, guard.y + 0.2f, guard.z, 26, PK.FIRE, 0xFFFFB040.toInt(), 5f, 0.4f, 0.9f)
+            if (g.spec.temple) g.fx.burst(guard.x, guard.y + 0.2f, guard.z, 30, PK.DUST, 0xFFF0ECFF.toInt(), 5f, 0.5f, 1.0f)
+            else g.fx.burst(guard.x, guard.y + 0.2f, guard.z, 26, PK.FIRE, 0xFFFFB040.toInt(), 5f, 0.4f, 0.9f)
         }
         if (phaseT >= 1.6f) {
             chase = Chase.RUN; phaseT = 0f; chaseT = 0f; guard.rise = 1f
@@ -351,8 +370,8 @@ class Events(val g: Game) {
         guard.speed = sp
         guard.z += sp * dt
         val close = 1f - clamp01((dist - 2f) / 10f)
-        // Level 5: it runs beside the path on the left and closes in on the boy as it catches up
-        val gx = if (g.spec.volcano) lerp(sideX(), p.x - 1.5f, smooth((4.5f - dist) / 3f)) else clamp(p.x, -1.2f, 1.2f)
+        // Levels 5 and 6: it runs beside the path on the left and closes in on the boy as it catches up
+        val gx = if (g.spec.plate) lerp(sideX(), p.x - 1.5f, smooth((4.5f - dist) / 3f)) else clamp(p.x, -1.2f, 1.2f)
         guard.x = lerp(guard.x, gx, damp(1.5f, dt))
         guard.y = lerp(guard.y, g.world.levelAt(floor(guard.z).toInt()), damp(3f, dt))
         val stepBefore = guard.step
@@ -373,6 +392,8 @@ class Events(val g: Game) {
                 g.platform.sound(Sfx.ROAR, 0.8f, 1.2f)
                 g.shake = max(g.shake, 0.5f)
             } else {
+                // Level 6: it grabs him from where it is seen, beside the path
+                if (g.spec.temple) { guardView(gv); guard.x = gv[0]; guard.z = gv[1] - 1.5f }
                 chase = Chase.CAUGHT; phaseT = 0f
                 g.beginCapture()
             }
@@ -395,10 +416,12 @@ class Events(val g: Game) {
                     r.x = lane; r.z = row + 0.5f; r.ground = ground
                     r.y = r.ground + 11f; r.vy = -2f; r.vx = 0f; r.vz = 0f
                     r.tx = r.x; r.tz = r.z
-                    if (g.spec.volcano) {
-                        // the Guardian hurls a lava rock from its raised fist in a high arc onto the path ahead
+                    if (g.spec.plate) {
+                        // the Guardian hurls a lava rock (a boulder) from its raised fist in a high arc onto the path ahead
                         val T = 1.0f
-                        val x0 = guard.x + 1.2f; val y0 = guard.y + 3.4f; val z0 = guard.z - 0.3f
+                        // (Level 6's Guardian is seen hovering beside the boy: the boulder leaves its fist there)
+                        guardView(gv)
+                        val x0 = gv[0] + 1.2f; val y0 = guard.y + 3.4f; val z0 = gv[1] - 0.3f
                         r.x = x0; r.y = y0; r.z = z0
                         r.vx = (r.tx - x0) / T; r.vz = (r.tz - z0) / T; r.vy = (ground - y0) / T + 12f * T
                         guard.reach = 1f

@@ -1,7 +1,7 @@
 package com.blocktower.escape.core
 
 /** Which art set a level uses (world plate, landmark gate, chaser, checkpoints, block trims). */
-object Theme { const val SKY_TOWER = 0; const val VOLCANO = 1 }
+object Theme { const val SKY_TOWER = 0; const val VOLCANO = 1; const val SKY_TEMPLE = 2 }
 
 /**
  * Everything that differs from one level to the next: the numbers on the HUD, the objective, the tools
@@ -45,6 +45,13 @@ class LevelSpec(
 ) {
     /** Level 5: the volcanic sky fortress (its own plate, fortress gate, lava sea, golem and runaway relic). */
     val volcano get() = theme == Theme.VOLCANO
+    /** Level 6: the sky temple (its own plate, temple gate, cloud sea, stone Guardian, rainbow slides). */
+    val temple get() = theme == Theme.SKY_TEMPLE
+    /**
+     * Levels built on their design's picture (5 and 6): the design's sky plate with the destination standing far
+     * away in it, the route-progress / score / CHASE & COLLECT panels, and the Guardian running beside the path.
+     */
+    val plate get() = theme != Theme.SKY_TOWER
     /** Coins needed for the second star. */
     fun coinGoal(total: Int) = kotlin.math.ceil(total * coinStar).toInt()
 }
@@ -109,10 +116,25 @@ object Levels {
         coinStar = 0.5f, timeStar = 40, rewardCoins = 320, rewardGems = 8,
     ) { Level5.build() }
 
-    /** Levels that exist so far (1..5). */
-    val all = listOf(level1, level2, level3, level4, level5)
+    /**
+     * Level 6: the sky temple from the approved Level 6 design (design/level6_reference.png): a long, hard route of
+     * floating islands and waterfalls up to the portal in the distant sky temple, with rainbow water slides to ride,
+     * laser gates, spiked blocks, the Runaway Relic and the stone Guardian.
+     */
+    val level6 = LevelSpec(
+        number = 6, name = "Sky Temple", theme = Theme.SKY_TEMPLE, targetNeed = 15, startTime = 175f,
+        startHearts = 3, maxHearts = 3, toolCounts = intArrayOf(3, 3, 2, 3),
+        guardName = "GUARDIAN", gateName = "Temple Portal",
+        camDist = 4.6f, camHeight = 3.3f, camPitch = 0.34f, camFocal = 1.0f,
+        extraObjective = "Survive the Guardian",
+        newThings = listOf("Rainbow slides", "Laser gates", "Spiked blocks", "Runaway Relic (bonus)", "Stone Guardian"),
+        coinStar = 0.5f, timeStar = 40, rewardCoins = 400, rewardGems = 10,
+    ) { Level6.build() }
+
+    /** Levels that exist so far (1..6). */
+    val all = listOf(level1, level2, level3, level4, level5, level6)
     val count get() = all.size
 
     /** Level by number (23, the old number of the Screen 4 level, still means Level 4). */
-    fun get(n: Int) = when (n) { 1 -> level1; 2 -> level2; 3 -> level3; 4, 23 -> level4; else -> level5 }
+    fun get(n: Int) = when (n) { 1 -> level1; 2 -> level2; 3 -> level3; 4, 23 -> level4; 5 -> level5; else -> level6 }
 }

@@ -21,6 +21,9 @@ class RelicChase(val g: Game) {
     var x = 0f; var y = 0f; var z = 0f
     /** Distance along the route (a z position). */
     private var s = 0f
+    /** Level 6: a rainbow slide on its route, which it rides too (slower than the boy can), and how far down it is. */
+    private var onSlide: Slide? = null
+    private var ss = 0f
     var t = 0f
     /** Bounce of its gait and which way it faces (for the sprite). */
     var hop = 0f
@@ -41,21 +44,23 @@ class RelicChase(val g: Game) {
         const val SPEED = 5.4f
         /** How far ahead of the boy it appears. */
         const val LEAD = 13f
+        /** Its pace down a slide (the boy slides faster: a slide is where he catches up). */
+        const val SLIDE_SPEED = 8.5f
         const val CATCH = 1.05f
     }
 
-    fun reset() { state = RS.NONE; show = 0f; t = 0f; caughtOnce = false }
+    fun reset() { state = RS.NONE; show = 0f; t = 0f; caughtOnce = false; onSlide = null }
 
     /** Continuing from a checkpoint before the relic's route puts the chase back (unless it was already caught). */
     fun resetAfter(cpZ: Float) {
         if (caughtOnce) return
-        if (g.world.relicZ0 > 0 && cpZ < g.world.relicZ0) { state = RS.NONE; show = 0f; t = 0f }
+        if (g.world.relicZ0 > 0 && cpZ < g.world.relicZ0) { state = RS.NONE; show = 0f; t = 0f; onSlide = null }
     }
 
     fun start() {
         if (state != RS.NONE || caughtOnce || g.world.relicZ1 <= g.world.relicZ0) return
         val p = g.player
-        state = RS.APPEAR; t = 0f
+        state = RS.APPEAR; t = 0f; onSlide = null
         s = max(p.z + LEAD, g.world.relicZ0.toFloat() + 0.5f)
         place()
         g.fx.banner("CHASE & COLLECT!", "CATCH THE RUNAWAY RELIC FOR A BONUS", 0xFFFFE14A.toInt(), 2.1f)
@@ -78,8 +83,14 @@ class RelicChase(val g: Game) {
         return best
     }
 
-    /** Places it at route position [s]: on the path, hopping over gaps and steps in arcs. */
+    /** Places it at route position [s]: on the path, hopping over gaps and steps in arcs (or down the slide it rides). */
     private fun place() {
+        val sl = onSlide
+        if (sl != null) {
+            sl.point(ss, 0f, 0.05f, tmp, 0)
+            x = tmp[0]; y = tmp[1]; z = tmp[2]; hop = 0f
+            return
+        }
         val r = floor(s).toInt()
         x = lerp(g.world.pathXAt(r), g.world.pathXAt(r + 1), s - r)
         var r0 = r; while (r0 > r - 8 && groundAt(r0).isNaN()) r0--
@@ -108,7 +119,20 @@ class RelicChase(val g: Game) {
                 checkCatch()
             }
             RS.RUN -> {
-                if (g.state == GS.PLAY && p.state != PS.CAUGHT) s += SPEED * dt
+                if (g.state == GS.PLAY && p.state != PS.CAUGHT) {
+                    val sl = onSlide
+                    if (sl != null) {
+                        ss += SLIDE_SPEED * dt
+                        // out of the slide's exit it carries on along the path from there
+                        if (ss >= sl.length) { onSlide = null; s = sl.z1 + 0.3f }
+                    } else {
+                        val before = s
+                        s += SPEED * dt
+                        // a slide's mouth on its route: it rides the slide down
+                        for (sl2 in g.world.slides) if (sl2.ride && sl2.z0 > before - 0.01f && sl2.z0 <= s + 0.5f &&
+                            abs(sl2.x0 - g.world.pathXAt(floor(sl2.z0 - 0.5f).toInt())) < 1.6f) { onSlide = sl2; ss = 0f; break }
+                    }
+                }
                 place()
                 // a trail of sparkles behind it
                 if (g.fx.rng.f() < dt * 40f) {
@@ -131,7 +155,7 @@ class RelicChase(val g: Game) {
 
     private fun checkCatch() {
         val p = g.player
-        if (g.state != GS.PLAY || (p.state != PS.NORMAL && p.state != PS.LOOP)) return
+        if (g.state != GS.PLAY || (p.state != PS.NORMAL && p.state != PS.LOOP && p.state != PS.SLIDE)) return
         val d = len3(p.x - x, p.y + 0.7f - (y + 0.35f), p.z - z)
         if (d < CATCH) capture()
     }
@@ -166,6 +190,8 @@ class RelicChase(val g: Game) {
         g.fx.toast("THE RELIC GOT AWAY!", "NO PROBLEM — KEEP GOING", 0xFFFFD27A.toInt(), 2.2f)
         g.hud.relicEscaped()
     }
+
+    private val tmp = FloatArray(3)
 
     /** For the HUD: 1 when caught. */
     val count get() = if (caught) 1 else 0

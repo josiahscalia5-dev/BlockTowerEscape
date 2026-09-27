@@ -35,10 +35,12 @@ object MapPlate {
         Node(213f, 638f, 330f, 723f, 0.585f, 272f, 681f, 705f, 272f, 650f, 300f, 646f, 207f, 688f, -1),
         Node(145f, 575f, 247f, 653f, 0.51f, 196f, 611f, 636f, 196f, 584f, 172f, 580f, 139f, 614f, -1),
         Node(181f, 510f, 270f, 577f, 0.445f, 225f, 541f, 563f, 225f, 517f, 205f, 514f, 277f, 546f, 1),
+        // level 6: the dark block up the path from level 5
+        Node(258f, 432f, 330f, 492f, 0.36f, 294f, 460f, 479f, 294f, 437f, 306f, 436f, 336f, 462f, 1),
     )
-    /** The next block after level 5 on the path (more levels soon), and the far blocks with padlocks. */
-    val soon = floatArrayOf(258f, 430f, 330f, 490f)
-    val farLocks = floatArrayOf(254f, 404f, 336f, 394f, 380f, 372f)
+    /** The next block after the last level on the path (more levels soon), and the far blocks with padlocks. */
+    val soon = floatArrayOf(222f, 387f, 284f, 433f)
+    val farLocks = floatArrayOf(336f, 394f, 380f, 372f)
     /** Height of the boy (back view) standing on the level-1 block. */
     const val BOY_H = 170f
 }
@@ -183,14 +185,14 @@ class LevelMap(private val app: App) {
 
         val pr = app.progress
         val current = app.currentLevel()
-        // the far blocks (locked) and the next block after level 5 (more levels soon)
+        // the far blocks (locked) and the next block after the last level (more levels soon)
         val f = MapPlate.farLocks
         var i = 0
         while (i < f.size) { app.ui.padlock(gr, mx(f[i]), my(f[i + 1]), 7f * k); i += 2 }
         soonTag(gr)
         if (interactive) {
             val s = MapPlate.soon
-            hit(106, mx(s[0]), my(s[1]), mx(s[2]), my(s[3]))
+            hit(SOON_ID, mx(s[0]), my(s[1]), mx(s[2]), my(s[3]))
             // far to near, so the nearer block wins where the painted blocks overlap
             for (n in Levels.count downTo 1) {
                 val nd = MapPlate.nodes[n - 1]
@@ -317,7 +319,7 @@ class LevelMap(private val app: App) {
         val m = app.safe
         val s = MapPlate.soon
         val cx = mx((s[0] + s[2]) / 2); val cy = my((s[1] + s[3]) / 2 + 2f)
-        val ts = max(m.dp(10f), 15f * k * 0.62f) * (if (pressedNode == 6) 0.94f else 1f)
+        val ts = max(m.dp(10f), 15f * k * 0.62f) * (if (pressedNode == SOON_ID - 100) 0.94f else 1f)
         val tw = gr.textWidth("SOON", ts, Font.TITLE)
         val ph = ts * 1.5f
         val hw = tw / 2 + ph * 0.45f
@@ -384,12 +386,14 @@ class LevelMap(private val app: App) {
     companion object {
         /** The newly opened level's padlock shakes this long before it pops off. */
         const val UNLOCK_POP = 0.7f
+        /** Touch id of the SOON block (the level blocks are 100 + their number). */
+        const val SOON_ID = 199
     }
 
     // ------------------------------------------------------------------ input
     fun down(x: Float, y: Float) {
         val id = app.ui.down(x, y)
-        pressedNode = when { id == 106 -> 6; id >= 101 -> id - 100; else -> -1 }
+        pressedNode = when { id == SOON_ID -> SOON_ID - 100; id >= 101 -> id - 100; else -> -1 }
     }
 
     fun move(x: Float, y: Float) {
@@ -403,7 +407,7 @@ class LevelMap(private val app: App) {
         when {
             id == 1 -> { app.pf.sound(Sfx.CLICK); app.openHome() }
             id == 2 || id == 3 -> app.openPopup(Pop.MORE)
-            id == 106 -> app.openPopup(Pop.SOON)
+            id == SOON_ID -> app.openPopup(Pop.SOON)
             id >= 101 -> tapLevel(id - 100)
         }
     }
@@ -427,7 +431,7 @@ class LevelMap(private val app: App) {
     /** Tests: the message shown after tapping a locked level ("" when none). */
     fun lockedMessage() = if (lockedMsgT > 0f) lockedMsg else ""
 
-    /** Tests: where level [n]'s block is on screen (6 = the SOON block). */
+    /** Tests: where level [n]'s block is on screen (Levels.count + 1 = the SOON block). */
     fun nodeCentre(n: Int): FloatArray {
         layout()
         if (n > Levels.count) { val s = MapPlate.soon; return floatArrayOf(mx((s[0] + s[2]) / 2), my((s[1] + s[3]) / 2)) }

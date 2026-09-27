@@ -228,10 +228,25 @@ class PlayerRig(val g: Game) {
                 o.spin = cos(p.spin)
             }
             PS.DEAD -> { o.armL = 50f + 20f * sin(t * 19f); o.armR = -50f - 20f * sin(t * 19f + 1f); o.legsMirror = ((t * 8f).toInt() and 1) == 1 }
+            PS.SLIDE -> {
+                // riding a slide: knees bent, hips low, arms out for balance and leaning into the bend (surfing, not
+                // dragged); the legs stay planted under the hips (they bend, the hip joint never opens)
+                val k = 1f - airW
+                val lean = p.slideLean
+                o.bodyDy += 7f * k
+                o.legsSy *= 1f - 0.06f * k
+                o.legsMirror = false; o.legsRot = lean * 4f
+                o.armL = 46f + 8f * sin(t * 4.2f) + lean * 18f + airW * 20f
+                o.armR = -46f - 8f * sin(t * 4.2f + 1.3f) + lean * 18f - airW * 20f
+                o.armLS = 1.02f; o.armRS = 1.02f
+                o.rot += -lean * 4f
+                o.bodyRot += -lean * 4f + sin(t * 3.1f) * 1.2f
+                o.sx *= 1.03f
+            }
         }
         if (speed < 0.01f && airW < 0.01f && p.state == PS.NORMAL) o.legsRot = 0f
-        // round the loop the boy is turned to stand on the track (see WorldRenderer.drawPlayer)
-        if (p.state == PS.LOOP) o.rot += p.loopRot
+        // round the loop (or on a slide's wall) the boy is turned to stand on the track (see WorldRenderer.drawPlayer)
+        if (p.state == PS.LOOP || p.state == PS.SLIDE) o.rot += p.loopRot
         // on the ground the feet stay planted: when the hips dip (landing, skid) the legs bend to
         // absorb it instead of pushing the feet through the floor; a rising body half-lifts them
         val reach = anchorY - BoyRig.HIP_Y

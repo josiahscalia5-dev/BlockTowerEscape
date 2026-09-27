@@ -218,7 +218,7 @@ class Hud(val g: Game) {
     // ------------------------------------------------------------------ render
     fun render(gr: Gfx) {
         drawTopBar(gr)
-        if (g.spec.volcano) drawLevel5Panels(gr)
+        if (g.spec.plate) drawLevel5Panels(gr)
         drawTargetPanel(gr)
         for (k in 0..3) drawTool(gr, k)
         drawJoystick(gr)
@@ -297,7 +297,7 @@ class Hud(val g: Game) {
     }
 
     /**
-     * Level 5 (the design's HUD): the route to the distant portal as a progress strip under the hearts, the score,
+     * Levels 5 and 6 (the designs' HUD): the route to the distant portal as a progress strip under the hearts, the score,
      * and the Runaway Relic's CHASE & COLLECT panel (0/1) from the moment it appears. All in the left column,
      * clear of the timer, the wallet, the target panel and the tools.
      */

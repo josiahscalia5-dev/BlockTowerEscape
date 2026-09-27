@@ -86,6 +86,18 @@ class Autopilot(
         fallZ = 15.2f, steerZ = 22.1f, speedZ = 30f, captureZ = 146f, magnetZ = 193.8f, shieldZ = 212.7f,
         blockZ0 = 201.5f, blockZ1 = 203f, trapZ0 = 108f, trapZ1 = 142f,
         pathA = floatArrayOf(120f, 127f, 1.7f, 9f), pathB = floatArrayOf(131f, 134f, -1.3f, 1.3f),
+    ) else if (level == 6) Plan(
+        route = floatArrayOf(
+            -9f, 0f,
+            103.3f, -1f, 104.3f, 0f, 105.3f, -1f, 106.3f, 0f,   // vanishing stepping stones
+            107.2f, -2.2f, 112.4f, -3.0f, 129f, 0f,              // the fork: the fast slide on the left
+            281.3f, -1f, 282.3f, 0f, 283.3f, -1f, 284.3f, 0f,   // vanishing stones in the hazard gardens
+            346.3f, 1f, 347.8f, 0f,                              // round the spikes during the chase
+            386.3f, -1f, 387.3f, 0f, 388.3f, -1f, 389.3f, 0f,   // vanishing stones in the maze
+            424.3f, -1f, 425.3f, 0f),
+        fallZ = 3.0f, steerZ = 310.2f, speedZ = 150f, captureZ = 330f, magnetZ = 290f, shieldZ = 322f,
+        blockZ0 = 35.3f, blockZ1 = 36f, trapZ0 = 262f, trapZ1 = 316f,
+        pathA = floatArrayOf(113.05f, 113.95f, -4f, -2f), pathB = floatArrayOf(130f, 138f, -2.6f, 2.6f),
     ) else Plan(
         route = floatArrayOf(
             -9f, 0f,
@@ -171,6 +183,8 @@ class Autopilot(
             g.update(dt)
             frame++
             measure(px0, pvx0, pz0, wasGrounded, wasNormal, onMover)
+            opts["tracez"]?.split(',')?.let { r -> if (p.z >= r[0].toFloat() && p.z <= r[1].toFloat())
+                println("TRACE f=$frame z=${"%.2f".format(p.z)} x=${"%.2f".format(p.x)} y=${"%.2f".format(p.y)} vz=${"%.1f".format(p.vz)} vy=${"%.1f".format(p.vy)} st=${p.state} gr=${p.grounded} steer=${"%.2f".format(g.steerX)} jumpF=$jumpHoldF thumb=${thumbQ.size}") }
             // timeline
             if (g.state != lastState) { note("state ${stateName(g.state)}"); lastState = g.state }
             if (g.hearts != lastHearts) { note("hearts ${lastHearts} -> ${g.hearts}"); lastHearts = g.hearts }
@@ -193,6 +207,22 @@ class Autopilot(
                 loopMinV = min(loopMinV, p.loopV); loopStride = p.runPhase - loopPhase0
                 loopCoins = g.coinsCollected - loopCoins0
             } else inLoop = false
+            // down a slide: he turns with the channel smoothly and stays on its surface
+            if (p.state == PS.SLIDE) {
+                val sl = p.slide!!
+                if (!inSlide) { inSlide = true; lastSlideRot = p.loopRot; slideCoins0 = g.coinsCollected }
+                var d = p.loopRot - lastSlideRot; while (d > 180f) d -= 360f; while (d < -180f) d += 360f
+                slideMaxStep = max(slideMaxStep, abs(d)); lastSlideRot = p.loopRot; slideFrames++
+                slideMaxTh = max(slideMaxTh, abs(p.slideTh))
+                // his feet: the channel's surface at his (s, th), plus the hop
+                val q = FloatArray(3); sl.point(p.slideS.coerceAtMost(sl.length), p.slideTh, 0f, q, 0)
+                if (p.slideIn <= 0f) slideOffSurface = max(slideOffSurface, abs(len3(p.x - q[0], p.y - q[1], p.z - q[2]) - p.slideHop))
+                slideCoins += 0
+            } else if (inSlide) {
+                inSlide = false; slidesDone++; seen.add("slide done")
+                note("out of a slide at ${"%.1f".format(len2(p.vx, p.vz))}/s (${g.coinsCollected - slideCoins0} coins on it)")
+                slideCoins += g.coinsCollected - slideCoins0
+            }
             val rs = g.relic.state
             if (rs != lastRelic) {
                 when (rs) {
@@ -320,6 +350,7 @@ class Autopilot(
             else -> return
         }
         if (p.state == PS.LOOP) { loopHands(); return }
+        if (p.state == PS.SLIDE) { slideHands(); return }
         if (p.state != PS.NORMAL) { wantRun = true; return }
         if (scenario == "hearts" && !seen.contains("continue")) { if (thumbFree && p.grounded && g.playT > 0.5f) leapOffTheSide(); return }
         if (startStep < 99) { if (joyMode) joyStartTests() else startTests(); return }
@@ -355,8 +386,29 @@ class Autopilot(
             wantRun = false; keepPace(); return
         }
         logWaitNoted = false
+        // --- a laser gate just ahead: jump its beam (timed so he is above it as he passes)
+        val la = laserAhead()
+        val lv = max(2f, len2(p.vx, p.vz))
+        if (p.grounded && la > 0f && la - 0.44f in 0.08f * lv..0.26f * lv && jumpHoldF == 0) { pressJump(); if (!laserNoted) { laserJumps++; laserNoted = true } }
+        if (la < 0f || la > 3.5f) laserNoted = false
+        // never stop in (or just before) a laser's line: carry on through it first
+        val nearLaser = g.world.lasers.any { l -> l.z - p.z in -0.6f..2.4f && p.x > l.x0 - 0.2f && p.x < l.x1 + 0.2f }
+        // --- a spiked block sliding across the path: pass on the side it has left (or wait for it)
+        if (!nearLaser) when (spikeBoxPlan()) {
+            2 -> {
+                if (!boxWaitNoted) { note("waiting for the sliding spiked block"); boxWaitNoted = true; boxWaits++ }
+                // stop well short of it (not creeping closer while it sweeps): too close, step back a little
+                val near = g.world.spikeBoxes.filter { it.amp > 0f && it.z - p.z in 0.6f..4.5f }.minOfOrNull { it.z - p.z } ?: 9f
+                wantRun = near > 2.4f && len2(p.vx, p.vz) < 2f
+                if (near < 1.9f && thumbFree && g.swipe.cruise <= 0f && frame % 30 == 0) swipe(baseX(), baseY() - 60f * s, 0f, 170f * s, 8, 14)
+                keepPace(); return
+            }
+            1 -> if (!boxWaitNoted) { note("dodging the sliding spiked block to x=${"%.0f".format(dodgeX)}"); boxWaitNoted = true; boxWaits++ }
+            else -> boxWaitNoted = false
+        }
         // --- steering: a sideways swipe whenever the lane we want is off to the side
         var tx = routeX(z)
+        if (!dodgeX.isNaN()) tx = dodgeX
         val ground = p.ground
         val onMover = ground != null && ground.type == BT.MOVING
         if (onMover) tx = g.steerX
@@ -377,6 +429,8 @@ class Autopilot(
             d += 0.05f
         }
         if (edge < 0f) { keepPace(); return }
+        // the mouth of a slide ahead is not a gap to jump: run into it
+        if (g.world.slides.any { it.ride && it.z0 - z in -0.2f..2.6f && abs(it.x0 - p.x) < it.r + 0.3f && abs(it.y0 - y) < 1f }) { keepPace(); return }
         // the block tool bridge in the tool trials: too far to jump
         if (!blockUsed && !wall && z > plan.blockZ0 && z < plan.blockZ1 && edge < 0.6f) { tapTool(TK.BLOCK); blockUsed = true; return }
         val landing = landingAhead(z + edge, y)
@@ -424,6 +478,118 @@ class Autopilot(
                 steerSwipe(l - p.loopLat); note("loop: steering round a spike plate")
             } else if (dist < 0.9f) { pressJump(); note("loop: hopping a spike plate") }
         }
+    }
+
+    // ------------------------------------------------------------------ Level 6: slides, lasers, spiked blocks
+    private var laserNoted = false; private var laserJumps = 0
+    private var boxWaitNoted = false; private var boxWaits = 0
+    private var slidesDone = 0; private var inSlide = false; private var slideMaxStep = 0f; private var lastSlideRot = 0f
+    private var slideFrames = 0; private var slideCoins0 = 0; private var slideCoins = 0; private var slideMaxTh = 0f
+    private var slideOffSurface = 0f
+
+    /** Distance to the next laser gate across our lane (or -1). */
+    private fun laserAhead(): Float {
+        var best = -1f
+        for (l in g.world.lasers) {
+            val d = l.z - p.z
+            if (d < 0f || d > 3f || p.x < l.x0 - 0.2f || p.x > l.x1 + 0.2f || abs(l.y - (p.y + 0.42f)) > 0.8f) continue
+            if (best < 0f || d < best) best = d
+        }
+        return best
+    }
+
+    /** A lane to pass a sliding spiked block in (NaN: none needed). */
+    private var dodgeX = Float.NaN
+    private var dodgeBox: com.blocktower.escape.core.SpikeBox? = null
+
+    /**
+     * Sliding spiked blocks ahead: 0 = our lane is clear when we pass, 1 = steer to [dodgeX] (a lane it has left),
+     * 2 = no lane is clear in time: wait.
+     */
+    private fun spikeBoxPlan(): Int {
+        dodgeBox?.let { if (p.z > it.z + 0.7f) { dodgeBox = null; dodgeX = Float.NaN } }
+        for (b in g.world.spikeBoxes) {
+            if (b.amp <= 0f) continue
+            val dz = b.z - p.z
+            if (dz < 0.6f || dz > 4.5f || abs(p.y - b.y) > 1.5f) continue
+            val v0 = max(0f, p.vz); val vm = max(v0, Tune.RUN)
+            val ta = (vm - v0) / 16f; val da = (v0 + vm) * 0.5f * ta
+            val t0 = g.t + (if (dz <= da) dz / max(1f, (v0 + vm) * 0.5f) else ta + (dz - da) / vm)
+            fun clear(x: Float): Boolean {
+                var k = -2
+                while (k <= 4) {
+                    val bx = b.x0 + b.amp * sin(b.phase + (t0 + k * 0.1f) * b.speed)
+                    if (abs(bx - x) < b.size * 0.5f + 0.14f + Tune.RADIUS + 0.12f) return false
+                    k++
+                }
+                return true
+            }
+            // committed to a lane in front of it: keep it while it stays clear
+            if (dodgeBox === b && !dodgeX.isNaN() && clear(dodgeX)) return 1
+            val here = g.steerX
+            if (clear(here) && abs(p.x - here) < 0.3f) { dodgeBox = null; dodgeX = Float.NaN; continue }
+            // a lane it will have left by then, reachable in time (a lane change takes about a third of a second)
+            val arrive = t0 - g.t
+            val px = g.world.pathXAt(kotlin.math.floor(b.z).toInt())
+            val lane = floatArrayOf(px - 1f, px, px + 1f).filter { clear(it) && (abs(it - p.x) < 0.3f || 0.3f + 0.25f * abs(it - p.x) < arrive - 0.1f) }.minByOrNull { abs(it - p.x) }
+            if (lane != null) { dodgeX = lane; dodgeBox = b; return 1 }
+            // nothing clear in time: wait out of its reach until a lane is
+            dodgeX = Float.NaN; dodgeBox = null
+            if (dz < 0.6f) return 0
+            return 2
+        }
+        return 0
+    }
+
+    /**
+     * Down a slide: keep the pace up, ride toward the coins and the blue blocks, and steer round the spike plates
+     * (or hop one when there is no time to steer).
+     */
+    private fun slideHands() {
+        val sl = p.slide ?: return
+        if (!inSlide) { note("slide: in at ${"%.1f".format(len2(p.vx, p.vz))}/s"); seen.add("slide") }
+        wantRun = true
+        if (thumbFree && g.swipe.cruise < 0.85f) { flickUp(); return }
+        val s0 = p.slideS
+        // where to ride: the next coin (or blue block) 2..6 ahead, else the bottom
+        var want = 0f; var bestD = 99f
+        for (c in g.world.coins) {
+            if (c.collected || abs(c.z - p.z) > 8f) continue
+            val th = thetaOf(sl, s0, c.x, c.y, c.z) ?: continue
+            if (th[0] < s0 + 1.5f || th[0] > s0 + 6f) continue
+            if (th[0] - s0 < bestD) { bestD = th[0] - s0; want = th[1] }
+        }
+        // spike plates coming up: move off their line
+        var hop = false
+        for (sp in sl.spikes) {
+            val d = sp[0] - s0
+            if (d < 0.3f || d > max(6f, p.slideV * 1.1f)) continue
+            if (abs(want - sp[1]) * sl.r < 0.9f) want = sp[1] + (if (want >= sp[1]) 1f else -1f) * 1.0f
+            if (d < 0.9f + p.slideV * 0.1f && abs(p.slideTh - sp[1]) * sl.r < 0.7f) hop = true
+        }
+        if (hop && p.slideHop <= 0.01f && jumpHoldF == 0) { pressJump(); note("slide: hopping a spike plate") }
+        want = max(-Tune.SLIDE_WALL, min(Tune.SLIDE_WALL, want))
+        val eq = -kotlin.math.atan(p.slideV * p.slideV * sl.curvAt(s0 + 1f) / Tune.GRAVITY)
+        val need = max(-1.05f, min(1.05f, want - eq)) - g.slideSteer
+        if (thumbFree && frame - lastSteerFrame > 10 && abs(need) > 0.2f) steerSwipe(max(-2.5f, min(2.5f, need / 0.55f)))
+    }
+
+    /** (s, th) of a point near slide [sl] ahead of s0 (or null when it is not in the channel). */
+    private fun thetaOf(sl: com.blocktower.escape.core.Slide, s0: Float, x: Float, y: Float, z: Float): FloatArray? {
+        var best = -1; var bd = 1e9f
+        val i0 = max(0, (s0 / com.blocktower.escape.core.Slide.STEP).toInt()); val i1 = min(sl.n - 1, i0 + 40)
+        for (i in i0..i1) {
+            val ax = sl.bx[i] + sl.r * sl.ux[i]; val ay = sl.by[i] + sl.r * sl.uy[i]; val az = sl.bz[i] + sl.r * sl.uz[i]
+            val d = (x - ax) * sl.tx[i] + (y - ay) * sl.ty[i] + (z - az) * sl.tz[i]
+            if (abs(d) < bd) { bd = abs(d); best = i }
+        }
+        if (best < 0 || bd > 0.3f) return null
+        val i = best
+        val vx = x - (sl.bx[i] + sl.r * sl.ux[i]); val vy = y - (sl.by[i] + sl.r * sl.uy[i]); val vz = z - (sl.bz[i] + sl.r * sl.uz[i])
+        val r = vx * sl.rx[i] + vy * sl.ry[i] + vz * sl.rz[i]
+        val u = vx * sl.ux[i] + vy * sl.uy[i] + vz * sl.uz[i]
+        if (len2(r, u) > sl.r + 0.2f) return null
+        return floatArrayOf(i * com.blocktower.escape.core.Slide.STEP, kotlin.math.atan2(r, -u))
     }
 
     private var inLoop = false
@@ -711,6 +877,8 @@ class Autopilot(
         println("frames: $frame (${"%.1f".format(frame / 60f)} s of game time)")
         println("final state: ${stateName(g.state)}   score: ${g.score}   blue: ${g.target}/${g.spec.targetNeed}   coins: ${g.coinsCollected}/${g.world.coinTotal}   hearts: ${g.hearts}")
         if (r != null) println("results: stars=${r.stars} timeLeft=${r.timeLeft}s total=${r.totalScore} rewardCoins=${r.rewardCoins} gems=${r.gemReward}")
+        val left = g.world.blocks.filter { it.type == BT.TARGET }
+        if (left.isNotEmpty()) println("blue blocks left behind (${left.size}): " + left.joinToString { "(%.1f, %.1f, %.1f)".format(it.x, it.y, it.z) })
         // only what this level has: tools it hands out, a chase, lava, a final escape, the scripted fall
         val hasEvent = { e: Int -> g.world.triggers.any { it.event == e } }
         val chase = g.spec.guardName.isNotEmpty()
@@ -732,6 +900,7 @@ class Autopilot(
             "final climb (lava)" to seen.contains("lava"),
             "final escape (collapse)" to seen.contains("final escape"),
             "the great loop (ran all the way round)" to seen.contains("loop done"),
+            "rode a rainbow slide" to seen.contains("slide done"),
             "Runaway Relic: CHASE & COLLECT appeared" to seen.contains("relic:appear"),
             (if (opts["relic"] == "miss") "Runaway Relic: got away, nothing lost" else "Runaway Relic: caught, bonus paid") to
                 (if (opts["relic"] == "miss") seen.contains("relic:escaped") && !seen.contains("relic:caught") else seen.contains("relic:caught")),
@@ -749,6 +918,7 @@ class Autopilot(
                 "final climb (lava)" -> hasEvent(com.blocktower.escape.core.Ev.LAVA)
                 "final escape (collapse)" -> hasEvent(com.blocktower.escape.core.Ev.FINAL)
                 "the great loop (ran all the way round)" -> g.world.loops.isNotEmpty()
+                "rode a rainbow slide" -> g.world.slides.any { it.ride }
                 else -> if (name.startsWith("Runaway Relic")) g.world.relicZ1 > 0 else true
             }
         }
@@ -765,12 +935,22 @@ class Autopilot(
         } else if (level == 5) {
             result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the safe bridge on the left: $forkRight, steered back to the main path: $forkRejoined")
             result("7 moving around obstacles", logHits == 0 && trapHurts == 0 && g.world.logs.isNotEmpty(), "waited for the swinging maces $logWaits times, mace hits: $logHits, hits in the hazard section: $trapHurts")
+        } else if (level == 6) {
+            result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the fast slide on the left: $forkRight, back on the main path after it: $forkRejoined")
+            result("7 moving around obstacles", logHits == 0 && trapHurts == 0, "waited for maces $logWaits times and sliding spiked blocks $boxWaits times, jumped $laserJumps laser beams; mace hits: $logHits, hits in the hazard gardens: $trapHurts")
         } else if (plan.trapZ0 < 9999f) {
             result("7 moving around obstacles", trapHurts == 0, "hits in the hazard section: $trapHurts")
         }
         val toolsNeeded = min(3, usesTool.count { it })
         if (toolsNeeded > 0) result("9 tools while moving", toolsWhileMoving.size >= toolsNeeded, "used while running: ${toolsWhileMoving.joinToString()}")
         result("10 reaching the final portal", seen.contains("ps:WIN") && g.state == GS.RESULTS, "entered the gate, results shown")
+        if (g.world.slides.any { it.ride }) {
+            val rideable = g.world.slides.count { it.ride }
+            result("slides: rode them all the way down", slidesDone >= rideable - 1 && seen.contains("slide done"),
+                "$slidesDone slides ridden (of $rideable; the fork's is optional), ${"%.1f".format(slideFrames / 60f)} s sliding, up the walls to ${"%.0f".format(Math.toDegrees(slideMaxTh.toDouble()))} degrees, $slideCoins coins on them")
+            result("slides: feet stay on the channel", slideOffSurface < 0.02f, "furthest off the surface ${"%.3f".format(slideOffSurface)}")
+            result("slides: turning is smooth (no snapping)", slideMaxStep < 12f, "largest turn in one frame ${"%.1f".format(slideMaxStep)} degrees")
+        }
         if (g.world.loops.isNotEmpty()) {
             val secs = loopFrames / 60f
             result("loop: runs round on the track", seen.contains("loop done") && loopStride > secs * 5f && abs(abs(loopTurn) - 360f) < 60f,
@@ -792,7 +972,8 @@ class Autopilot(
 
     private fun stateName(s: Int) = when (s) { GS.INTRO -> "INTRO"; GS.PLAY -> "PLAY"; GS.COMPLETE -> "COMPLETE"; GS.RESULTS -> "RESULTS"; GS.FAILED -> "GAME OVER"; else -> "$s" }
     private fun chaseName(c: Int) = when (c) { Chase.NONE -> "NONE"; Chase.WARNING -> "WARNING"; Chase.REVEAL -> "REVEAL"; Chase.RUN -> "RUN"; Chase.ESCAPED -> "ESCAPED"; Chase.CAUGHT -> "CAUGHT"; else -> "$c" }
-    private fun psName(s: Int) = when (s) { PS.NORMAL -> "NORMAL"; PS.RESCUE_FALL -> "RESCUE_FALL"; PS.RESCUE_RIDE -> "RESCUE_RIDE"; PS.CAUGHT -> "CAUGHT"; PS.WIN -> "WIN"; PS.DEAD -> "DEAD"; PS.LOOP -> "LOOP"; else -> "$s" }
+    private fun psName(s: Int) = when (s) { PS.NORMAL -> "NORMAL"; PS.RESCUE_FALL -> "RESCUE_FALL"; PS.RESCUE_RIDE -> "RESCUE_RIDE"; PS.CAUGHT -> "CAUGHT"; PS.WIN -> "WIN"; PS.DEAD -> "DEAD"; PS.LOOP -> "LOOP"; PS.SLIDE -> "SLIDE"; else -> "$s" }
+    private fun len3(x: Float, y: Float, z: Float) = sqrt(x * x + y * y + z * z)
     private fun len2(x: Float, y: Float) = sqrt(x * x + y * y)
 
     // runs last, after every property above has its initial value

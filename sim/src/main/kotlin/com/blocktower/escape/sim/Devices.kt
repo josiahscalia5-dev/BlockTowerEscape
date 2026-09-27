@@ -2,6 +2,7 @@ package com.blocktower.escape.sim
 
 import com.blocktower.escape.core.App
 import com.blocktower.escape.core.GS
+import com.blocktower.escape.core.Levels
 import com.blocktower.escape.core.Pop
 import com.blocktower.escape.core.Scr
 import java.awt.Color
@@ -17,7 +18,7 @@ import javax.imageio.ImageIO
  * bar at the bottom, drawn as translucent red bands). Writes one comparison sheet per screen to devices/.
  *
  *   devices out=sim-out            all screens
- *   devices out=sim-out only=home  one screen (home, daily, missions, vault, settings, map, card, level1..level5,
+ *   devices out=sim-out only=home  one screen (home, daily, missions, vault, settings, map, card, level1..level6,
  *                                  pause, gameover, results, results1)
  */
 class Devices(val assets: File, val out: File, val opts: Map<String, String>) {
@@ -90,7 +91,7 @@ class Devices(val assets: File, val out: File, val opts: Map<String, String>) {
             problems += Layout.problems("${d.name} map", app.map.layoutRects(), app.safe, emptySet(), overlapping = { a, b -> a.startsWith("level") && b.startsWith("level") })
             if (want("card")) { app.openPopup(Pop.LEVEL, 4); step(30); grab("card"); app.closePopup() }
         }
-        for (n in 1..5) {
+        for (n in 1..Levels.count) {
             val name = "level$n"
             val extra = n == 4 && (want("pause") || want("gameover") || want("results"))
             val extra1 = n == 1 && want("results1")

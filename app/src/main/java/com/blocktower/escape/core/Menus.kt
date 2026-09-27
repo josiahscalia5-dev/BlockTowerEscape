@@ -1,5 +1,6 @@
 package com.blocktower.escape.core
 
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -18,6 +19,7 @@ class Menus(private val app: App) {
             app.pf.loadImage("home/icon_vault.png"), app.pf.loadImage("home/icon_settings.png"))
     }
     private val guardian by lazy { app.pf.loadImage("l5v/guardian.png") }
+    private val golem by lazy { app.pf.loadImage("l6/guardian.png") }
     private val runaway by lazy { app.pf.loadImage("l5v/relic.png") }
     private var claimFlash = 0f
     private var lastClaimed = -1
@@ -145,8 +147,8 @@ class Menus(private val app: App) {
         if (u < 0.9f) return
         val cx = app.w * 0.5f
         ui.label(gr, "RELICS  •  one for every level you finish", cx, f[1] + 172f * s, 28f, 0xFFCFE0FF.toInt())
-        val cw = 150f * s; val gap = 14f * s
         val n = Progress.RELICS.size
+        val gap = 14f * s; val cw = min(150f, (860f - (n - 1) * 14f) / n) * s
         for (i in 0 until n) {
             val rel = Progress.RELICS[i]
             val x0 = cx - (n * cw + (n - 1) * gap) / 2 + i * (cw + gap); val y0 = f[1] + 205f * s
@@ -156,9 +158,9 @@ class Menus(private val app: App) {
             if (got) {
                 gr.setAdditive(true); gr.glow(icx, icy, 70f * s, Col.withA(0xFFFFE070.toInt(), 0.35f + 0.15f * pulse(app.t + i, 2f))); gr.setAdditive(false)
                 relicIcon(gr, rel.level, icx, icy, 92f * s)
-                gr.text(rel.name, icx, y0 + 165f * s, 22f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 3f * s, 0xFF10205A.toInt())
-                // Level 5's bonus: the Runaway Relic sits beside the level's relic once caught
-                if (rel.level == 5 && pr.runawayRelic) {
+                relicName(gr, rel.name, icx, y0 + 165f * s, cw - 12f * s)
+                // the Runaway Relic (Levels 5 and 6) sits beside the level's relic once caught
+                if ((rel.level == 5 && pr.runawayRelic) || (rel.level == 6 && pr.runawayRelic6)) {
                     val rh = 58f * s; val rw = rh * runaway.w / runaway.h
                     gr.setAdditive(true); gr.glow(x0 + cw - 22f * s, y0 + 36f * s, 40f * s, Col.withA(0xFFFFE070.toInt(), 0.5f)); gr.setAdditive(false)
                     gr.image(runaway, x0 + cw - 22f * s - rw * 0.5f, y0 + 36f * s - rh * 0.5f, rw, rh)
@@ -192,13 +194,27 @@ class Menus(private val app: App) {
         ui.label(gr, "Blue blocks ${pr.totalBlue}  •  Coins picked up ${pr.totalCoins}  •  Levels finished ${pr.levelsDone}", cx, f[3] - 50f * s, 25f, 0xFF9FB4E0.toInt())
     }
 
+    /** A relic's name under its picture: on one line when it fits the card, otherwise on two (shrunk to fit if need be). */
+    private fun relicName(gr: Gfx, name: String, cx: Float, cy: Float, maxW: Float) {
+        fun line(t: String, y: Float, size: Float) {
+            val fs = min(size, size * maxW / max(1f, gr.textWidth(t, size, Font.TITLE)))
+            gr.text(t, cx, y, fs, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 3f * s, 0xFF10205A.toInt())
+        }
+        val one = 22f * s
+        val sp = name.indices.filter { name[it] == ' ' }.minByOrNull { abs(it - name.length / 2) }
+        if (gr.textWidth(name, one, Font.TITLE) <= maxW || sp == null) { line(name, cy, one); return }
+        line(name.substring(0, sp), cy - 11f * s, 20f * s)
+        line(name.substring(sp + 1), cy + 12f * s, 20f * s)
+    }
+
     /** Relic pictures, made from the art each level is known for. */
     private fun relicIcon(gr: Gfx, level: Int, x: Float, y: Float, size: Float) {
         val art = app.baseArt
-        val img = when (level) { 1 -> art.star; 2 -> art.magnet; 3 -> art.shield; 4 -> art.guardFace; else -> guardian }
-        if (level == 5) {
-            // the lava Guardian's face
-            val u0 = 178f; val v0 = 118f; val u1 = 358f; val v1 = 290f
+        val img = when (level) { 1 -> art.star; 2 -> art.magnet; 3 -> art.shield; 4 -> art.guardFace; 5 -> guardian; else -> golem }
+        if (level >= 5) {
+            // the Guardian's face: lava (Level 5) or the temple's stone golem with its glowing eyes (Level 6)
+            val u0: Float; val v0: Float; val u1: Float; val v1: Float
+            if (level == 5) { u0 = 178f; v0 = 118f; u1 = 358f; v1 = 290f } else { u0 = 205f; v0 = 40f; u1 = 420f; v1 = 250f }
             val hh = size; val ww = hh * (u1 - u0) / (v1 - v0)
             val q = floatArrayOf(x - ww / 2, y - hh / 2, x + ww / 2, y - hh / 2, x + ww / 2, y + hh / 2, x - ww / 2, y + hh / 2)
             gr.imageQuad(img, u0, v0, u1, v1, q, 1f)

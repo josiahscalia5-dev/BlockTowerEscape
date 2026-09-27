@@ -91,6 +91,156 @@ class Loop(@JvmField val x0: Float, @JvmField val y0: Float, @JvmField val z0: F
     val length get() = TAU * r
 }
 
+/**
+ * A rainbow water slide (Level 6): an open half-pipe that follows a smooth curve through [pts] (x, y, z triples: the
+ * running line along the bottom of the channel). The boy rides it from its mouth (s = 0) to its exit (s = [length]):
+ * down the bottom and up the walls. th is the angle round the channel from its bottom (0) toward the right wall (+)
+ * or the left wall (-); the channel is [r] wide either side of its middle. A tube with [ride] false is scenery
+ * (a closed pipe). The frame along the curve keeps the channel upright: up is as close to straight up as the
+ * curve allows, right is up x forward.
+ */
+class Slide(pts: FloatArray, @JvmField val r: Float = 1.25f, @JvmField val ride: Boolean = true) {
+    companion object {
+        /** Spacing of the samples along the curve. */
+        const val STEP = 0.25f
+    }
+    @JvmField val n: Int
+    @JvmField val bx: FloatArray; @JvmField val by: FloatArray; @JvmField val bz: FloatArray
+    @JvmField val tx: FloatArray; @JvmField val ty: FloatArray; @JvmField val tz: FloatArray
+    @JvmField val ux: FloatArray; @JvmField val uy: FloatArray; @JvmField val uz: FloatArray
+    @JvmField val rx: FloatArray; @JvmField val ry: FloatArray; @JvmField val rz: FloatArray
+    /** Signed sideways curvature (1/radius; + when the slide bends to the right). */
+    @JvmField val curv: FloatArray
+    @JvmField val length: Float
+    /** Spike plates in the channel: s, th (steer round them, or hop over). */
+    val spikes = ArrayList<FloatArray>()
+    /** Speed rings across the channel (s of each): sliding through one gives a burst of pace. */
+    val pads = ArrayList<Float>()
+    /** How the mouth and the exit sit: the first and last samples. */
+    val x0 get() = bx[0]; val y0 get() = by[0]; val z0 get() = bz[0]
+    val x1 get() = bx[n - 1]; val y1 get() = by[n - 1]; val z1 get() = bz[n - 1]
+
+    init {
+        // Catmull-Rom through the points (the ends repeated), sampled finely, then resampled by arc length
+        val m = pts.size / 3
+        val fine = ArrayList<FloatArray>()
+        fun p(i: Int, k: Int) = pts[kotlin.math.min(m - 1, kotlin.math.max(0, i)) * 3 + k]
+        for (i in 0 until m - 1) {
+            val sub = 24
+            for (j in 0 until sub) {
+                val t = j / sub.toFloat()
+                val t2 = t * t; val t3 = t2 * t
+                val q = FloatArray(3)
+                for (k in 0..2) {
+                    val a = p(i - 1, k); val b = p(i, k); val c = p(i + 1, k); val d = p(i + 2, k)
+                    q[k] = 0.5f * (2f * b + (-a + c) * t + (2f * a - 5f * b + 4f * c - d) * t2 + (-a + 3f * b - 3f * c + d) * t3)
+                }
+                fine.add(q)
+            }
+        }
+        fine.add(floatArrayOf(p(m - 1, 0), p(m - 1, 1), p(m - 1, 2)))
+        val acc = FloatArray(fine.size)
+        for (i in 1 until fine.size) acc[i] = acc[i - 1] + len3(fine[i][0] - fine[i - 1][0], fine[i][1] - fine[i - 1][1], fine[i][2] - fine[i - 1][2])
+        length = acc[fine.size - 1]
+        n = kotlin.math.max(2, (length / STEP).toInt() + 1)
+        bx = FloatArray(n); by = FloatArray(n); bz = FloatArray(n)
+        var j = 0
+        for (i in 0 until n) {
+            val s = kotlin.math.min(length, i * STEP)
+            while (j < fine.size - 2 && acc[j + 1] < s) j++
+            val u = if (acc[j + 1] > acc[j]) (s - acc[j]) / (acc[j + 1] - acc[j]) else 0f
+            bx[i] = lerp(fine[j][0], fine[j + 1][0], u); by[i] = lerp(fine[j][1], fine[j + 1][1], u); bz[i] = lerp(fine[j][2], fine[j + 1][2], u)
+        }
+        tx = FloatArray(n); ty = FloatArray(n); tz = FloatArray(n)
+        ux = FloatArray(n); uy = FloatArray(n); uz = FloatArray(n)
+        rx = FloatArray(n); ry = FloatArray(n); rz = FloatArray(n)
+        curv = FloatArray(n)
+        for (i in 0 until n) {
+            val a = kotlin.math.max(0, i - 1); val b = kotlin.math.min(n - 1, i + 1)
+            var dx = bx[b] - bx[a]; var dy = by[b] - by[a]; var dz = bz[b] - bz[a]
+            val l = len3(dx, dy, dz).coerceAtLeast(1e-5f); dx /= l; dy /= l; dz /= l
+            tx[i] = dx; ty[i] = dy; tz[i] = dz
+            // up: straight up with the forward part taken out
+            var vx = -dy * dx; var vy = 1f - dy * dy; var vz = -dy * dz
+            val lv = len3(vx, vy, vz).coerceAtLeast(1e-5f); vx /= lv; vy /= lv; vz /= lv
+            ux[i] = vx; uy[i] = vy; uz[i] = vz
+            // right = up x forward
+            rx[i] = vy * dz - vz * dy; ry[i] = vz * dx - vx * dz; rz[i] = vx * dy - vy * dx
+        }
+        for (i in 0 until n) {
+            val a = kotlin.math.max(0, i - 2); val b = kotlin.math.min(n - 1, i + 2)
+            val ds = (b - a) * STEP
+            curv[i] = if (ds > 0f) ((tx[b] - tx[a]) * rx[i] + (ty[b] - ty[a]) * ry[i] + (tz[b] - tz[a]) * rz[i]) / ds else 0f
+        }
+    }
+
+    private var li = 0; private var lf = 0f
+    private fun locate(s: Float) {
+        val f = clamp(s, 0f, length) / STEP
+        li = kotlin.math.min(n - 2, f.toInt()); lf = clamp01(f - li)
+    }
+    private fun at(a: FloatArray, s: Float): Float { locate(s); return lerp(a[li], a[li + 1], lf) }
+
+    /**
+     * The point at [s] along the slide, [th] round the channel, [inset] in from its surface (toward the channel's
+     * middle): writes x, y, z into out[o..o+2].
+     */
+    fun point(s: Float, th: Float, inset: Float, out: FloatArray, o: Int = 0) {
+        locate(s)
+        val i = li; val f = lf
+        val bxs = lerp(bx[i], bx[i + 1], f); val bys = lerp(by[i], by[i + 1], f); val bzs = lerp(bz[i], bz[i + 1], f)
+        val uxs = lerp(ux[i], ux[i + 1], f); val uys = lerp(uy[i], uy[i + 1], f); val uzs = lerp(uz[i], uz[i + 1], f)
+        val rxs = lerp(rx[i], rx[i + 1], f); val rys = lerp(ry[i], ry[i + 1], f); val rzs = lerp(rz[i], rz[i + 1], f)
+        val c = kotlin.math.cos(th); val sn = kotlin.math.sin(th)
+        val k = r - inset
+        // the channel's axis is r above the bottom; the surface is r from it
+        out[o] = bxs + r * uxs + k * (-c * uxs + sn * rxs)
+        out[o + 1] = bys + r * uys + k * (-c * uys + sn * rys)
+        out[o + 2] = bzs + r * uzs + k * (-c * uzs + sn * rzs)
+    }
+
+    /** The inward normal (toward the channel's middle) at [s], [th]: the boy's "up" while he rides it. */
+    fun normal(s: Float, th: Float, out: FloatArray, o: Int = 0) {
+        locate(s)
+        val i = li; val f = lf
+        val c = kotlin.math.cos(th); val sn = kotlin.math.sin(th)
+        out[o] = c * lerp(ux[i], ux[i + 1], f) - sn * lerp(rx[i], rx[i + 1], f)
+        out[o + 1] = c * lerp(uy[i], uy[i + 1], f) - sn * lerp(ry[i], ry[i + 1], f)
+        out[o + 2] = c * lerp(uz[i], uz[i + 1], f) - sn * lerp(rz[i], rz[i + 1], f)
+    }
+
+    fun tanX(s: Float) = at(tx, s); fun tanY(s: Float) = at(ty, s); fun tanZ(s: Float) = at(tz, s)
+    fun curvAt(s: Float) = at(curv, s)
+    /** The heading of the slide at [s] (radians about +y, 0 = +z). */
+    fun heading(s: Float) = kotlin.math.atan2(tanX(s), tanZ(s))
+}
+
+/** A laser gate across the path (Level 6): emitters at x0 and x1, a beam at height [y] across row [z]. */
+class Laser(@JvmField val x0: Float, @JvmField val x1: Float, @JvmField val y: Float, @JvmField val z: Float,
+            @JvmField val period: Float, @JvmField val onFor: Float, @JvmField val phase: Float) {
+    /** 0..1: the beam (fades in and out), the warning flicker before it fires. */
+    @JvmField var beam = 0f
+    @JvmField var warn = 0f
+    /** Seconds until the beam fires next (0 while it is on). */
+    @JvmField var untilOn = 0f
+}
+
+/**
+ * A block studded with iron spikes (Level 6): touching it from any side hurts. With [amp] > 0 it slides back and
+ * forth across the path along an iron rail.
+ */
+class SpikeBox(@JvmField val x0: Float, @JvmField val y: Float, @JvmField val z: Float, @JvmField val amp: Float,
+               @JvmField val speed: Float, @JvmField val phase: Float, @JvmField val size: Float = 0.9f) {
+    @JvmField var x = x0
+}
+
+/**
+ * A floating island of temple stone under a stretch of the course (Level 6): a stone slab with moss on top, a rocky
+ * underside tapering away below it, and waterfalls pouring off its edges ([falls]: 1 left, 2 right, 4 front).
+ */
+class Island(@JvmField val x: Float, @JvmField val z: Float, @JvmField val top: Float, @JvmField val w: Float, @JvmField val d: Float,
+             @JvmField val depth: Float, @JvmField val falls: Int, @JvmField val palms: Int, @JvmField val seed: Int)
+
 /** Z-range with a section name and x origin (used for background parallax and camera framing). */
 class Section(val name: String, val z0: Int, val z1: Int, val originX: Float)
 
@@ -125,9 +275,14 @@ class World {
     val logs = ArrayList<SwingLog>()
     val pillars = ArrayList<Pillar>()
     val loops = ArrayList<Loop>()
+    /** Level 6: rainbow slides (rideable and scenery), laser gates, spiked blocks and the floating islands. */
+    val slides = ArrayList<Slide>()
+    val lasers = ArrayList<Laser>()
+    val spikeBoxes = ArrayList<SpikeBox>()
+    val islands = ArrayList<Island>()
     /** Level 5: the Runaway Relic's route, as rows (z) it runs from and to; 0 = none. */
     var relicZ0 = 0; var relicZ1 = 0
-    /** Level 5: height of the lava sea below the course, relative to the path (it follows the climb). */
+    /** Levels 5 and 6: depth of the lava sea (the cloud sea) below the course, relative to the path (it follows the climb). */
     var seaDepth = 0f
     /** Walking-surface height of the main path per row (for the guard / collapse / camera). */
     val pathLevel = HashMap<Int, Float>()

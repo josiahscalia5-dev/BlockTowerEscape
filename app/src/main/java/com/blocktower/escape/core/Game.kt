@@ -81,7 +81,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     val rig = PlayerRig(this)
     /** Level 5's Runaway Relic (CHASE & COLLECT). */
     val relic = RelicChase(this)
-    /** Level 5: height of the lava sea, far below the course (it follows the climb). */
+    /** Levels 5 and 6: height of the lava sea (the cloud sea), far below the course (it follows the climb). */
     var seaY = -100f
     val view = WorldRenderer(this)
     val hud = Hud(this)
@@ -265,7 +265,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
 
         if (state == GS.INTRO) updateIntro(dt)
 
-        if (state == GS.PLAY && !ev.revealing && (player.state == PS.NORMAL || player.state == PS.LOOP)) {
+        if (state == GS.PLAY && !ev.revealing && (player.state == PS.NORMAL || player.state == PS.LOOP || player.state == PS.SLIDE)) {
             time -= sdt
             if (time <= 10f) {
                 tickT -= sdt
@@ -279,6 +279,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         updateTools(sdt)
         updateBlocks(sdt)
         updateLogs(sdt)
+        updateLasers(sdt)
+        updateSpikeBoxes(sdt)
         ev.update(sdt)
         relic.update(sdt)
         updatePlayer(sdt)
@@ -400,8 +402,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
 
     fun activateTool(k: Int) {
         if (state != GS.PLAY) return
-        // tools work on the loop too (except the block tool: there is no gap to bridge there)
-        if ((player.state != PS.NORMAL && !(player.state == PS.LOOP && k != TK.BLOCK)) || ev.revealing) return
+        // tools work on the loop and the slides too (except the block tool: there is no gap to bridge there)
+        if ((player.state != PS.NORMAL && !((player.state == PS.LOOP || player.state == PS.SLIDE) && k != TK.BLOCK)) || ev.revealing) return
         val tl = tools[k]
         if (toolLocked(k)) {
             hud.denied(k); platform.sound(Sfx.WRONG, 0.5f)
@@ -638,6 +640,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         when (p.state) {
             PS.RESCUE_RIDE -> { updateRide(dt); return }
             PS.LOOP -> { updateLoop(dt); return }
+            PS.SLIDE -> { updateSlide(dt); return }
             PS.WIN, PS.CAUGHT -> return
             PS.DEAD -> { p.vy -= Tune.GRAVITY * dt; p.y += p.vy * dt; p.airW = 1f; return }
         }
@@ -809,6 +812,13 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             if (p.z >= lp.z0 - 0.4f && p.z < lp.z0 + 0.1f && p.vz > 0.5f && abs(p.x - lp.x0) < lp.width * 0.5f + 0.25f &&
                 p.y > lp.y0 - 0.8f && p.y < lp.y0 + 1.4f) { enterLoop(lp); break }
         }
+        // a rainbow slide: running (or jumping) into its mouth takes him down it
+        if (p.state == PS.NORMAL && state == GS.PLAY) for (sl in world.slides) {
+            if (!sl.ride) continue
+            // (jumping into the mouth lands him in it too)
+            if (p.z >= sl.z0 - 0.45f && p.z < sl.z0 + 0.9f && p.vz > 0.3f && abs(p.x - sl.x0) < sl.r + 0.3f &&
+                p.y > sl.y0 - 0.9f && p.y < sl.y0 + 2.6f) { enterSlide(sl); break }
+        }
         // fell off the course
         if (p.state == PS.NORMAL && !p.grounded && p.y < p.lastGroundY - Tune.FALL_DEPTH) startRescue("fall")
         if (p.state == PS.RESCUE_FALL) {
@@ -905,6 +915,190 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         fx.popupWorld("GREAT LOOP!", p.x, p.y + 2.4f, p.z, 0xFFFFE680.toInt(), 46f)
         addScore(300, p.x, p.y + 2f, p.z)
         platform.sound(Sfx.STAR, 0.8f, 1.1f)
+    }
+
+    // ------------------------------------------------------------------ the rainbow slides (Level 6)
+    /** How far the thumb has steered him up the channel's walls (radians, - left, + right). */
+    var slideSteer = 0f
+        private set
+    private val sv = FloatArray(6)
+
+    private fun enterSlide(sl: Slide) {
+        val p = player
+        p.state = PS.SLIDE; p.stateT = 0f; p.slide = sl
+        p.slideS = clamp(p.z - sl.z0, 0.02f, 0.9f)
+        p.slideV = clamp(max(p.vz, 3.5f) + 1.2f, Tune.SLIDE_MIN, Tune.SLIDE_MAX)
+        p.slideTh = clamp((p.x - sl.x0) / sl.r, -0.8f, 0.8f); p.slideThV = 0f
+        slideSteer = p.slideTh
+        p.slideHop = 0f; p.slideHopV = 0f; p.slideLean = 0f
+        p.grounded = true; p.jumping = false; p.airW = 0f
+        p.vy = 0f
+        // where he is now against where the channel puts him: blended away over the first moment
+        sl.point(p.slideS, p.slideTh, 0f, sv, 0)
+        p.slideInX = p.x - sv[0]; p.slideInY = p.y - sv[1]; p.slideInZ = p.z - sv[2]; p.slideIn = 1f
+        platform.sound(Sfx.WHOOSH, 0.9f, 1.25f); platform.sound(Sfx.BOUNCE, 0.4f, 1.6f)
+        fx.popupWorld("SLIDE!", p.x, p.y + 2.4f, p.z, 0xFF9AF0FF.toInt(), 50f)
+        splash(p.x, p.y, p.z, 16)
+        kickV += 0.8f
+    }
+
+    /**
+     * Down a rainbow slide: the slope sets the pace (downhill speeds him up, a rise slows him; pushing forward adds a
+     * little, pulling back brakes), in a bend he is carried up the outside wall to where the turn and gravity balance,
+     * the thumb steers him up either wall (for the coins, round the spike plates), and JUMP hops him off the water.
+     * He always stands on the channel's surface: his feet on it, his body along its normal.
+     */
+    private fun updateSlide(dt: Float) {
+        val p = player
+        val sl = p.slide ?: run { p.state = PS.NORMAL; return }
+        val controllable = state == GS.PLAY
+        var drive = 0.3f
+        if (controllable) {
+            drive = if (joystickMode) joy.drive else swipe.drive
+            val ky = input.keyY(); if (ky != 0f) drive = ky
+            // sideways: about half a radian round the channel per block of swipe
+            slideSteer += (swipe.takeSteer() + input.keyX() * 4.5f * dt + (if (joystickMode) joy.steerRate() * dt else 0f)) * 0.55f
+            slideSteer = clamp(slideSteer, -1.05f, 1.05f)
+            if (input.jumpPressed && p.slideHop <= 0.01f) {
+                p.slideHopV = 7.4f; p.jumpT = 0f
+                platform.sound(Sfx.JUMP, 0.7f, 1.15f)
+                splash(p.x, p.y, p.z, 8)
+            }
+        } else swipe.takeSteer()
+        val s = p.slideS
+        val slope = sl.tanY(s)
+        p.slideV += (-24f * slope + max(0f, drive) * 3.2f + min(0f, drive) * 7f - 0.012f * p.slideV * p.slideV) * dt
+        val top = Tune.SLIDE_MAX + (if (speedOn) 2f else 0f) + (if (p.dashT > 0f) 2f else 0f)
+        p.slideV = clamp(p.slideV, Tune.SLIDE_MIN, top)
+        // round the channel: where the bend and gravity balance, plus the thumb's steering; a spring keeps it smooth
+        val bend = sl.curvAt(s)
+        val eq = -kotlin.math.atan(p.slideV * p.slideV * bend / Tune.GRAVITY)
+        val want = clamp(eq + slideSteer, -Tune.SLIDE_WALL, Tune.SLIDE_WALL)
+        p.slideThV += ((want - p.slideTh) * 38f - p.slideThV * 10f) * dt
+        p.slideTh = clamp(p.slideTh + p.slideThV * dt, -Tune.SLIDE_WALL - 0.08f, Tune.SLIDE_WALL + 0.08f)
+        p.slideLean = lerp(p.slideLean, clamp(eq * 0.9f + (want - p.slideTh) * 1.5f, -1f, 1f), min(1f, dt * 8f))
+        if (p.slideHop > 0f || p.slideHopV > 0f) {
+            p.slideHop += p.slideHopV * dt; p.slideHopV -= 24f * dt
+            if (p.slideHop <= 0f) { p.slideHop = 0f; p.slideHopV = 0f; p.landT = 0f; p.landAmt = 0.35f; splash(p.x, p.y, p.z, 10) }
+        }
+        val before = p.slideS
+        p.slideS += p.slideV * dt
+        // speed rings across the channel
+        for (pu in sl.pads) if (before < pu && p.slideS >= pu) {
+            p.dashT = Tune.DASH_T; p.slideV = min(p.slideV + 3f, top + 2f)
+            platform.sound(Sfx.SPEED, 0.9f, 1.4f); kickV += 0.8f
+            fx.popupWorld("SPEED!", p.x, p.y + 2f, p.z, 0xFF9AF0FF.toInt(), 42f)
+        }
+        val ss = min(p.slideS, sl.length)
+        sl.point(ss, p.slideTh, p.slideHop, sv, 0)
+        p.slideIn = max(0f, p.slideIn - dt / 0.16f)
+        val k = p.slideIn * p.slideIn
+        p.x = sv[0] + p.slideInX * k; p.y = sv[1] + p.slideInY * k; p.z = sv[2] + p.slideInZ * k
+        p.vx = p.slideV * sl.tanX(ss); p.vy = p.slideV * sl.tanY(ss); p.vz = p.slideV * sl.tanZ(ss)
+        p.grounded = p.slideHop <= 0.01f
+        p.airW = approach(p.airW, if (p.grounded) 0f else 1f, dt * 12f)
+        p.runW = approach(p.runW, 0f, dt * 6f)
+        p.lean = lerp(p.lean, p.slideLean, min(1f, dt * 9f))
+        turn = lerp(turn, 0f, damp(3.5f, dt))
+        // spike plates in the channel
+        if (p.slideHop < 0.45f && p.invuln <= 0f) for (sp in sl.spikes) {
+            if (abs(p.slideS - sp[0]) < 0.55f && abs(p.slideTh - sp[1]) * sl.r < 0.62f) {
+                hurt("spikes", null)
+                p.slideV = max(Tune.SLIDE_MIN, p.slideV * 0.7f)
+                fx.burst(p.x, p.y + 0.5f, p.z, 10, PK.SHARD, 0xFFB8C0D8.toInt(), 3f, 0.08f, 0.4f)
+                break
+            }
+        }
+        // blue blocks floating in the channel: collected as he slides through them
+        sl.normal(ss, p.slideTh, sv, 3)
+        val bx = p.x + 0.7f * sv[3]; val by = p.y + 0.7f * sv[4]; val bz = p.z + 0.7f * sv[5]
+        for (r in floor(bz).toInt() - 1..floor(bz).toInt() + 1) {
+            val row = world.row(r) ?: continue
+            for (i in row.indices) {
+                val b = row[i]
+                if (b.type == BT.TARGET && b.decor && len3(b.x - bx, b.y + b.sy * 0.5f - by, b.z + b.sz * 0.5f - bz) < 1.05f) { collectTarget(b, false); break }
+            }
+        }
+        // spray off his feet
+        if (p.grounded && fx.rng.f() < dt * (18f + 3f * p.slideV)) splash(p.x, p.y, p.z, 1)
+        if (before < sl.length * 0.5f && p.slideS >= sl.length * 0.5f) platform.sound(Sfx.WHOOSH, 0.5f, 1.4f)
+        if (p.slideS >= sl.length) exitSlide(sl)
+    }
+
+    /** Out of the slide's exit: he keeps his momentum, flies a little way and lands running on the next blocks. */
+    private fun exitSlide(sl: Slide) {
+        val p = player
+        val v = p.slideV
+        val s = sl.length
+        p.state = PS.NORMAL; p.stateT = 0f; p.slide = null; p.loopRot = 0f
+        p.vz = clamp(v * sl.tanZ(s), 2f, Tune.RUN_DASH + 0.8f)
+        p.vy = max(0f, v * sl.tanY(s)) + 3.4f; p.vx = 0f
+        p.boostT = 0.7f; p.grounded = false; p.jumping = false; p.lastGroundY = p.y; p.airTime = 0f; p.airW = 0.6f
+        p.slideHop = 0f; p.slideHopV = 0f
+        steerX = p.x
+        // he comes out running
+        if (!joystickMode && swipe.cruise < 0.9f) swipe.cruise = 0.9f
+        splash(p.x, p.y, p.z, 20)
+        fx.popupWorld("WHEE!", p.x, p.y + 2.4f, p.z, 0xFFFFE680.toInt(), 46f)
+        addScore(200, p.x, p.y + 2f, p.z)
+        platform.sound(Sfx.WHOOSH, 0.8f, 1.5f)
+        kickV += 1.2f
+    }
+
+    /** Water thrown up round the boy's feet on a slide. */
+    private fun splash(x: Float, y: Float, z: Float, n: Int) {
+        for (i in 0 until n) {
+            val q = fx.spawn()
+            q.x = x + fx.rng.f(-0.35f, 0.35f); q.y = y + 0.05f; q.z = z + fx.rng.f(-0.3f, 0.2f)
+            q.vx = fx.rng.f(-2.2f, 2.2f); q.vy = fx.rng.f(1.5f, 4.5f); q.vz = fx.rng.f(-2f, 0.5f)
+            q.life = fx.rng.f(0.3f, 0.6f); q.maxLife = q.life; q.size = fx.rng.f(0.05f, 0.11f)
+            q.color = if (fx.rng.f() < 0.5f) 0xFFE8F8FF.toInt() else 0xFF9ED8FF.toInt(); q.kind = PK.DUST; q.gravity = 14f
+        }
+    }
+
+    // ------------------------------------------------------------------ laser gates and spiked blocks (Level 6)
+    /**
+     * Laser gates fire in a steady rhythm: a flicker and a whine warn of the beam, then it burns across the path for a
+     * moment. Jump over it (it runs at knee height) or pass while it is off.
+     */
+    private fun updateLasers(dt: Float) {
+        if (world.lasers.isEmpty()) return
+        val p = player
+        for (l in world.lasers) {
+            val c = ((t + l.phase) % l.period + l.period) % l.period
+            val onAt = l.period - l.onFor
+            val firing = c >= onAt
+            val before = l.beam
+            l.beam = approach(l.beam, if (firing) 1f else 0f, dt * 14f)
+            l.untilOn = if (firing) 0f else onAt - c
+            l.warn = if (!firing && onAt - c < 0.7f) 1f - (onAt - c) / 0.7f else 0f
+            val near = abs(p.z - l.z)
+            if (before < 0.5f && l.beam >= 0.5f && near < 12f) platform.sound(Sfx.SHIELD, clamp01(1.1f - near / 12f) * 0.55f, 1.9f)
+            if (l.beam < 0.6f || p.state != PS.NORMAL || state != GS.PLAY || p.invuln > 0f) continue
+            if (near < 0.16f + Tune.RADIUS && p.x > l.x0 - 0.1f && p.x < l.x1 + 0.1f && p.y < l.y + 0.1f && p.y + Tune.HEIGHT > l.y - 0.1f) {
+                fx.burst(p.x, l.y, l.z, 16, PK.SPARK, 0xFFFF4A3A.toInt(), 4f, 0.1f, 0.4f)
+                hurt("laser", null)
+                p.vz = -3.5f; p.vy = 6.5f; p.vx = 0f; p.grounded = false; p.jumping = false
+                swipe.stop()
+            }
+        }
+    }
+
+    /** Spiked blocks: some stand beside the path, some slide back and forth across it on a rail. Touching one hurts. */
+    private fun updateSpikeBoxes(dt: Float) {
+        if (world.spikeBoxes.isEmpty()) return
+        val p = player
+        for (b in world.spikeBoxes) {
+            b.x = b.x0 + b.amp * sin(b.phase + t * b.speed)
+            if (p.state != PS.NORMAL || state != GS.PLAY || p.invuln > 0f) continue
+            val h = b.size * 0.5f + 0.14f
+            if (abs(p.x - b.x) < h + Tune.RADIUS && abs(p.z - b.z) < h + Tune.RADIUS && p.y < b.y + b.size + 0.12f && p.y + Tune.HEIGHT > b.y) {
+                fx.burst(p.x, p.y + 0.8f, p.z, 10, PK.SHARD, 0xFFB8C0D8.toInt(), 3f, 0.08f, 0.4f)
+                hurt("spikes", null)
+                p.vz = -4f; p.vy = 6.5f; p.vx = 0f; p.grounded = false; p.jumping = false
+                swipe.stop()
+            }
+        }
     }
 
     // ------------------------------------------------------------------ swinging maces (Level 5)
@@ -1030,6 +1224,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
                 if (b.y1 > p.y + STEP && b.y < p.y + Tune.HEIGHT) wall = true
                 else if (b.y1 >= p.y - 1.0f && b.y1 <= p.y + STEP) { support = true; if (b.type == BT.TRAP) hazard = true }
             }
+            // a laser gate across the path counts as a hazard to jump
+            for (l in world.lasers) if (abs(z - l.z) < 0.12f && x > l.x0 && x < l.x1 && abs(l.y - p.y) < 1.2f) hazard = true
             if (wall || !support || hazard) { lastEdgeWall = wall; return d }
             d += 0.05f
         }
@@ -1190,6 +1386,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         var px = p.x; var py = p.y + 0.8f; var pz = p.z
         // on the loop the body is 0.8 in from the track, toward the ring's centre
         p.loop?.let { lp -> if (p.state == PS.LOOP) { val a = lp.angle(p.loopU); py = p.y + 0.8f * cos(a); pz = p.z - 0.8f * sin(a) } }
+        // on a slide the body is 0.8 in from the channel's surface, along its normal
+        p.slide?.let { sl -> if (p.state == PS.SLIDE) { sl.normal(p.slideS, p.slideTh, sv, 3); px = p.x + 0.8f * sv[3]; py = p.y + 0.8f * sv[4]; pz = p.z + 0.8f * sv[5] } }
         val magR = if (magnetOn) 5.5f else 0f
         for (c in world.coins) {
             if (c.collected) continue
@@ -1197,12 +1395,12 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             c.phase += dt
             val dx = px - c.x; val dy = py - c.y; val dz = pz - c.z
             val d = len3(dx, dy, dz)
-            if (magR > 0f && d < magR && (p.state == PS.NORMAL || p.state == PS.LOOP)) c.pulled = true
+            if (magR > 0f && d < magR && (p.state == PS.NORMAL || p.state == PS.LOOP || p.state == PS.SLIDE)) c.pulled = true
             if (c.pulled) {
                 val k = min(1f, 15f * dt / max(d, 0.001f))
                 c.x += dx * k; c.y += dy * k; c.z += dz * k
             }
-            if (d < 0.8f && (p.state == PS.NORMAL || p.state == PS.LOOP || p.state == PS.RESCUE_FALL)) collectCoin(c)
+            if (d < 0.8f && (p.state == PS.NORMAL || p.state == PS.LOOP || p.state == PS.SLIDE || p.state == PS.RESCUE_FALL)) collectCoin(c)
         }
         for (bb in world.bubbles) {
             if (bb.taken) { bb.pop = max(0f, bb.pop - dt * 3f); continue }
@@ -1363,7 +1561,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
 
     fun hurt(reason: String, src: Block?) {
         val p = player
-        if (p.invuln > 0f || (p.state != PS.NORMAL && p.state != PS.LOOP) || state != GS.PLAY) return
+        if (p.invuln > 0f || (p.state != PS.NORMAL && p.state != PS.LOOP && p.state != PS.SLIDE) || state != GS.PLAY) return
         lastHurt = reason
         if (shieldOn) {
             breakShield()
@@ -1376,7 +1574,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         flashRed = 0.8f; shake = max(shake, 0.5f)
         platform.sound(Sfx.HIT); platform.haptic(true)
         fx.popupScreen("-1", hud.heartX(max(0, hearts)), hud.heartY() + 50f * hud.s, 0xFFFF6070.toInt(), 44f)
-        fx.popupWorld(if (reason == "spikes") "OUCH!" else "HIT!", p.x, p.y + 2.3f, p.z, 0xFFFF8A8A.toInt(), 42f, 0.8f)
+        fx.popupWorld(if (reason == "spikes" || reason == "laser") "OUCH!" else "HIT!", p.x, p.y + 2.3f, p.z, 0xFFFF8A8A.toInt(), 42f, 0.8f)
         fx.burst(p.x, p.y + 1.8f, p.z, 8, PK.STAR, 0xFFFFF0A0.toInt(), 2f, 0.1f, 0.7f)
         hud.bumpHearts()
         if (src != null && p.state == PS.NORMAL) { p.vy = 8f; p.vz = -3f; p.grounded = false }
@@ -1683,10 +1881,10 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (ev.chase == Chase.RUN || ev.chase == Chase.WARNING) {
             val k = if (ev.chase == Chase.WARNING) smooth(ev.phaseT / 1.1f) else 1f
             dist += 1.3f * k; height += 0.9f * k; pitch += 0.05f * k; fov = lerp(1f, 0.95f, k); roll = sin(t * 1.25f) * 0.012f * k
-            // the lava Guardian runs beside the path on the left: look a little that way
-            if (spec.volcano) yaw -= 0.08f * k
+            // the Guardian runs beside the path on the left: look a little that way
+            if (spec.plate) yaw -= 0.08f * k
         }
-        if (spec.volcano && ev.chase == Chase.REVEAL) { dist += 1.3f; height += 0.9f; yaw -= 0.1f * smooth(ev.phaseT / 0.5f); fov = 0.95f }
+        if (spec.plate && ev.chase == Chase.REVEAL) { dist += 1.3f; height += 0.9f; yaw -= 0.1f * smooth(ev.phaseT / 0.5f); fov = 0.95f }
         if (ev.lavaOn && !ev.lavaStop) { dist += 0.5f; height += 0.5f; pitch += 0.03f }
         if (ev.finalOn && state == GS.PLAY) {
             // the final escape: a lower, closer, wider camera that sways with the collapse
@@ -1698,7 +1896,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             dist += 1.4f; height += 2.6f; pitch += 0.3f
         }
         var cyToCentre = 0f
-        if (spec.volcano && state == GS.PLAY) {
+        if (spec.plate && state == GS.PLAY) {
             // the final approach: lift the gaze so the portal rises into view above the stairs
             val k = smooth((gateProgress() - 0.9f) / 0.07f)
             pitch = lerp(pitch, 0.2f, k); height -= 0.4f * k
@@ -1710,6 +1908,16 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             val sw = sin(p.loopU * Math.PI.toFloat())
             dist = lp.r * (0.95f + 0.35f * sw) + 2.9f; height = 0.9f + 0.5f * sw; pitch = 0.1f - 0.06f * sw
             yaw = 0.22f + 0.4f * sw; fov = 0.9f
+        }
+        val sl = p.slide
+        if (sl != null && p.state == PS.SLIDE) {
+            // down a slide: behind him along the channel, looking a little ahead so the bends show before they come;
+            // higher and steeper on the drops, rolling gently as he rides up a wall
+            val s = p.slideS
+            val slope = sl.tanY(min(sl.length, s + 1.5f))
+            dist = 4.4f; height = 2.1f - slope * 1.6f; pitch = 0.28f - slope * 0.35f
+            yaw = lerpAngle(sl.heading(s), sl.heading(min(sl.length, s + 3f)), 0.55f); fov = 0.88f
+            roll = -p.slideTh * 0.1f
         }
         if (state == GS.COMPLETE || state == GS.RESULTS) {
             cyToCentre = if (state == GS.RESULTS) 1f else smooth(stateT / 1.2f)
@@ -1726,7 +1934,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (!camInit) { camDist = dist; camHeight = height; camPitch = pitch; camFov = fov; camYaw = yaw }
         val k3 = damp(3f, dt)
         camDist = lerp(camDist, dist, k3); camHeight = lerp(camHeight, height, k3); camPitch = lerp(camPitch, pitch, k3)
-        camFov = lerp(camFov, fov, damp(4f, dt)); camRoll = lerp(camRoll, roll, damp(3f, dt)); camYaw = lerp(camYaw, yaw, damp(4f, dt))
+        camFov = lerp(camFov, fov, damp(4f, dt)); camRoll = lerp(camRoll, roll, damp(3f, dt)); camYaw = lerpAngle(camYaw, yaw, damp(4f, dt))
 
         // follow: lead a little in the running direction; rise only partly with jumps
         val lead = if (state == GS.PLAY && p.state == PS.NORMAL) clamp(p.vz * 0.07f, -0.15f, 0.45f) else 0f
@@ -1745,14 +1953,20 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             val by = p.y + 0.8f * lp.upY(u); val bz = p.z + 0.8f * lp.upZ(u)
             tx = lerp(lp.cx(0.5f), p.x, 0.6f); groundish = lerp(lp.y0 + lp.r * 0.9f, by, 0.55f) - 1f; tz = lerp(lp.z0, bz, 0.55f)
         }
-        val kz = if (p.state == PS.LOOP || p.stateT < 0.8f && lp == null && camLoopT > 0f) 3f else 14f
+        if (sl != null && p.state == PS.SLIDE) {
+            // follow the channel's bottom (not his height up a wall), so the camera rides smoothly and he moves in it
+            val s = p.slideS
+            sl.point(min(s, sl.length), 0f, 0f, sv, 0)
+            tx = sv[0]; groundish = sv[1]; tz = sv[2]
+        }
+        val kz = if (p.state == PS.LOOP || p.stateT < 0.8f && lp == null && camLoopT > 0f) 3f else if (p.state == PS.SLIDE) 9f else 14f
         camLoopT = if (p.state == PS.LOOP) 1.2f else max(0f, camLoopT - dt)
         if (!camInit) { camX = tx; camY = groundish; camZ = tz; camInit = true; kickY = 0f; kickV = 0f }
         camX = lerp(camX, tx, damp(if (camLoopT > 0f) 3f else 6f, dt))
         camY = lerp(camY, groundish, damp(if (camLoopT > 0f) 3f else if (groundish < camY) 7f else 4.5f, dt))
         camZ = lerp(camZ, tz, damp(if (camLoopT > 0f) 3f else kz, dt))
-        // Level 5: the lava sea lies far below the course and follows its climb
-        if (spec.volcano) { val want = camY - world.seaDepth; seaY = if (seaY < -99f) want else lerp(seaY, want, damp(0.7f, dt)) }
+        // Levels 5 and 6: the lava sea (the cloud sea) lies far below the course and follows its climb
+        if (spec.plate) { val want = camY - world.seaDepth; seaY = if (seaY < -99f) want else lerp(seaY, want, damp(0.7f, dt)) }
         // jump / landing kick: a small spring on the camera height
         kickV += (-90f * kickY - 13f * kickV) * dt
         kickY += kickV * dt
@@ -1776,6 +1990,35 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         ev.applyCamera(this)
         cam.update()
         if (p.state == PS.LOOP) turnOnLoop(p, dt)
+        if (p.state == PS.SLIDE) turnOnSlide(p, dt)
+    }
+
+    /** Shortest-way blend between two angles (radians). */
+    private fun lerpAngle(a: Float, b: Float, k: Float): Float {
+        var d = b - a
+        while (d > Math.PI) d -= TAU
+        while (d < -Math.PI) d += TAU
+        return a + d * k
+    }
+
+    /**
+     * On a slide the boy stands on the channel's surface: his up is its normal (up the wall when he rides one), seen
+     * through the camera as a screen angle he turns to smoothly.
+     */
+    private fun turnOnSlide(p: Player, dt: Float) {
+        val sl = p.slide ?: return
+        sl.normal(p.slideS, p.slideTh, sv, 3)
+        if (!cam.project(p.x, p.y, p.z)) return
+        val fx0 = cam.sx; val fy0 = cam.sy
+        if (!cam.project(p.x + 1.2f * sv[3], p.y + 1.2f * sv[4], p.z + 1.2f * sv[5])) return
+        val dx = cam.sx - fx0; val dy = cam.sy - fy0
+        if (dx * dx + dy * dy < 1f) return
+        // he leans a little less than the wall is steep: riding it, not lying on it
+        val want = 0.72f * Math.toDegrees(kotlin.math.atan2(dx.toDouble(), (-dy).toDouble())).toFloat()
+        var diff = want - p.loopRot
+        while (diff > 180f) diff -= 360f
+        while (diff < -180f) diff += 360f
+        p.loopRot += diff * min(1f, dt * 14f)
     }
 
     /**

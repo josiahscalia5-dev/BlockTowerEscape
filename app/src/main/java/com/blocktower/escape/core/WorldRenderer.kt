@@ -19,7 +19,8 @@ class WorldRenderer(val g: Game) {
 
     private object K { const val BLOCK = 0; const val COIN = 1; const val PLAYER = 2; const val BEACON = 3
         const val GUARD = 5; const val ROCK = 8; const val RIDE = 9; const val BUBBLE = 10; const val DECO = 11; const val LOG = 12
-        const val PILLAR = 13; const val LOOPSEG = 14; const val RELIC = 15 }
+        const val PILLAR = 13; const val LOOPSEG = 14; const val RELIC = 15
+        const val SLIDESEG = 16; const val ISLAND = 17; const val LASER = 18; const val SPIKEBOX = 19 }
 
     private var n = 0
     private var kinds = IntArray(2048)
@@ -49,6 +50,8 @@ class WorldRenderer(val g: Game) {
         gfx = gr
         drawBackground(gr)
         if (g.spec.volcano && g.seaY > -99f) drawLava(gr, g.seaY, true)
+        if (g.spec.temple && g.seaY > -99f) drawLava(gr, g.seaY, true, art.clouds)
+        if (g.spec.temple) drawHeli(gr)
         if (g.ev.lavaY > -50f) drawLava(gr, g.ev.lavaY, false)
         playerBox()
         drawGate(gr)
@@ -71,6 +74,10 @@ class WorldRenderer(val g: Game) {
                 K.PILLAR -> drawPillar(gr, r as Pillar)
                 K.LOOPSEG -> drawLoopSeg(gr, r as LoopSeg)
                 K.RELIC -> drawRelic(gr)
+                K.SLIDESEG -> drawSlideSeg(gr, r as SlideSeg)
+                K.ISLAND -> drawIsland(gr, r as Island)
+                K.LASER -> drawLaser(gr, r as Laser)
+                K.SPIKEBOX -> drawSpikeBox(gr, r as SpikeBox)
             }
         }
         for (i in 0 until n) refs[i] = null
@@ -81,7 +88,7 @@ class WorldRenderer(val g: Game) {
 
     // ------------------------------------------------------------------ background
     private fun drawBackground(gr: Gfx) {
-        if (g.spec.volcano) { drawPlateBackground(gr); return }
+        if (g.spec.plate) { drawPlateBackground(gr); return }
         val h = g.hud
         val s = h.bgS
         gr.fillRect(0f, 0f, gr.width.toFloat(), gr.height.toFloat(), 0xFF0A3CA8.toInt())
@@ -143,14 +150,22 @@ class WorldRenderer(val g: Game) {
             push(K.BEACON, cp, cam.dist2(cp.x, cp.y + 2.2f, cp.z - 0.2f))
         }
         val plp = p.loop
+        val psl = p.slide
+        var boyKey = -1f
         if (plp != null && p.state == PS.LOOP) {
             // on the loop: the body's middle, in from the track (drawn over the block he runs on)
             val u = p.loopU
-            push(K.PLAYER, p, cam.dist2(p.x, p.y + 0.7f * plp.upY(u), p.z + 0.7f * plp.upZ(u)) - 0.6f)
+            boyKey = cam.dist2(p.x, p.y + 0.7f * plp.upY(u), p.z + 0.7f * plp.upZ(u)) - 0.6f
+            push(K.PLAYER, p, boyKey)
+        } else if (psl != null && p.state == PS.SLIDE) {
+            // on a slide: the body's middle, in from the channel (drawn over the stretch of channel he rides in)
+            psl.normal(p.slideS, p.slideTh, tv, 0)
+            boyKey = cam.dist2(p.x + 0.7f * tv[0], p.y + 0.7f * tv[1], p.z + 0.7f * tv[2])
+            push(K.PLAYER, p, boyKey)
         } else if (p.state != PS.DEAD || p.y > p.lastGroundY - 20f) push(K.PLAYER, p, cam.dist2(p.x, p.y + 0.5f, p.z - 0.55f))
         if (p.state == PS.RESCUE_RIDE) push(K.RIDE, p, cam.dist2(p.x, p.y - 0.1f, p.z) + 0.5f)
         val gd = g.ev.guard
-        if (gd.on) push(K.GUARD, gd, cam.dist2(gd.x, gd.y + 2f, gd.z - 0.3f))
+        if (gd.on) { g.ev.guardView(gvw); push(K.GUARD, gd, cam.dist2(gvw[0], gd.y + 2f, gvw[1] - 0.3f)) }
         for (pl in g.world.pillars) {
             val dd = cam.depthOf(pl.x, pl.top - 2f, pl.z)
             if (dd < -2f || dd > maxDepth + 4f) continue
@@ -177,7 +192,34 @@ class WorldRenderer(val g: Game) {
             push(K.LOG, l, cam.dist2(l.cx, l.cy, l.pz))
         }
         for (rk in g.ev.rocks) if (rk.on) push(K.ROCK, rk, cam.dist2(rk.x, rk.y + 0.35f, rk.z) - 0.3f)
+        // ---- Level 6: rainbow slides (a stretch at a time), islands, laser gates, spiked blocks
+        for (sl in g.world.slides) {
+            for (sg in slideSegs(sl)) {
+                val dd = cam.depthOf(sg.cx, sg.cy, sg.cz)
+                if (dd < -1.5f || dd > maxDepth + 3f) continue
+                var key = cam.dist2(sg.cx, sg.cy, sg.cz)
+                // the stretch he is riding in (and just behind him) is drawn under him
+                if (psl === sl && p.state == PS.SLIDE && sg.s1 > p.slideS - 3.2f && sg.s0 < p.slideS + 0.9f) key = max(key, boyKey + 0.01f)
+                push(K.SLIDESEG, sg, key)
+            }
+        }
+        for (isl in g.world.islands) {
+            val dd = cam.depthOf(isl.x, isl.top - 2f, isl.z)
+            if (dd < -isl.d || dd > maxDepth + 6f) continue
+            push(K.ISLAND, isl, cam.dist2(isl.x, isl.top - 2.6f, isl.z))
+        }
+        for (l in g.world.lasers) {
+            val dd = cam.depthOf((l.x0 + l.x1) * 0.5f, l.y, l.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            push(K.LASER, l, cam.dist2((l.x0 + l.x1) * 0.5f, l.y, l.z))
+        }
+        for (b in g.world.spikeBoxes) {
+            val dd = cam.depthOf(b.x, b.y + b.size * 0.5f, b.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            push(K.SPIKEBOX, b, cam.dist2(b.x, b.y + b.size * 0.5f, b.z))
+        }
     }
+    private val tv = FloatArray(12)
 
     // ------------------------------------------------------------------ cube drawing
     private fun projCorner(i: Int, x: Float, y: Float, z: Float): Boolean {
@@ -597,7 +639,7 @@ class WorldRenderer(val g: Game) {
         }
         // invulnerability after a hit: flicker with a pale flash (never see-through, so the overlapping
         // rig parts at the hips and shoulders can't show through each other)
-        val blink = p.invuln > 0f && p.state == PS.NORMAL && ((t * 14f).toInt() and 1) == 1
+        val blink = p.invuln > 0f && (p.state == PS.NORMAL || p.state == PS.SLIDE) && ((t * 14f).toInt() and 1) == 1
         // sprite metrics: the boy is ~1.95 world units tall at the camera's framing distance
         val worldH = g.spec.boyH
         val lp = p.loop
@@ -620,7 +662,7 @@ class WorldRenderer(val g: Game) {
         if (hurt > 0f) g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, 1f, 0xFFFF3030.toInt(), hurt * 0.55f)
         else g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, 1f, if (blink) 0xFFFFFFFF.toInt() else 0, if (blink) 0.42f else 0f)
         var midX = fx0; var midY = fy0 - hPx * 0.45f
-        if (p.state == PS.LOOP) { val r = p.loopRot * Math.PI.toFloat() / 180f; midX = fx0 + sin(r) * hPx * 0.45f; midY = fy0 - cos(r) * hPx * 0.45f }
+        if (p.state == PS.LOOP || p.state == PS.SLIDE) { val r = p.loopRot * Math.PI.toFloat() / 180f; midX = fx0 + sin(r) * hPx * 0.45f; midY = fy0 - cos(r) * hPx * 0.45f }
         if (g.shieldOn) {
             val tl = g.tools[TK.SHIELD]
             val grow = easeOutBack(clamp01((tl.duration - tl.active) / 0.3f))
@@ -704,11 +746,11 @@ class WorldRenderer(val g: Game) {
 
     // ------------------------------------------------------------------ the Ancient Gate
     /** Gate billboard size in world units and where its threshold sits in the picture (0 top, 1 bottom). */
-    private val gateW get() = if (g.spec.volcano) 16f else 13.4f
-    private val gateThreshold get() = if (g.spec.volcano) 0.667f else 0.647f
-    private val archU get() = if (g.spec.volcano) 0.523f else 0.516f
-    private val archV get() = if (g.spec.volcano) 0.545f else 0.4f
-    private val archR get() = if (g.spec.volcano) 0.088f else 0.085f
+    private val gateW get() = when { g.spec.volcano -> 16f; g.spec.temple -> 14f; else -> 13.4f }
+    private val gateThreshold get() = when { g.spec.volcano -> 0.667f; g.spec.temple -> 0.8f; else -> 0.647f }
+    private val archU get() = when { g.spec.volcano -> 0.523f; g.spec.temple -> 0.4955f; else -> 0.516f }
+    private val archV get() = when { g.spec.volcano -> 0.545f; g.spec.temple -> 0.58f; else -> 0.4f }
+    private val archR get() = when { g.spec.volcano -> 0.088f; g.spec.temple -> 0.075f; else -> 0.085f }
     private val gq = FloatArray(8)
 
     /**
@@ -736,6 +778,10 @@ class WorldRenderer(val g: Game) {
             // exactly where the fortress stands in the Level 5 design, riding on the plate
             lw = 430f * jbS * k; lcx = jbLeft + (art.bgArtX + 470f + 215f) * jbS; ltop = jbTop + (art.bgArtY + 80f) * jbS + (1f - k) * 0f
         }
+        if (g.spec.temple) {
+            // exactly where the sky temple stands in the Level 6 design, riding on the plate
+            lw = 220f * jbS * k; lcx = jbLeft + (544f + 110f) * jbS; ltop = jbTop + 96f * jbS
+        }
         // the real gate at the end of the path
         val gh = gateW * aspect
         val top = po.y + gh * gateThreshold
@@ -756,9 +802,11 @@ class WorldRenderer(val g: Game) {
         val open = g.target >= g.spec.targetNeed
         val near = clamp01(1f - dz / 60f)
         val ax = cx + (archU - 0.5f) * gw; val ay = ty + archV * gH
-        // warm light behind the gate, stronger as you get close and when the gate is open
+        // warm light behind the gate, stronger as you get close and when the gate is open (the temple's portal is a
+        // small ring in a big building: its light stays round the portal)
         gr.setAdditive(true)
-        gr.glow(ax, ay, gw * (0.55f + 0.1f * near), Col.withA(0xFFFF9A40.toInt(), fade * (0.18f + 0.18f * near + 0.1f * pulse(t, 2f))))
+        if (g.spec.temple) gr.glow(ax, ay, gw * (0.16f + 0.04f * near), Col.withA(0xFFC070FF.toInt(), fade * (0.14f + 0.1f * near + 0.08f * pulse(t, 2f))))
+        else gr.glow(ax, ay, gw * (0.55f + 0.1f * near), Col.withA(0xFFFF9A40.toInt(), fade * (0.18f + 0.18f * near + 0.1f * pulse(t, 2f))))
         gr.setAdditive(false)
         gr.image(img, cx - gw * 0.5f, ty, gw, gH, fade)
         // the portal inside the arch: swirls, brightens as you approach, blazes when activated
@@ -767,16 +815,26 @@ class WorldRenderer(val g: Game) {
         val spin = t * (1.2f + 0.8f * near + 5f * charge)
         val intensity = fade * (0.35f + 0.25f * near + (if (open) 0.15f else 0f) + 0.45f * charge)
         gr.setAdditive(true)
+        val temple = g.spec.temple
         for (layer in 0..1) {
-            val rr = r * (if (layer == 0) 1.25f else 0.85f)
+            val rr = r * (if (layer == 0) (if (temple) 0.85f else 1.25f) else (if (temple) 0.6f else 0.85f))
             val a0 = if (layer == 0) spin else -spin * 1.4f
             for (i in 0..3) {
                 val a = a0 + i * TAU / 4f + TAU / 8f
-                gq[i * 2] = ax + cos(a) * rr * 1.414f; gq[i * 2 + 1] = ay + sin(a) * rr * 1.414f * 1.55f
+                gq[i * 2] = ax + cos(a) * rr * 1.414f; gq[i * 2 + 1] = ay + sin(a) * rr * 1.414f * (if (temple) 1f else 1.55f)
             }
-            gr.imageQuad(art.swirl, 0f, 0f, art.swirl.w.toFloat(), art.swirl.h.toFloat(), gq, intensity * (if (layer == 0) 0.9f else 0.6f))
+            gr.imageQuad(art.swirl, 0f, 0f, art.swirl.w.toFloat(), art.swirl.h.toFloat(), gq, intensity * (if (layer == 0) 0.9f else 0.6f) * (if (temple) 0.6f else 1f))
         }
-        gr.glow(ax, ay + r * 0.6f, r * (2.2f + 1.5f * charge), Col.withA(0xFFFFD27A.toInt(), intensity * 0.6f))
+        if (g.spec.temple) gr.glow(ax, ay, r * (1.5f + 0.8f * charge), Col.withA(0xFFE8B8FF.toInt(), intensity * 0.45f))
+        else gr.glow(ax, ay + r * 0.6f, r * (2.2f + 1.5f * charge), Col.withA(0xFFFFD27A.toInt(), intensity * 0.6f))
+        if (g.spec.temple) {
+            // the sky temple's beam of light, rising from the portal into the sky (as in the design)
+            val bw = r * (0.32f + 0.05f * sin(t * 5f))
+            // (bright in the distance, softer up close so the temple itself stays readable)
+            val ba = fade * (0.45f + 0.2f * pulse(t, 3f) + 0.3f * charge) * (1f - 0.65f * w * (1f - charge))
+            gr.fillRectGradient(ax - bw, -20f, ax + bw, ay, Col.withA(0xFFB8F4FF.toInt(), ba * 0.5f), Col.withA(0xFFE0FAFF.toInt(), ba))
+            gr.fillRectGradient(ax - bw * 0.35f, -20f, ax + bw * 0.35f, ay, Col.withA(Col.WHITE, ba * 0.6f), Col.withA(Col.WHITE, ba))
+        }
         gr.setAdditive(false)
         // sparkles drifting out of the portal, more of them the closer you get
         val sparks = 6 + (12 * near).toInt()
@@ -862,7 +920,7 @@ class WorldRenderer(val g: Game) {
 
     // ------------------------------------------------------------------ guard (block golem)
     private fun drawGuard(gr: Gfx) {
-        if (g.spec.volcano) { drawGuardSprite(gr); return }
+        if (g.spec.plate) { drawGuardSprite(gr); return }
         val gd = g.ev.guard
         val t = g.t
         val baseY = gd.y - (1f - gd.rise) * 7f
@@ -943,8 +1001,8 @@ class WorldRenderer(val g: Game) {
         // a boulder flying past the lens fades instead of filling the screen
         val a = smooth((cam.depthOf(r.x, r.y + 0.35f, r.z) - 1.5f) / 2.5f)
         if (a <= 0.01f) return
-        drawBox(gr, r.x - 0.35f, r.y, r.z - 0.35f, r.x + 0.35f, r.y + 0.7f, r.z + 0.35f, if (volc) BC.BASALT else BC.BRICK, 1, a, 0f, null,
-            if (volc) OV.LAVA else 0)
+        drawBox(gr, r.x - 0.35f, r.y, r.z - 0.35f, r.x + 0.35f, r.y + 0.7f, r.z + 0.35f,
+            if (volc) BC.BASALT else if (g.spec.temple) BC.STONE else BC.BRICK, 1, a, 0f, null, if (volc) OV.LAVA else 0)
     }
 
     // ------------------------------------------------------------------ Level 5: the volcanic sky fortress
@@ -952,8 +1010,9 @@ class WorldRenderer(val g: Game) {
     private var jbS = 1f; private var jbLeft = 0f; private var jbTop = 0f
 
     /**
-     * The Level 5 plate (the design's sunset sky, floating islands and cliffs): it fills the screen with the design's
-     * framing at the start (the fortress where the design shows it), then drifts with a gentle parallax and climb.
+     * The Level 5 / Level 6 plate (the design's sky, floating islands and cliffs): it fills the screen with the design's
+     * framing at the start (the fortress or the temple where the design shows it), then drifts with a gentle parallax
+     * and climb (and, in Level 6, a little with the camera's turn down the slides).
      */
     private fun drawPlateBackground(gr: Gfx) {
         val w = gr.width.toFloat(); val h = gr.height.toFloat()
@@ -962,9 +1021,10 @@ class WorldRenderer(val g: Game) {
         val climb = clamp((cam.ey - 3.3f) * 1.6f, 0f, 60f) * s
         jbS = s
         // framed right of the design's centre so the fortress and its portal stand clear of the HUD's target panel
-        jbLeft = clamp(w * 0.5f - (art.bgArtX + 580f) * s, w - art.artW * s + 22f * s, -22f * s) + px
+        val yawShift = if (g.spec.temple) clamp(-cam.yaw * 90f, -40f, 40f) * s else 0f
+        jbLeft = clamp(w * 0.5f - (art.bgArtX + 580f) * s + yawShift, w - art.artW * s + 22f * s, -22f * s) + px
         jbTop = -art.bgArtY * s - 10f * s + climb
-        gr.fillRect(0f, 0f, w, h, 0xFFE0805A.toInt())
+        gr.fillRect(0f, 0f, w, h, if (g.spec.temple) 0xFFB8CCF2.toInt() else 0xFFE0805A.toInt())
         val roll = cam.roll
         val rolled = abs(roll) > 0.0005f
         if (rolled) {
@@ -972,11 +1032,15 @@ class WorldRenderer(val g: Game) {
             val z = 1f + abs(roll) * 2.6f
             gr.scale(z, z); gr.translate(-cam.cx, -cam.cy)
         }
-        gr.image(art.bg, jbLeft, jbTop, art.bg.w * s, art.bg.h * s)
-        if (jbTop > 0f) gr.fillRectGradient(-40f, -40f, w + 40f, jbTop + 2f, 0xFF5A4E9A.toInt(), 0xFF6A5AA8.toInt())
+        gr.image(art.bg, jbLeft, jbTop, art.artW * s, art.artH * s)
+        if (jbTop > 0f) {
+            if (g.spec.temple) gr.fillRectGradient(-40f, -40f, w + 40f, jbTop + 2f, 0xFF2A64D0.toInt(), 0xFF3A78DE.toInt())
+            else gr.fillRectGradient(-40f, -40f, w + 40f, jbTop + 2f, 0xFF5A4E9A.toInt(), 0xFF6A5AA8.toInt())
+        }
         if (rolled) gr.restore()
-        // warm haze of the lava below, rising from the bottom of the screen
-        gr.fillRectGradient(0f, h * 0.45f, w, h, 0x00FF7A30, 0x40FF7A30)
+        // warm haze of the lava below, rising from the bottom of the screen (Level 6: a soft cloud glow)
+        if (g.spec.temple) gr.fillRectGradient(0f, h * 0.5f, w, h, 0x00F4F0FF, 0x30F4F0FF)
+        else gr.fillRectGradient(0f, h * 0.45f, w, h, 0x00FF7A30, 0x40FF7A30)
     }
 
     /** Fades pictures standing in the world that come right up to the lens. */
@@ -1029,7 +1093,7 @@ class WorldRenderer(val g: Game) {
     /** A fire bowl on a fortress-stone post (as along the design's path), with a living flame. */
     private fun drawTorch(gr: Gfx, d: Deco) {
         val x = d.x; val top = d.y; val z = d.z
-        if (!drawBox(gr, x - 0.3f, top - 2.2f, z - 0.3f, x + 0.3f, top, z + 0.3f, BC.FORT, 1, 1f, 0f, null)) return
+        if (!drawBox(gr, x - 0.3f, top - 2.2f, z - 0.3f, x + 0.3f, top, z + 0.3f, art.pillarColor, 1, 1f, 0f, null)) return
         drawBox(gr, x - 0.42f, top, z - 0.42f, x + 0.42f, top + 0.26f, z + 0.42f, BC.GOLD, 0, 1f, 0f, null)
         if (!cam.project(x, top + 0.45f, z)) return
         val sc = cam.scaleAt(cam.depth)
@@ -1076,13 +1140,14 @@ class WorldRenderer(val g: Game) {
         val v1 = min(tex.h.toFloat(), (top - bottom) * ts)
         val ex = cam.ex; val ey = cam.ey; val ez = cam.ez
         val haze = hazeFor(depth) * 0.8f
-        if (ez > z1) { quad(6, 7, 3, 2); gr.imageQuad(tex, 0f, 0f, ts, v1, q, a, 0.6f, 0xFFFFA070.toInt(), haze) }
-        if (ex < x0) { quad(7, 4, 0, 3); gr.imageQuad(tex, 0f, 0f, ts * pl.d, v1, q, a, 0.62f, 0xFFFFA070.toInt(), haze) }
-        if (ex > x1) { quad(5, 6, 2, 1); gr.imageQuad(tex, 0f, 0f, ts * pl.d, v1, q, a, 0.62f, 0xFFFFA070.toInt(), haze) }
-        if (ez < z0) { quad(4, 5, 1, 0); gr.imageQuad(tex, 0f, 0f, ts * pl.w, v1, q, a, 0.8f, 0xFFFFA070.toInt(), haze) }
-        if (ey > top) { quad(7, 6, 5, 4); gr.imageQuad(art.top[BC.FORT][1], 0f, 0f, ts, ts, q, a, 0.95f, 0xFFFFA070.toInt(), haze) }
+        val hz = if (g.spec.temple) skyHaze else 0xFFFFA070.toInt()
+        if (ez > z1) { quad(6, 7, 3, 2); gr.imageQuad(tex, 0f, 0f, ts, v1, q, a, 0.6f, hz, haze) }
+        if (ex < x0) { quad(7, 4, 0, 3); gr.imageQuad(tex, 0f, 0f, ts * pl.d, v1, q, a, 0.62f, hz, haze) }
+        if (ex > x1) { quad(5, 6, 2, 1); gr.imageQuad(tex, 0f, 0f, ts * pl.d, v1, q, a, 0.62f, hz, haze) }
+        if (ez < z0) { quad(4, 5, 1, 0); gr.imageQuad(tex, 0f, 0f, ts * pl.w, v1, q, a, 0.8f, hz, haze) }
+        if (ey > top) { quad(7, 6, 5, 4); gr.imageQuad(art.top[art.pillarColor][1], 0f, 0f, ts, ts, q, a, 0.95f, 0xFFFFA070.toInt(), haze) }
         // the lava's glow on the foot of the pillar
-        if (cam.project(pl.x, bottom + 1.2f, z0) ) {
+        if (!g.spec.temple && cam.project(pl.x, bottom + 1.2f, z0) ) {
             val sc = cam.scaleAt(cam.depth)
             gr.setAdditive(true)
             gr.glow(cam.sx, cam.sy, 1.6f * sc * pl.w, Col.withA(0xFFFF6A10.toInt(), 0.35f * a))
@@ -1277,17 +1342,25 @@ class WorldRenderer(val g: Game) {
     }
 
     /**
-     * The lava Guardian from the design: it climbs out of the lava beside the path and runs after the boy on the
-     * left, reaching for him, glowing through its cracks. A camera-facing picture (the design shows its face).
+     * The Guardian from the design (Level 5's lava golem, Level 6's stone Guardian): it climbs out of the lava (rises
+     * out of the clouds) beside the path and runs after the boy on the left, reaching for him. A camera-facing picture
+     * (the design shows its face).
      */
+    private val gvw = FloatArray(2)
     private fun drawGuardSprite(gr: Gfx) {
         val img = art.guardian ?: return
         val gd = g.ev.guard
         val t = g.t
         val sw = sin(gd.step * Math.PI.toFloat())
         val bob = abs(sw) * 0.22f
-        val x = gd.x; val z = gd.z
+        var x = gd.x; var z = gd.z
         var baseY = gd.y - 1.4f - (1f - gd.rise) * 5f + bob + gd.reach * 0.3f
+        if (g.spec.temple) {
+            // Level 6: it hovers beside the path on the left, level with the boy and looming over him (as in the
+            // design), bobbing on the air; it drifts in toward him as it catches up
+            g.ev.guardView(gvw); x = gvw[0]; z = gvw[1]
+            baseY += 0.6f + sin(t * 1.7f) * 0.25f
+        }
         val worldW = 6.2f
         var a = 1f
         if (gd.falling) { a = clamp01(1f - gd.fallT / 2.5f); baseY -= gd.fallT * gd.fallT * 1.5f }
@@ -1303,26 +1376,35 @@ class WorldRenderer(val g: Game) {
         val h = w * img.h / img.w
         val bx = cam.sx; val by = cam.sy
         val angry = if (g.ev.chase == Chase.REVEAL || g.ev.chase == Chase.CAUGHT) 1f else 0.5f
+        val temple = g.spec.temple
         gr.setAdditive(true)
-        gr.glow(bx, by - h * 0.5f, w * 0.55f, Col.withA(0xFFFF6A10.toInt(), a * (0.25f + 0.15f * angry + 0.08f * pulse(t, 7f))))
+        gr.glow(bx, by - h * 0.5f, w * 0.55f, Col.withA(if (temple) 0xFFA050FF.toInt() else 0xFFFF6A10.toInt(),
+            a * ((if (temple) 0.18f else 0.25f) + 0.15f * angry + 0.08f * pulse(t, 7f))))
         gr.setAdditive(false)
         // it leans toward the boy as it reaches for him
         val lean = -4f + 6f * gd.reach + sin(gd.step * Math.PI.toFloat()) * 2f
         gr.save(); gr.translate(bx, by); gr.rotate(lean)
         gr.image(img, -w * 0.5f, -h, w, h, a)
         gr.restore()
-        // eyes blaze when it is angry
+        // eyes blaze when it is angry (the lava golem's gold, the stone Guardian's purple)
         gr.setAdditive(true)
-        val ey = by - h * 0.4f
-        gr.glow(bx + w * 0.07f, ey, w * 0.05f, Col.withA(0xFFFFD040.toInt(), a * (0.35f + 0.4f * angry)))
-        gr.glow(bx + w * 0.19f, ey + h * 0.02f, w * 0.045f, Col.withA(0xFFFFD040.toInt(), a * (0.35f + 0.4f * angry)))
+        if (temple) {
+            val ec = 0xFFD070FF.toInt()
+            gr.glow(bx - w * 0.03f, by - h * 0.535f, w * 0.06f, Col.withA(ec, a * (0.45f + 0.45f * angry)))
+            gr.glow(bx + w * 0.148f, by - h * 0.506f, w * 0.055f, Col.withA(ec, a * (0.45f + 0.45f * angry)))
+        } else {
+            val ey = by - h * 0.4f
+            gr.glow(bx + w * 0.07f, ey, w * 0.05f, Col.withA(0xFFFFD040.toInt(), a * (0.35f + 0.4f * angry)))
+            gr.glow(bx + w * 0.19f, ey + h * 0.02f, w * 0.045f, Col.withA(0xFFFFD040.toInt(), a * (0.35f + 0.4f * angry)))
+        }
         gr.setAdditive(false)
-        // embers and smoke rising off it
+        // embers and smoke rising off the lava golem; pebbles and purple sparks off the stone Guardian
         if (g.fx.rng.f() < 0.25f && a > 0.4f) {
             val q2 = g.fx.spawn()
             q2.x = x + g.fx.rng.f(-2.2f, 2.2f); q2.y = baseY + g.fx.rng.f(0.5f, 3.5f); q2.z = z
             q2.vx = g.fx.rng.f(-0.3f, 0.3f); q2.vy = g.fx.rng.f(1f, 2.5f); q2.vz = 0f
-            q2.life = g.fx.rng.f(0.5f, 1f); q2.maxLife = q2.life; q2.size = g.fx.rng.f(0.05f, 0.1f); q2.color = 0xFFFFA040.toInt(); q2.kind = PK.EMBER
+            q2.life = g.fx.rng.f(0.5f, 1f); q2.maxLife = q2.life; q2.size = g.fx.rng.f(0.05f, 0.1f)
+            if (temple) { q2.color = 0xFFC880FF.toInt(); q2.kind = PK.SPARK; q2.vy = -q2.vy * 0.5f } else { q2.color = 0xFFFFA040.toInt(); q2.kind = PK.EMBER }
         }
     }
 
@@ -1331,14 +1413,16 @@ class WorldRenderer(val g: Game) {
      * A lava surface at height [ly]: the rising lava (Level 4) or, with [sea], Level 5's lava sea far below the
      * course, which fades out into the heat haze in the distance so it meets the sky plate softly.
      */
-    private fun drawLava(gr: Gfx, ly: Float, sea: Boolean) {
+    private fun drawLava(gr: Gfx, ly: Float, sea: Boolean, texture: Img? = null) {
+        val tex = texture ?: art.lava
+        val clouds = texture != null
         val t = g.t
         val tile = 4f
         // tiles around the point the camera looks at (the camera may look sideways, e.g. round the loop)
         val fx0 = cam.ex + sin(cam.yaw) * 26f; val fz0 = cam.ez + cos(cam.yaw) * 26f
         val ox = floor(fx0 / tile) * tile
         val oz = floor(fz0 / tile) * tile
-        val flow = fract(t * (if (sea) 0.05f else 0.08f)) * tile
+        val flow = fract(t * (if (clouds) 0.02f else if (sea) 0.05f else 0.08f)) * tile
         for (j in 8 downTo -8) {
             for (i in -8..8) {
                 val x0 = ox + i * tile; val zz = oz + j * tile + flow
@@ -1349,7 +1433,8 @@ class WorldRenderer(val g: Game) {
                 val d = cam.depthOf(x0 + tile * 0.5f, ly, zz + tile * 0.5f)
                 val a = if (sea) 1f - smooth((d - 34f) / 20f) else 1f
                 if (a <= 0.01f) continue
-                gr.imageQuad(art.lava, 0f, 0f, art.lava.w.toFloat(), art.lava.h.toFloat(), q, a, 1f + 0.1f * sin(t * 3f + i + j), 0xFFFF9A40.toInt(), hazeFor(d) * 0.6f)
+                if (clouds) gr.imageQuad(tex, 0f, 0f, tex.w.toFloat(), tex.h.toFloat(), q, a, 1f, skyHaze, hazeFor(d) * 0.7f)
+                else gr.imageQuad(tex, 0f, 0f, tex.w.toFloat(), tex.h.toFloat(), q, a, 1f + 0.1f * sin(t * 3f + i + j), 0xFFFF9A40.toInt(), hazeFor(d) * 0.6f)
             }
         }
     }
@@ -1370,10 +1455,12 @@ class WorldRenderer(val g: Game) {
         for (p in g.fx.parts) {
             if (!p.active) continue
             if (!cam.project(p.x, p.y, p.z)) continue
+            // a particle passing right by the lens fades away instead of filling the screen
+            if (cam.depth < 1.1f) continue
             val s = cam.scaleAt(cam.depth)
             val r = p.size * s
             if (r < 0.6f) continue
-            val lf = clamp01(p.life / p.maxLife)
+            val lf = clamp01(p.life / p.maxLife) * smooth((cam.depth - 1.1f) / 1.4f)
             when (p.kind) {
                 PK.SPARK, PK.EMBER -> { gr.setAdditive(true); gr.glow(cam.sx, cam.sy, r * 2.2f, Col.withA(p.color, lf)); gr.setAdditive(false) }
                 PK.STAR -> star4(gr, cam.sx, cam.sy, r * 1.6f * (0.4f + 0.6f * lf), Col.withA(p.color, min(1f, lf * 1.5f)))
@@ -1486,4 +1573,442 @@ class WorldRenderer(val g: Game) {
         if (g.flashWhite > 0f) gr.fillRect(0f, 0f, w, h, Col.withA(Col.WHITE, g.flashWhite * 0.6f))
     }
 
+
+    // ------------------------------------------------------------------ Level 6: the rainbow slides
+    /** A stretch of a slide (from s0 to s1) drawn as one piece of the painter's list; (cx, cy, cz) is its sort point. */
+    class SlideSeg(val sl: Slide, val i: Int, val s0: Float, val s1: Float) { var cx = 0f; var cy = 0f; var cz = 0f }
+    private val slideSegCache = HashMap<Slide, Array<SlideSeg>>()
+    private fun slideSegs(sl: Slide): Array<SlideSeg> = slideSegCache.getOrPut(sl) {
+        val n = max(1, (sl.length / 0.5f).toInt())
+        Array(n) { i ->
+            val s0 = sl.length * i / n; val s1 = sl.length * (i + 1) / n
+            SlideSeg(sl, i, s0, s1).also { sl.point((s0 + s1) * 0.5f, 0f, sl.r * 0.45f, sp3, 0); it.cx = sp3[0]; it.cy = sp3[1]; it.cz = sp3[2] }
+        }
+    }
+    private val sp3 = FloatArray(12)
+    /** The slides' glossy rainbow bands, as in the design: blue, pink, yellow, red, purple, sky blue. */
+    private val slideBands = intArrayOf(0xFF1E7CFF.toInt(), 0xFFF03CC4.toInt(), 0xFFFFC21E.toInt(), 0xFFF2402E.toInt(), 0xFF8C3CF2.toInt(), 0xFF2CC4FF.toInt())
+    private val slWall = 0.16f
+    // per-facet scratch for the in-stretch sort: screen corners, depth, kind (0 inner, 1 outer, 2 lip), angle
+    private val fq = FloatArray(8 * 20); private val fdep = FloatArray(20); private val fkind = IntArray(20); private val fth = FloatArray(20)
+    private val fcol = IntArray(20); private val ford = Array(20) { it }
+    private val lightX = -0.35f; private val lightY = 0.86f; private val lightZ = -0.37f
+
+    private fun slideCorner(sl: Slide, s: Float, th: Float, inset: Float, k: Int, o: Int): Boolean {
+        sl.point(s, th, inset, sp3, 0)
+        if (!cam.project(sp3[0], sp3[1], sp3[2])) return false
+        fq[k * 8 + o * 2] = cam.sx; fq[k * 8 + o * 2 + 1] = cam.sy
+        return true
+    }
+
+    /**
+     * One stretch of a rainbow slide: an open channel of glossy striped plastic (a closed tube for the scenery ones)
+     * with water running down its bottom. Each of its faces is lit (a soft top light and a shine), the faces are drawn
+     * back to front, and the stretch fades when it passes the lens or would hide the boy.
+     */
+    private fun drawSlideSeg(gr: Gfx, sg: SlideSeg) {
+        val sl = sg.sl
+        val t = g.t
+        val thMax = if (sl.ride) 1.5f else Math.PI.toFloat()
+        val m = if (sl.ride) 12 else 14
+        val s0 = sg.s0; val s1 = sg.s1; val sm = (s0 + s1) * 0.5f
+        val depth = cam.depthOf(sg.cx, sg.cy, sg.cz)
+        var a = nearFade(depth) * smooth((depth - 1.4f) / 2.4f)
+        if (a <= 0.01f) return
+        val band = slideBands[(sg.i / 2) % slideBands.size]
+        val haze = hazeFor(depth)
+        var n = 0
+        var minX = 1e9f; var maxX = -1e9f; var minY = 1e9f; var maxY = -1e9f
+        for (j in 0 until m) {
+            val th0 = -thMax + 2f * thMax * j / m; val th1 = -thMax + 2f * thMax * (j + 1) / m; val thm = (th0 + th1) * 0.5f
+            sl.point(sm, thm, 0f, sp3, 0); sl.normal(sm, thm, sp3, 3)
+            val vx = cam.ex - sp3[0]; val vy = cam.ey - sp3[1]; val vz = cam.ez - sp3[2]
+            val inner = vx * sp3[3] + vy * sp3[4] + vz * sp3[5] > 0f
+            if (!sl.ride && inner) continue
+            val inset = if (inner) 0f else -slWall
+            if (!slideCorner(sl, s0, th0, inset, n, 0) || !slideCorner(sl, s0, th1, inset, n, 1) ||
+                !slideCorner(sl, s1, th1, inset, n, 2) || !slideCorner(sl, s1, th0, inset, n, 3)) continue
+            sl.point(sm, thm, inset, sp3, 6)
+            fdep[n] = cam.depthOf(sp3[6], sp3[7], sp3[8]); fkind[n] = if (inner) 0 else 1; fth[n] = thm
+            // light: a soft top light on the outside (and the inside, a shade lighter), a shine where it catches the sun
+            val nx = if (inner) sp3[3] else -sp3[3]; val ny = if (inner) sp3[4] else -sp3[4]; val nz = if (inner) sp3[5] else -sp3[5]
+            val lam = max(0f, nx * lightX + ny * lightY + nz * lightZ)
+            // inside: the bands in soft pastel under the water; outside: the bright rainbow bands
+            var c = if (inner) Col.scale(Col.mix(band, 0xFFEAF6FF.toInt(), 0.52f), 0.66f + 0.4f * lam) else Col.scale(band, 0.5f + 0.62f * lam)
+            if (!inner) {
+                val vl = kotlin.math.sqrt(vx * vx + vy * vy + vz * vz).coerceAtLeast(1e-3f)
+                val hx = lightX + vx / vl; val hy = lightY + vy / vl; val hz = lightZ + vz / vl
+                val hl = kotlin.math.sqrt(hx * hx + hy * hy + hz * hz).coerceAtLeast(1e-3f)
+                val spec = max(0f, (nx * hx + ny * hy + nz * hz) / hl)
+                val sh = spec * spec; val sh4 = sh * sh
+                c = Col.mix(c, Col.WHITE, sh4 * sh4 * 0.85f)
+            }
+            fcol[n] = Col.mix(c, skyHaze, haze)
+            for (k in 0..3) { minX = min(minX, fq[n * 8 + k * 2]); maxX = max(maxX, fq[n * 8 + k * 2]); minY = min(minY, fq[n * 8 + k * 2 + 1]); maxY = max(maxY, fq[n * 8 + k * 2 + 1]) }
+            n++
+        }
+        // the lips along the top edges of the channel
+        if (sl.ride) for (side in 0..1) {
+            val th = if (side == 0) -thMax else thMax
+            if (!slideCorner(sl, s0, th, 0f, n, 0) || !slideCorner(sl, s0, th, -slWall, n, 1) ||
+                !slideCorner(sl, s1, th, -slWall, n, 2) || !slideCorner(sl, s1, th, 0f, n, 3)) continue
+            sl.point(sm, th, 0f, sp3, 6)
+            fdep[n] = cam.depthOf(sp3[6], sp3[7], sp3[8]) - 0.01f; fkind[n] = 2; fth[n] = th
+            fcol[n] = Col.mix(Col.mix(band, Col.WHITE, 0.2f), skyHaze, haze)
+            n++
+        }
+        if (n == 0) return
+        if (maxX < -20f || minX > gr.width + 20f || maxY < -20f || minY > gr.height + 20f) return
+        // it turns see-through where it would hide the boy (never the stretch he rides in: that is drawn under him)
+        val p = g.player
+        val riding = p.state == PS.SLIDE && p.slide === sl && sg.s1 > p.slideS - 3.2f && sg.s0 < p.slideS + 0.9f
+        if (!riding && depth < pdepth - 0.3f && maxX > pbox[0] && minX < pbox[2] && maxY > pbox[1] && minY < pbox[3]) a *= 0.4f
+        for (k in 0 until n) ford[k] = k
+        java.util.Arrays.sort(ford, 0, n) { x, y -> fdep[y].compareTo(fdep[x]) }
+        val sc = cam.scaleAt(depth)
+        for (kk in 0 until n) {
+            val k = ford[kk]
+            for (i in 0..7) poly[i] = fq[k * 8 + i]
+            gr.fillPoly(poly, 4, Col.withA(fcol[k], a))
+            if (fkind[k] == 1 && sg.i % 2 == 0) {
+                // the ridge between two coloured bands
+                gr.line(poly[0], poly[1], poly[2], poly[3], max(1f, 0.05f * sc), Col.withA(Col.scale(band, 0.55f), a))
+            }
+            if (fkind[k] == 0 && sg.i % 2 == 0 && abs(fth[k]) > 1.0f) {
+                // the band's colour shows at the top of the inner wall too, just under the lip
+                gr.line(poly[0], poly[1], poly[2], poly[3], max(1f, 0.05f * sc), Col.withA(Col.scale(band, 0.8f), a * 0.6f))
+            }
+            if (fkind[k] == 0 && sl.ride && abs(fth[k]) < 0.75f) {
+                // water running down the channel: a clear blue sheet with streaks of foam flowing toward the exit
+                gr.fillPoly(poly, 4, Col.withA(0xFF6CCBFF.toInt(), a * 0.42f))
+                val ph = fract(t * 1.7f - sg.i * 0.37f + fth[k] * 1.3f)
+                val u0 = ph; val u1 = min(1f, ph + 0.45f)
+                // along the stretch: from the s0 edge (corners 0,1) to the s1 edge (corners 3,2)
+                val ax = lerp((poly[0] + poly[2]) * 0.5f, (poly[6] + poly[4]) * 0.5f, u0); val ay = lerp((poly[1] + poly[3]) * 0.5f, (poly[7] + poly[5]) * 0.5f, u0)
+                val bx = lerp((poly[0] + poly[2]) * 0.5f, (poly[6] + poly[4]) * 0.5f, u1); val by = lerp((poly[1] + poly[3]) * 0.5f, (poly[7] + poly[5]) * 0.5f, u1)
+                gr.setAdditive(true)
+                gr.line(ax, ay, bx, by, max(1f, 0.05f * sc), Col.withA(0xFFF0FCFF.toInt(), a * 0.55f))
+                gr.setAdditive(false)
+            }
+        }
+        // speed rings: a glowing hoop across the channel with chevrons
+        if (sl.ride) for (pu in sl.pads) if (pu >= s0 && pu < s1) slideRing(gr, sl, pu, a)
+        // spike plates in the channel
+        if (sl.ride) for (sp in sl.spikes) if (sp[0] >= s0 && sp[0] < s1) slideSpikes(gr, sl, sp[0], sp[1], a)
+    }
+
+    /** A speed ring across a slide: a glowing hoop over the channel. */
+    private fun slideRing(gr: Gfx, sl: Slide, s: Float, a: Float) {
+        var px = 0f; var py = 0f; var ok = false
+        val pulseA = 0.7f + 0.3f * pulse(g.t, 6f)
+        gr.setAdditive(true)
+        for (i in 0..16) {
+            val th = -1.6f + 3.2f * i / 16f
+            sl.point(s, th, 0.05f, sp3, 0)
+            if (!cam.project(sp3[0], sp3[1], sp3[2])) { ok = false; continue }
+            val sc = cam.scaleAt(cam.depth)
+            if (ok) { gr.line(px, py, cam.sx, cam.sy, max(2f, 0.2f * sc), Col.withA(0xFF4AD8FF.toInt(), a * 0.5f * pulseA)); gr.line(px, py, cam.sx, cam.sy, max(1f, 0.07f * sc), Col.withA(Col.WHITE, a * pulseA)) }
+            px = cam.sx; py = cam.sy; ok = true
+        }
+        gr.setAdditive(false)
+    }
+
+    /** Iron spikes standing up out of a slide's channel at (s, th). */
+    private fun slideSpikes(gr: Gfx, sl: Slide, s: Float, th: Float, a: Float) {
+        for (k in 0..2) {
+            val tk = th + (k - 1) * 0.22f
+            sl.point(s, tk, 0.45f, sp3, 0)
+            if (!cam.project(sp3[0], sp3[1], sp3[2])) return
+            val tipX = cam.sx; val tipY = cam.sy
+            sl.point(s - 0.18f, tk - 0.1f, 0f, sp3, 0); if (!cam.project(sp3[0], sp3[1], sp3[2])) return
+            poly[0] = cam.sx; poly[1] = cam.sy
+            sl.point(s + 0.18f, tk + 0.1f, 0f, sp3, 0); if (!cam.project(sp3[0], sp3[1], sp3[2])) return
+            poly[2] = cam.sx; poly[3] = cam.sy
+            poly[4] = tipX; poly[5] = tipY
+            gr.fillPolyGradient(poly, 3, tipX, tipY, poly[0], poly[1], Col.withA(0xFFF4F6FF.toInt(), a), Col.withA(0xFF4A5068.toInt(), a))
+        }
+        sl.point(s, th, 0.2f, sp3, 0)
+        if (cam.project(sp3[0], sp3[1], sp3[2])) { gr.setAdditive(true); gr.glow(cam.sx, cam.sy, 0.55f * cam.scaleAt(cam.depth), Col.withA(0xFFFF3A2A.toInt(), 0.3f * a)); gr.setAdditive(false) }
+    }
+
+    // ------------------------------------------------------------------ Level 6: floating islands
+    private val iq = FloatArray(8)
+    /** Projects a quad given as seen from outside (top-left, top-right, bottom-right, bottom-left); false when it faces away. */
+    private fun faceQuad(ax: Float, ay: Float, az: Float, bx: Float, by: Float, bz: Float, cx2: Float, cy2: Float, cz2: Float, dx: Float, dy: Float, dz: Float): Boolean {
+        if (!cam.project(ax, ay, az)) return false; iq[0] = cam.sx; iq[1] = cam.sy
+        if (!cam.project(bx, by, bz)) return false; iq[2] = cam.sx; iq[3] = cam.sy
+        if (!cam.project(cx2, cy2, cz2)) return false; iq[4] = cam.sx; iq[5] = cam.sy
+        if (!cam.project(dx, dy, dz)) return false; iq[6] = cam.sx; iq[7] = cam.sy
+        var area = 0f
+        for (i in 0..3) { val j = (i + 1) % 4; area += iq[i * 2] * iq[j * 2 + 1] - iq[j * 2] * iq[i * 2 + 1] }
+        return area > 0f
+    }
+
+    /**
+     * A floating island under the course: the rocky underside tapering away in two tiers, the stone slab with moss
+     * on top and vines hanging over its edges, palms at its corners, and waterfalls pouring off it into the clouds.
+     */
+    private fun drawIsland(gr: Gfx, isl: Island) {
+        val tex = art.pillarSide ?: return
+        val x0 = isl.x - isl.w * 0.5f; val x1 = isl.x + isl.w * 0.5f; val z0 = isl.z - isl.d * 0.5f; val z1 = isl.z + isl.d * 0.5f
+        val slabB = isl.top - 1.1f
+        val d0 = cam.depthOf(isl.x, isl.top - 1f, isl.z)
+        val a = nearFade(d0 + min(isl.d, isl.w) * 0.35f) * (1f - smooth((d0 - (maxDepth - 4f)) / 8f))
+        if (a <= 0.01f) return
+        val haze = hazeFor(d0)
+        val ts = art.texSize.toFloat()
+        val rnd = hash3(isl.seed, 7, 3)
+        // the underside: two tiers narrowing to a rocky point, a little off-centre
+        val ox = ((rnd and 255) / 255f - 0.5f) * isl.w * 0.25f; val oz = (((rnd shr 8) and 255) / 255f - 0.5f) * isl.d * 0.2f
+        val midY = slabB - isl.depth * 0.5f; val botY = slabB - isl.depth
+        tier(gr, tex, ts, isl.x, isl.z, isl.w, isl.d, slabB, isl.x + ox * 0.5f, isl.z + oz * 0.5f, isl.w * 0.66f, isl.d * 0.66f, midY, a, haze, 0.62f, 0.5f)
+        tier(gr, tex, ts, isl.x + ox * 0.5f, isl.z + oz * 0.5f, isl.w * 0.66f, isl.d * 0.66f, midY, isl.x + ox, isl.z + oz, isl.w * 0.12f, isl.d * 0.12f, botY, a, haze, 0.5f, 0.36f)
+        // the slab
+        drawBox(gr, x0, slabB, z0, x1, isl.top, z1, BC.SAND, isl.seed % 3, a, 0f, null)
+        // moss on top and hanging over the edges
+        if (cam.ey > isl.top && faceQuad(x0, isl.top + 0.005f, z1, x1, isl.top + 0.005f, z1, x1, isl.top + 0.005f, z0, x0, isl.top + 0.005f, z0)) {
+            for (i in 0..7) poly[i] = iq[i]
+            gr.fillPolyGradient(poly, 4, iq[0], iq[1], iq[6], iq[7], Col.withA(Col.mix(0xFF4E9E36.toInt(), skyHaze, haze), a), Col.withA(Col.mix(0xFF78C83E.toInt(), skyHaze, haze), a))
+        }
+        mossEdge(gr, x0, z0, x1, z0, isl.top, isl.seed, a, haze)
+        mossEdge(gr, x1, z0, x1, z1, isl.top, isl.seed + 1, a, haze)
+        mossEdge(gr, x0, z1, x0, z0, isl.top, isl.seed + 2, a, haze)
+        // palms at the corners the course leaves free
+        for (k in 0 until isl.palms) {
+            val left = (k + isl.seed) % 2 == 0
+            val px = if (left) x0 + 0.5f else x1 - 0.5f
+            val pz = lerp(z0 + 0.6f, z1 - 0.6f, fract(k * 0.618f + isl.seed * 0.31f))
+            drawPalm(gr, px, isl.top, pz, 2.1f + 0.4f * fract(k * 0.37f + isl.seed * 0.11f), if (left) -1f else 1f, a, haze)
+        }
+        // waterfalls pouring off its edges into the clouds
+        val fallH = isl.depth + 7f
+        if (isl.falls and 1 != 0) waterfall(gr, x0 - 0.06f, isl.top - 0.15f, isl.z + isl.d * 0.12f, min(1.6f, isl.d * 0.45f), fallH, a, haze)
+        if (isl.falls and 2 != 0) waterfall(gr, x1 + 0.06f, isl.top - 0.15f, isl.z - isl.d * 0.1f, min(1.6f, isl.d * 0.45f), fallH, a, haze)
+        if (isl.falls and 4 != 0) waterfall(gr, isl.x + isl.w * 0.3f, isl.top - 0.15f, z0 - 0.06f, min(1.8f, isl.w * 0.3f), fallH, a, haze)
+    }
+
+    /** One tier of an island's underside: a box narrowing from the rectangle above to the one below. */
+    private fun tier(gr: Gfx, tex: Img, ts: Float, ax: Float, az: Float, aw: Float, ad: Float, ay: Float,
+                     bx: Float, bz: Float, bw: Float, bd: Float, by: Float, a: Float, haze: Float, mulTop: Float, mulBot: Float) {
+        val tx0 = ax - aw * 0.5f; val tx1 = ax + aw * 0.5f; val tz0 = az - ad * 0.5f; val tz1 = az + ad * 0.5f
+        val bx0 = bx - bw * 0.5f; val bx1 = bx + bw * 0.5f; val bz0 = bz - bd * 0.5f; val bz1 = bz + bd * 0.5f
+        val v1 = min(tex.h.toFloat(), (ay - by) * ts)
+        val mul = (mulTop + mulBot) * 0.5f
+        if (faceQuad(tx0, ay, tz0, tx1, ay, tz0, bx1, by, bz0, bx0, by, bz0)) gr.imageQuad(tex, 0f, 0f, ts * aw, v1, iq, a, mul + 0.12f, skyHaze, haze)
+        if (faceQuad(tx1, ay, tz0, tx1, ay, tz1, bx1, by, bz1, bx1, by, bz0)) gr.imageQuad(tex, 0f, 0f, ts * ad, v1, iq, a, mul, skyHaze, haze)
+        if (faceQuad(tx1, ay, tz1, tx0, ay, tz1, bx0, by, bz1, bx1, by, bz1)) gr.imageQuad(tex, 0f, 0f, ts * aw, v1, iq, a, mul - 0.05f, skyHaze, haze)
+        if (faceQuad(tx0, ay, tz1, tx0, ay, tz0, bx0, by, bz0, bx0, by, bz1)) gr.imageQuad(tex, 0f, 0f, ts * ad, v1, iq, a, mul, skyHaze, haze)
+    }
+
+    /** Moss along one top edge of an island (from (ax, az) to (bx, bz)), hanging over it in ragged drips. */
+    private fun mossEdge(gr: Gfx, ax: Float, az: Float, bx: Float, bz: Float, top: Float, seed: Int, a: Float, haze: Float) {
+        val len = len2(bx - ax, bz - az)
+        val n = max(2, (len / 0.45f).toInt())
+        val dark = Col.withA(Col.mix(0xFF3A7E2A.toInt(), skyHaze, haze), a); val light = Col.withA(Col.mix(0xFF6CBE3A.toInt(), skyHaze, haze), a)
+        for (i in 0 until n) {
+            val u0 = i / n.toFloat(); val u1 = (i + 1) / n.toFloat(); val um = (u0 + u1) * 0.5f
+            val drop = 0.18f + 0.5f * fract(sin((seed * 13 + i) * 12.9898f) * 43758.547f)
+            if (!cam.project(lerp(ax, bx, u0), top + 0.02f, lerp(az, bz, u0))) return
+            poly[0] = cam.sx; poly[1] = cam.sy
+            if (!cam.project(lerp(ax, bx, u1), top + 0.02f, lerp(az, bz, u1))) return
+            poly[2] = cam.sx; poly[3] = cam.sy
+            if (!cam.project(lerp(ax, bx, um), top - drop, lerp(az, bz, um))) return
+            poly[4] = cam.sx; poly[5] = cam.sy
+            gr.fillPolyGradient(poly, 3, poly[0], poly[1], poly[4], poly[5], light, dark)
+        }
+    }
+
+    /**
+     * A waterfall pouring off an island: a sheet of the design's falling water (scrolling down) turned to face the
+     * camera, fading into mist as it drops into the clouds.
+     */
+    private fun waterfall(gr: Gfx, x: Float, y: Float, z: Float, w: Float, h: Float, a: Float, haze: Float) {
+        val img = art.falls ?: return
+        val rx = kotlin.math.cos(cam.yaw) * w * 0.5f; val rz = -kotlin.math.sin(cam.yaw) * w * 0.5f
+        val tileH = w * img.h / img.w * 1.6f
+        val scroll = fract(g.t * 1.4f) * tileH
+        var yy = y
+        var first = true
+        var k = 0
+        while (yy > y - h && k < 24) {
+            val seg = if (first) scroll.coerceAtLeast(0.02f) else tileH
+            val yb = max(y - h, yy - seg)
+            val v0 = if (first) img.h * (1f - seg / tileH) else 0f
+            val v1 = img.h * ((yy - yb) / tileH) + v0
+            val fadeTop = 1f - smooth(((y - yy) / h - 0.35f) / 0.65f)
+            if (!cam.project(x - rx, yy, z - rz)) return; q[0] = cam.sx; q[1] = cam.sy
+            if (!cam.project(x + rx, yy, z + rz)) return; q[2] = cam.sx; q[3] = cam.sy
+            if (!cam.project(x + rx * 1.15f, yb, z + rz * 1.15f)) return; q[4] = cam.sx; q[5] = cam.sy
+            if (!cam.project(x - rx * 1.15f, yb, z - rz * 1.15f)) return; q[6] = cam.sx; q[7] = cam.sy
+            gr.imageQuad(img, 0f, v0, img.w.toFloat(), min(img.h.toFloat(), v1), q, a * 0.92f * fadeTop, 1.05f, skyHaze, haze * 0.8f)
+            yy = yb; first = false; k++
+        }
+        // the lip where it spills over, and mist where it falls away
+        if (cam.project(x, y, z)) {
+            val sc = cam.scaleAt(cam.depth)
+            gr.setAdditive(true); gr.glow(cam.sx, cam.sy, w * 0.7f * sc, Col.withA(0xFFE8FAFF.toInt(), 0.35f * a)); gr.setAdditive(false)
+        }
+    }
+
+    /** A palm tree: a curved ringed trunk and a crown of drooping fronds (as on the design's islands). */
+    private fun drawPalm(gr: Gfx, x: Float, y: Float, z: Float, h: Float, lean: Float, a: Float, haze: Float) {
+        val n = 6
+        var px = 0f; var py = 0f
+        val trunk = Col.withA(Col.mix(0xFF8A5A2E.toInt(), skyHaze, haze), a); val ring = Col.withA(Col.mix(0xFF5E3C1E.toInt(), skyHaze, haze), a)
+        var topX = 0f; var topY = 0f; var sc = 1f
+        for (i in 0..n) {
+            val u = i / n.toFloat()
+            if (!cam.project(x + lean * 0.55f * u * u, y + h * u, z)) return
+            sc = cam.scaleAt(cam.depth)
+            if (i > 0) {
+                gr.line(px, py, cam.sx, cam.sy, max(1.2f, (0.16f - 0.06f * u) * sc), trunk)
+                gr.line(px, py, cam.sx, cam.sy, max(0.6f, (0.05f) * sc), if (i % 2 == 0) ring else trunk)
+            }
+            px = cam.sx; py = cam.sy
+        }
+        topX = px; topY = py
+        if (sc < 2f) return
+        val leaf = Col.withA(Col.mix(0xFF2E8A2A.toInt(), skyHaze, haze), a); val leafHi = Col.withA(Col.mix(0xFF7ED23E.toInt(), skyHaze, haze), a)
+        val sw = sin(g.t * 1.3f + x * 0.7f + z) * 0.08f
+        for (k in 0 until 7) {
+            val an = k * TAU / 7f + x * 1.3f + z * 0.7f
+            val cxx = kotlin.math.cos(an); val czz = kotlin.math.sin(an)
+            val tx = x + lean * 0.55f
+            if (!cam.project(tx + cxx * 0.65f, y + h + 0.22f + sw, z + czz * 0.65f)) continue
+            val mx = cam.sx; val my = cam.sy
+            if (!cam.project(tx + cxx * 1.3f, y + h - 0.38f + sw, z + czz * 1.3f)) continue
+            val ex = cam.sx; val ey = cam.sy
+            val nx = -(my - topY); val ny = mx - topX
+            val nl = len2(nx, ny).coerceAtLeast(1e-3f)
+            val wv = 0.2f * sc
+            poly[0] = topX; poly[1] = topY
+            poly[2] = mx + nx / nl * wv; poly[3] = my + ny / nl * wv
+            poly[4] = ex; poly[5] = ey
+            poly[6] = mx - nx / nl * wv; poly[7] = my - ny / nl * wv
+            gr.fillPolyGradient(poly, 4, topX, topY, ex, ey, leafHi, leaf)
+        }
+        gr.fillCircle(topX, topY, 0.1f * sc, Col.withA(Col.mix(0xFF6A4020.toInt(), skyHaze, haze), a))
+    }
+
+    // ------------------------------------------------------------------ Level 6: laser gates and spiked blocks
+    /**
+     * A laser gate: an iron emitter with a red lens on a stone post at each side of the path. Before it fires the lenses
+     * flicker and a faint dotted line shows where the beam will run; then a red beam burns across at knee height.
+     */
+    private fun drawLaser(gr: Gfx, l: Laser) {
+        val t = g.t
+        val base = l.y - 1.35f
+        for (side in 0..1) {
+            val px = if (side == 0) l.x0 - 0.32f else l.x1 + 0.32f
+            drawBox(gr, px - 0.2f, base, l.z - 0.2f, px + 0.2f, l.y - 0.2f, l.z + 0.2f, BC.SAND, 1, 1f, 0f, null)
+            drawBox(gr, px - 0.3f, l.y - 0.22f, l.z - 0.3f, px + 0.3f, l.y + 0.3f, l.z + 0.3f, BC.IRON, 0, 1f, 0f, null)
+            if (cam.project(px + (if (side == 0) 0.31f else -0.31f), l.y + 0.04f, l.z)) {
+                val sc = cam.scaleAt(cam.depth)
+                val k = 0.3f + 0.5f * l.warn * (0.6f + 0.4f * sin(t * 40f)) + 0.6f * l.beam
+                gr.fillCircle(cam.sx, cam.sy, 0.11f * sc, 0xFF5A0A10.toInt())
+                gr.setAdditive(true); gr.glow(cam.sx, cam.sy, 0.35f * sc * (0.7f + k), Col.withA(0xFFFF3A2A.toInt(), min(1f, k))); gr.setAdditive(false)
+            }
+        }
+        if (!cam.project(l.x0, l.y + 0.04f, l.z)) return
+        val ax = cam.sx; val ay = cam.sy; val sa = cam.scaleAt(cam.depth)
+        if (!cam.project(l.x1, l.y + 0.04f, l.z)) return
+        val bx = cam.sx; val by = cam.sy; val sb = cam.scaleAt(cam.depth)
+        val sc = (sa + sb) * 0.5f
+        if (l.beam > 0.01f) {
+            val fl = l.beam * (0.85f + 0.15f * sin(t * 57f))
+            gr.setAdditive(true)
+            gr.line(ax, ay, bx, by, max(3f, 0.34f * sc), Col.withA(0xFFFF2A1A.toInt(), 0.4f * fl))
+            gr.line(ax, ay, bx, by, max(2f, 0.13f * sc), Col.withA(0xFFFF6A4A.toInt(), 0.9f * fl))
+            gr.line(ax, ay, bx, by, max(1f, 0.045f * sc), Col.withA(Col.WHITE, fl))
+            gr.setAdditive(false)
+        } else if (l.warn > 0.01f) {
+            val on = ((t * 18f).toInt() and 1) == 0
+            if (on) for (i in 0 until 10) {
+                val u0 = i / 10f + 0.02f; val u1 = u0 + 0.05f
+                gr.line(lerp(ax, bx, u0), lerp(ay, by, u0), lerp(ax, bx, u1), lerp(ay, by, u1), max(1f, 0.04f * sc), Col.withA(0xFFFF5A4A.toInt(), 0.35f + 0.5f * l.warn))
+            }
+        }
+    }
+
+    /**
+     * A spiked block: dark iron studded with red-tipped spikes (as in the design). A sliding one hangs on a short
+     * chain from an iron rail overhead that spans the path between two stone posts.
+     */
+    private fun drawSpikeBox(gr: Gfx, b: SpikeBox) {
+        val h = b.size * 0.5f
+        if (b.amp > 0f) {
+            val ry = b.y + 3.5f
+            val rl = b.x0 - b.amp - 1.1f; val rr = b.x0 + b.amp + 1.1f
+            for (px in floatArrayOf(rl, rr)) drawBox(gr, px - 0.16f, b.y - 1.2f, b.z - 0.16f, px + 0.16f, ry + 0.14f, b.z + 0.16f, BC.SAND, 2, 1f, 0f, null)
+            drawBox(gr, rl, ry, b.z - 0.05f, rr, ry + 0.1f, b.z + 0.05f, BC.STONE, 0, 1f, 0f, null)
+            if (cam.project(b.x, ry, b.z)) {
+                val x0s = cam.sx; val y0s = cam.sy
+                if (cam.project(b.x, b.y + b.size, b.z)) gr.line(x0s, y0s, cam.sx, cam.sy, max(1.5f, 0.06f * cam.scaleAt(cam.depth)), 0xFF2A2630.toInt())
+            }
+        }
+        if (!drawBox(gr, b.x - h, b.y, b.z - h, b.x + h, b.y + b.size, b.z + h, BC.IRON, 1, 1f, 0f, null)) return
+        // spikes on the faces the camera sees (2 x 2 each)
+        val cy0 = b.y + h
+        for (i in 0..1) for (j in 0..1) {
+            val u = (i - 0.5f) * h; val v = (j - 0.5f) * h
+            if (cam.ey > b.y + b.size) spike(gr, b.x + u, b.y + b.size, b.z + v, 0f, 1f, 0f)
+            if (cam.ez < b.z - h) spike(gr, b.x + u, cy0 + v, b.z - h, 0f, 0f, -1f)
+            if (cam.ex < b.x - h) spike(gr, b.x - h, cy0 + v, b.z + u, -1f, 0f, 0f)
+            if (cam.ex > b.x + h) spike(gr, b.x + h, cy0 + v, b.z + u, 1f, 0f, 0f)
+        }
+    }
+
+    private fun spike(gr: Gfx, x: Float, y: Float, z: Float, nx: Float, ny: Float, nz: Float) {
+        val len = 0.3f; val r = 0.1f
+        if (!cam.project(x + nx * len, y + ny * len, z + nz * len)) return
+        val tx = cam.sx; val ty = cam.sy
+        // a base across the face (perpendicular to the normal)
+        val ax = if (ny != 0f) 1f else if (nx != 0f) 0f else 1f; val az = if (nx != 0f) 1f else 0f; val ay = if (ny != 0f) 0f else if (nz != 0f) 0f else 0f
+        if (!cam.project(x - ax * r, y - ay * r, z - az * r)) return
+        poly[0] = cam.sx; poly[1] = cam.sy
+        if (!cam.project(x + ax * r, y + ay * r, z + az * r)) return
+        poly[2] = cam.sx; poly[3] = cam.sy
+        poly[4] = tx; poly[5] = ty
+        gr.fillPolyGradient(poly, 3, (poly[0] + poly[2]) * 0.5f, (poly[1] + poly[3]) * 0.5f, tx, ty, 0xFF3A3A4A.toInt(), 0xFFE8402A.toInt())
+    }
+
+    // ------------------------------------------------------------------ Level 6: the helicopter
+    /**
+     * The yellow helicopter from the design, cruising round the sky temple in the distance (it starts where the design
+     * shows it). Its main and tail rotors spin (the blurred discs and a sweeping blade).
+     */
+    private fun drawHeli(gr: Gfx) {
+        val img = art.heli ?: return
+        val t = g.t
+        val s = jbS
+        // the design's placement: the body at (244, 203), 164 x 116, the rotor hub at (347, 207)
+        val dx = sin(t * 0.11f) * 70f + sin(t * 0.37f) * 8f
+        val dy = sin(t * 0.9f) * 5f + sin(t * 0.07f) * 18f
+        val bx = jbLeft + (244f + dx) * s; val by = jbTop + (203f + dy) * s
+        val w = 164f * s; val h = 116f * s
+        val tilt = sin(t * 0.11f + 1.2f) * 3f
+        gr.save(); gr.translate(bx + w * 0.5f, by + h * 0.5f); gr.rotate(tilt); gr.translate(-(bx + w * 0.5f), -(by + h * 0.5f))
+        gr.image(img, bx, by, w, h)
+        // main rotor: a faint disc and two blades sweeping round
+        val hx = bx + (347f - 244f) * s; val hy = by + (207f - 203f) * s
+        val rr = 96f * s; val ry = 9f * s
+        var m = 0
+        for (i in 0 until 20) { val an = i / 20f * TAU; poly[m * 2] = hx + kotlin.math.cos(an) * rr; poly[m * 2 + 1] = hy + kotlin.math.sin(an) * ry; m++ }
+        gr.fillPoly(poly, m, 0x2A30302E)
+        val sp = t * 38f
+        for (k in 0..1) {
+            val an = sp + k * Math.PI.toFloat()
+            val ex = hx + kotlin.math.cos(an) * rr; val ey = hy + kotlin.math.sin(an) * ry
+            gr.line(hx, hy, ex, ey, max(1.5f, 3.5f * s), 0x9A2A2A2E.toInt())
+            val an2 = an - 0.35f
+            gr.line(hx, hy, hx + kotlin.math.cos(an2) * rr, hy + kotlin.math.sin(an2) * ry, max(1f, 2.5f * s), 0x442A2A2E)
+        }
+        gr.fillCircle(hx, hy, 3.5f * s, 0xFF2A2A30.toInt())
+        // tail rotor
+        val tx = bx + (253f - 244f) * s; val ty = by + (228f - 203f) * s
+        gr.fillCircle(tx, ty, 14f * s, 0x302A2A2E)
+        val ta = t * 44f
+        gr.line(tx - kotlin.math.cos(ta) * 14f * s, ty - kotlin.math.sin(ta) * 14f * s, tx + kotlin.math.cos(ta) * 14f * s, ty + kotlin.math.sin(ta) * 14f * s, max(1f, 2.5f * s), 0x9A2A2A2E.toInt())
+        gr.restore()
+    }
 }

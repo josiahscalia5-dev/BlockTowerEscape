@@ -11,7 +11,7 @@
 
 ## Ground rules from the owner
 - Don't start over or redesign. Keep the approved artwork (Home, Level 4 sky tower, Level 5 volcanic sky fortress
-  from design/level5_volcano_reference.png),
+  from design/level5_volcano_reference.png, Level 6 sky temple with rainbow slides from design/level6_reference.png),
   the cartoon boy, the HUD and the Block Tower Escape identity; polish the implementation underneath.
 - Splash, Home and the level map use the same boy, Guardian and world (from design/menu_reference.png and
   design/home_reference.png): never swap in a different character.

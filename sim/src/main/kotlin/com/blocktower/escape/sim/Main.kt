@@ -24,6 +24,7 @@ fun main(args: Array<String>) {
             val c = game.cam
             println("cam e=(%.2f, %.2f, %.2f) yaw=%.3f pitch=%.3f f=%.1f cy=%.1f  player=(%.2f, %.2f, %.2f)".format(c.ex, c.ey, c.ez, c.yaw, c.pitch, c.f, c.cy, game.player.x, game.player.y, game.player.z))
         }
+        "run" -> runShots(assets, out, w, h, opts)
         "poses" -> posesSheet(assets, out, opts["pose"] ?: "")
         "play" -> Autopilot(assets, out, opts).run()
         "profile" -> profile(assets)
@@ -120,6 +121,42 @@ private fun posesSheet(assets: File, out: File, one: String) {
     }
     ImageIO.write(cyc.image, "png", File(out, "poses_cycle.png"))
     println("wrote poses.png, poses_hips.png, poses_cycle.png")
+}
+
+/**
+ * Puts the boy on the path at row [z] of a level and runs him forward (the keyboard's up key) for [frames] frames,
+ * writing a picture every [every] frames (run_0000.png, ...) and a line of state for each: for looking at a stretch of
+ * a level (a slide, a hazard) without playing up to it. `steer=x` holds him at lane x; `jump=f1,f2` jumps then.
+ */
+private fun runShots(assets: File, out: File, w: Int, h: Int, opts: Map<String, String>) {
+    val game = Game(SimPlatform(assets), (opts["level"] ?: "6").toInt())
+    val gfx = J2DGfx(assets, w, h)
+    game.hud.layout(w, h)
+    game.hud.plain = opts["plain"] != null
+    for (i in 0 until 200) game.update(1f / 60f)
+    val z = (opts["z"] ?: "0").toFloat()
+    val r = kotlin.math.floor(z).toInt()
+    val x = opts["x"]?.toFloat() ?: game.world.pathXAt(r)
+    game.player.reset(x, game.world.levelAt(r), z)
+    game.steerX = x
+    val frames = (opts["frames"] ?: "240").toInt(); val every = (opts["every"] ?: "20").toInt()
+    val jumps = opts["jump"]?.split(',')?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
+    game.input.kU = opts["stand"] == null
+    var k = 0
+    for (f in 0 until frames) {
+        if (f in jumps) game.onKey(com.blocktower.escape.core.Key.JUMP, true)
+        if (f - 12 in jumps) game.onKey(com.blocktower.escape.core.Key.JUMP, false)
+        opts["steer"]?.toFloat()?.let { if (game.player.state == com.blocktower.escape.core.PS.NORMAL) game.steerX = it }
+        game.update(1f / 60f)
+        if (f % every == 0) {
+            gfx.clear(); game.render(gfx)
+            ImageIO.write(gfx.image, "png", File(out, "run_%04d.png".format(k)))
+            val p = game.player
+            println("run_%04d f=%d state=%d z=%.2f x=%.2f y=%.2f v=%.1f slide=%.1f th=%.2f rot=%.0f cam yaw=%.2f".format(k, f, p.state, p.z, p.x, p.y,
+                kotlin.math.sqrt(p.vx * p.vx + p.vz * p.vz + p.vy * p.vy), p.slideS, p.slideTh, p.loopRot, game.cam.yaw))
+            k++
+        }
+    }
 }
 
 /** Times rendering of a few frames (for keeping the video recorder fast). */

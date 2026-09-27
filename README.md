@@ -12,8 +12,9 @@ portal at the top before time runs out. The app runs **Splash → Home → Selec
 - **Level map** (Select Level) from the approved Select Level artwork: a path of big coloured blocks climbing toward
   the castle and the portal, one per level, with numbers, stars, padlocks, short level names and SOON, and the same
   boy (seen from behind) standing on the level you are up to
-- **Five levels**: three teaching levels in the sky world, **Level 4** (the sky tower, built to match the Screen 4
-  design `design/screen4_reference.png`) and **Level 5** (the volcanic sky fortress, `design/level5_volcano_reference.png`)
+- **Six levels**: three teaching levels in the sky world, **Level 4** (the sky tower, built to match the Screen 4
+  design `design/screen4_reference.png`), **Level 5** (the volcanic sky fortress, `design/level5_volcano_reference.png`)
+  and **Level 6** (the sky temple with its rainbow slides, `design/level6_reference.png`)
 - **Saved progress** on the phone: unlocked levels, best stars and scores, the coin and gem wallet, relics,
   missions, the daily streak and settings
 
@@ -138,6 +139,52 @@ Maces knock you back and cost a heart (the shield blocks them): watch the swing 
 The HUD adds the route to the portal (a progress strip under the hearts), the score, and the relic's CHASE & COLLECT
 panel, in the left column clear of the timer, wallet, target panel and tools.
 
+## Level 6 — the sky temple (the approved Level 6 design)
+**Mission:** collect **15 blue blocks** and reach the **Temple Portal** (02:55 on the clock, three hearts, tools
+3 / 3 / 2 / 3); bonus: catch the **Runaway Relic**. The longest and hardest level so far (about 475 rows).
+
+The temple with its glowing portal stands on the highest island at the top of the screen from the first second, as in
+the design, over a blue sky of floating islands, waterfalls, ruins and a helicopter circling with a spinning rotor. The
+course runs over a sea of clouds: coloured blocks on temple-stone islands with moss, palms and waterfalls pouring off
+their edges, wooden bridges, braziers, and the design's **rainbow slides**. The temple, the stone golem, the
+helicopter, the waterfalls and the sky are cut from the design by `design/level6/build_l6.py` (into
+`app/src/main/assets/l6/`); the design's HUD, course, characters and hazards are taken out of the sky, since the game
+draws them live.
+
+**The rainbow slides.** Run into a slide's mouth and the boy sits down and rides it: he follows its curve, leans into
+the bends and is carried up the walls by his speed (the channel banks under him), with his body turning with the
+slide and his legs in place. The drop speeds him up, climbs slow him down, the glowing **speed rings** add a burst and
+he keeps his momentum when he shoots out of the exit onto the next island. Swipe left / right to climb the walls
+(coins run along the best line), JUMP to hop a spike plate. The camera follows him down, turning and tipping with the
+channel so the way ahead stays in view. There are four to ride: the first rainbow slide, the fast slide at the fork,
+the relic's slide and the Great Rainbow Run; the tubes curving round the islands at the start are scenery.
+
+1. **The temple gardens** — speed pads, the first **laser gate** (jump the beam, or pass while it is off: it flickers
+   before it fires), a moving block, a swinging mace, a **spiked block sliding across the path** on its rail, a gap
+   for the block tool, vanishing stones. **Checkpoint 1**
+2. **The Rainbow Slide** — the first long slide, swinging left, then right, down to an island below
+3. **The waterfall islands** — moving blocks island to island, a laser gate between spiked blocks, vanishing stepping
+   stones, then **the fork**: left, a short fast slide with a blue block; right, a block path with moving blocks, gems
+   and a shield. **Checkpoint 2** where they meet
+4. **Runaway Relic** — *CHASE & COLLECT!* (HUD: 0/1). The relic runs off along the course and rides the slide on its
+   route too, but slower than you do: use the slide and the speed pads to catch it. **RELIC CAPTURED!** pays +250
+   coins, +10 gems and +2,500 score and goes to the Prize Vault; miss it and it gets away, nothing lost.
+   **Checkpoint 3**
+5. **The Great Rainbow Run** — the longest slide: swooping bends, spike plates to steer round or hop, speed rings
+6. **The hazard gardens** — a mace, a fast laser, two spiked blocks sliding out of step, vanishing stones, crumbling
+   blocks, a narrow bridge under a mace, falling blocks, a spike row, a laser. **Checkpoint 4**
+7. **The Guardian chase** — the stone golem with the glowing purple eyes rises beside the path and chases on the left,
+   closing in when you slow down and hurling rocks: a moving block, crumbling rows, a laser, a one-lane bridge,
+   spikes, falling blocks. At **checkpoint 5** the island gives way under it and it falls into the clouds
+8. **The floating maze** — platforms sliding in turn over a long drop, a spring up to a high island, a laser,
+   crumbling and vanishing stones, a sliding spiked block, a moving platform. **Checkpoint 6**
+9. **The temple ascent** — *FINAL ESCAPE!* rising steps, lasers, moving platforms, a bridge under a mace, a sliding
+   spiked block, while the way collapses behind you
+10. **The temple stairs and the portal** — the portal blazes, the boy runs in, LEVEL COMPLETE
+
+Lasers, maces and spiked blocks knock you back and cost a heart (the shield blocks them). The HUD is the same as in
+Level 5 (route strip, score, the relic's CHASE & COLLECT panel).
+
 ## Controls
 Swipes are the default. **SETTINGS → Controls → JOYSTICK** turns the movement pad into a thumb stick instead: push up
 to run (a little is a jog, all the way a sprint), down to slow down and step back, left / right to steer (the further,
@@ -147,10 +194,10 @@ jumping stays on the JUMP button. **Sensitivity** (low / normal / high) applies 
 | Control (swipe mode) | Action |
 |---|---|
 | Swipe up (lower screen) | Run forward. Short swipe = jog, medium = run, long = sprint. A quick flick keeps him running after you lift your thumb; a held swipe runs while you hold and eases to a stop when you let go |
-| Swipe left / right | Steer toward that side of the path: a short swipe is a small correction, a medium one about one block, a long one up to 2½ blocks. Slide back to steer back |
+| Swipe left / right | Steer toward that side of the path: a short swipe is a small correction, a medium one about one block, a long one up to 2½ blocks. Slide back to steer back. On a rainbow slide it climbs that wall |
 | Swipe down | Slow down (short swipe) or stop (longer swipe); keep holding to step back carefully |
 | Flick up at an edge | With a gap, step or spikes just ahead, an upward flick also jumps, timed to the edge (on open ground it only runs) |
-| Big arrow (bottom-right) | Jump (hold for a higher jump) |
+| Big arrow (bottom-right) | Jump (hold for a higher jump); on a slide, hop a spike plate |
 | Magnet | Pulls in nearby coins, tool bubbles and blue blocks, even ones out of reach (8 s) |
 | Shield | Bubble that blocks one hit: spikes, debris, traps, the Tower Guard (10 s) |
 | Lightning | Faster running and a much stronger jump (6 s) |
@@ -209,36 +256,39 @@ block, and that steering stays smooth. It prints a timeline and a pass/fail chec
 `controls=joystick` plays the level with the joystick instead of swipes).
 
 `flow` plays the whole app from a fresh install by tapping the screen: Home, daily rewards (claim, the next day, a
-missed day), the level map (a locked level stays shut), the level card, pause -> LEVEL MAP, Levels 1-5 in a row
+missed day), the level map (a locked level stays shut), the level card, pause -> LEVEL MAP, Levels 1-6 in a row
 through NEXT LEVEL (the autopilot plays each one), "more levels soon", missions, the vault, settings, the app closed
 and opened again, and RESET. It checks unlocks, stars, the wallet (saved and on the HUD), relics, mission and chest
 rewards, settings and the saved progress, and prints a pass/fail checklist.
 
 ```
-./gradlew :sim:run --args="play level=5 out=sim-out"                          # one level (1-5; Level 4 by default)
+./gradlew :sim:run --args="play level=6 out=sim-out"                          # one level (1-6; Level 4 by default)
 ./gradlew :sim:run --args="play out=sim-out video=sim-out/run.mp4 ffmpeg=ffmpeg"  # also record a video
 ./gradlew :sim:run --args="flow out=sim-out shots=1"                          # the whole app, a screenshot of each screen
 ./gradlew :sim:run --args="flow w=720 h=1560 out=sim-out video=sim-out/tour.mp4 ffmpeg=ffmpeg"  # the whole app as a video tour
 ./gradlew :sim:run --args="app out=sim-out"                                   # Home, map, popups and level cards
 ./gradlew :sim:run --args="devices out=sim-out"                               # every screen on 12 display shapes (layout audit)
-./gradlew :sim:run --args="devices out=sim-out only=splash"                   # one screen (splash, home, map, daily, ... level5)
+./gradlew :sim:run --args="devices out=sim-out only=splash"                   # one screen (splash, home, map, daily, ... level6)
 ./gradlew :sim:run --args="music out=sim-out"                                 # the music themes as WAV files (calm and flat out)
 ./gradlew :sim:run --args="shot level=4 out=sim-out frames=240"               # one frame
 ./gradlew :sim:run --args="poses out=sim-out"                                 # the character animation poses (+ hips close up, run cycle)
 ./gradlew :sim:run --args="play level=5 relic=miss out=sim-out"               # Level 5, letting the Runaway Relic get away
 ./gradlew :sim:run --args="l5art out=sim-out"                                 # re-cut the Level 5 art from its design
+./gradlew :sim:run --args="play level=6 relic=miss out=sim-out"               # Level 6, letting the Runaway Relic get away
+./gradlew :sim:run --args="run level=6 z=45 frames=240 every=20 out=sim-out"  # start anywhere (here: the first slide), frames every 20
+python3 design/level6/build_l6.py                                            # re-cut the Level 6 art from its design (LaMa, IS-Net, Real-ESRGAN)
 ```
 
 ## Project layout
 - `app/src/main/java/com/blocktower/escape/core/`: platform-independent game code: the app and its screens (`App`,
-  `SplashScreen`, `HomeScreen`, `LevelMap`, `Menus`, `MenuKit`, `Progress`), the levels (`LevelSpec`, `Levels123`, `Level`, `Level5`), physics,
+  `SplashScreen`, `HomeScreen`, `LevelMap`, `Menus`, `MenuKit`, `Progress`), the levels (`LevelSpec`, `Levels123`, `Level`, `Level5`, `Level6`), physics,
   events, renderer, HUD and the character rig
 - `app/src/main/java/com/blocktower/escape/`: Android host (Activity, game view and loop, Canvas renderer, sound, saved progress)
 - `app/src/main/assets/`: artwork taken from the designs (Home screen, backgrounds, gates, boy, coins, HUD icons), block textures and fonts
-- `design/`: the approved references and the scripts that build the game's artwork from them (`home/build_home.py`, `menu/` for the splash / Home / level map pieces, `level5/`, `make_gate_assets.py`)
+- `design/`: the approved references and the scripts that build the game's artwork from them (`home/build_home.py`, `menu/` for the splash / Home / level map pieces, `level5/`, `level6/`, `make_gate_assets.py`)
 - `sim/`: desktop playtest harness (not part of the APK)
 
-The boy's animations (run, jump, fall, land, turn, collect, hurt, celebrate, rescue, capture, portal, the loop) come
+The boy's animations (run, jump, fall, land, turn, collect, hurt, celebrate, rescue, capture, portal, the loop, the slides) come
 from the original sprite cut into legs, body and arms at load time; nothing is repainted. The legs swap sides every
 step by mirroring about the centre of the pants seat, and the cut between body and legs runs across the seat, which
 is symmetric, so the hips have the same outline in either stride; the legs hang from the hip joint and move and lean

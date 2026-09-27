@@ -4,6 +4,8 @@ object PS {
     const val NORMAL = 0; const val RESCUE_FALL = 1; const val RESCUE_RIDE = 2; const val CAUGHT = 4; const val WIN = 5; const val DEAD = 6
     /** Running round the great loop (Level 5). */
     const val LOOP = 7
+    /** Riding a rainbow slide (Level 6). */
+    const val SLIDE = 8
 }
 
 class Player {
@@ -39,8 +41,16 @@ class Player {
     /** On the loop: which loop, how far round (0..1), speed along the track, offset across it, hop in from it. */
     var loop: Loop? = null
     var loopU = 0f; var loopV = 0f; var loopLat = 0f; var loopHop = 0f; var loopHopV = 0f
-    /** How the boy is turned on screen (degrees) to stand on the loop's track: followed smoothly, never snapped. */
+    /** How the boy is turned on screen (degrees) to stand on the loop's track (or a slide's channel): followed smoothly, never snapped. */
     var loopRot = 0f
+    /**
+     * On a rainbow slide: which slide, how far down it (s), pace along it, the angle round the channel (th, 0 = its
+     * bottom) and how fast that changes, a hop in from its surface, and how hard he leans into the turn (-1..1).
+     */
+    var slide: Slide? = null
+    var slideS = 0f; var slideV = 0f; var slideTh = 0f; var slideThV = 0f; var slideHop = 0f; var slideHopV = 0f; var slideLean = 0f
+    /** Dropping into a slide's mouth: where he was relative to the channel, blended away over a moment (no snap). */
+    var slideInX = 0f; var slideInY = 0f; var slideInZ = 0f; var slideIn = 0f
     var portalScale = 1f
     var spin = 0f
     var sortKey = 0f
@@ -61,6 +71,7 @@ class Player {
         state = PS.NORMAL; stateT = 0f; lean = 0f; invuln = 0f; hurtFlash = 0f
         portalScale = 1f; spin = 0f; airTime = 0f; boostT = 0f; dashT = 0f; runW = 0f; airW = 0f
         loop = null; loopU = 0f; loopV = 0f; loopLat = 0f; loopHop = 0f; loopHopV = 0f; loopRot = 0f
+        slide = null; slideS = 0f; slideV = 0f; slideTh = 0f; slideThV = 0f; slideHop = 0f; slideHopV = 0f; slideLean = 0f; slideIn = 0f
         landT = 9f; jumpT = 9f; skidT = 9f; collectT = 9f; castT = 9f; hurtT = 9f; celebrateT = 9f
         safeX = x0; safeY = y0; safeZ = z0; safeBlock = null
     }

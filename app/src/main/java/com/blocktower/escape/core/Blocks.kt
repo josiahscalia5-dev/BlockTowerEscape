@@ -7,10 +7,12 @@ object BC {
     const val STONE = 10; const val IRON = 11; const val ENERGY = 12
     /** Level 5: the fortress's stone bricks, dark volcanic rock (spike bases, the Guardian's boulders) and bridge planks. */
     const val FORT = 13; const val BASALT = 14; const val WOOD = 15
-    const val COUNT = 16
+    /** Level 6: the sky temple's sun-bleached stone (the floating islands, the temple steps). */
+    const val SAND = 16
+    const val COUNT = 17
 
     /** Colours drawn with the brick tone map (courses of stones or planks) instead of the cracked-stone ones. */
-    fun bricky(c: Int) = c == BRICK || c == FORT || c == WOOD
+    fun bricky(c: Int) = c == BRICK || c == FORT || c == WOOD || c == SAND
 
     /** 5-stop colour ramps: shadow, base, bright, highlight, white-hot. */
     val ramps: Array<IntArray> = arrayOf(
@@ -30,6 +32,7 @@ object BC {
         intArrayOf(0xFF2A2024.toInt(), 0xFF564650.toInt(), 0xFF7E6A70.toInt(), 0xFFAA9294.toInt(), 0xFFE2CEC6.toInt()),  // fortress stone (Level 5)
         intArrayOf(0xFF161012.toInt(), 0xFF2E2426.toInt(), 0xFF4A3A38.toInt(), 0xFF766058.toInt(), 0xFFB8988A.toInt()),  // basalt (Level 5)
         intArrayOf(0xFF3A1E0C.toInt(), 0xFF6A3C1A.toInt(), 0xFF96602C.toInt(), 0xFFC4904E.toInt(), 0xFFEED0A0.toInt()),  // bridge planks (Level 5)
+        intArrayOf(0xFF4A3A48.toInt(), 0xFF866E76.toInt(), 0xFFB09A98.toInt(), 0xFFD6C2B2.toInt(), 0xFFF4E8DA.toInt()),  // temple stone (Level 6)
     )
 
     /** Representative colours (for particles, far LOD and silhouettes). */
@@ -131,4 +134,8 @@ object Tune {
     /** The great loop (Level 5): the slowest and fastest pace round it. */
     const val LOOP_MIN = 6.2f
     const val LOOP_MAX = 11.5f
+    /** Rainbow slides (Level 6): the slowest and fastest pace down one, and the steepest he rides up a wall (rad). */
+    const val SLIDE_MIN = 5.0f
+    const val SLIDE_MAX = 13.5f
+    const val SLIDE_WALL = 1.2f
 }
