@@ -98,6 +98,14 @@ interface Platform {
     fun createImage(p: Pixels): Img
     fun sound(id: Int, volume: Float = 1f, rate: Float = 1f)
     fun haptic(strong: Boolean)
+
+    /** Small persistent key/value store (player progress and settings). */
+    fun loadInt(key: String, def: Int): Int = def
+    fun saveInt(key: String, value: Int) {}
+    /** Mutes sound effects / vibration app-wide (Settings). */
+    fun setFeedback(sound: Boolean, haptics: Boolean) {}
+    /** Leave the app (Back on the Home screen). */
+    fun exitApp() {}
 }
 
 class Pixels(val w: Int, val h: Int, val argb: IntArray)

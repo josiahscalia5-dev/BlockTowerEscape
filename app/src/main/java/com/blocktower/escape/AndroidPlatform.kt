@@ -1,5 +1,6 @@
 package com.blocktower.escape
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -11,6 +12,9 @@ import com.blocktower.escape.core.Platform
 
 class AndroidPlatform(private val context: Context, private val view: View) : Platform {
     private val sfx = SoundFx(context)
+    private val prefs = context.getSharedPreferences("block_tower_escape", Context.MODE_PRIVATE)
+    @Volatile private var soundOn = true
+    @Volatile private var hapticsOn = true
 
     private fun decode(path: String): Bitmap {
         val opts = BitmapFactory.Options().apply {
@@ -44,11 +48,16 @@ class AndroidPlatform(private val context: Context, private val view: View) : Pl
         return Img(p.w, p.h, b)
     }
 
-    override fun sound(id: Int, volume: Float, rate: Float) = sfx.play(id, volume, rate)
+    override fun sound(id: Int, volume: Float, rate: Float) { if (soundOn) sfx.play(id, volume, rate) }
 
     override fun haptic(strong: Boolean) {
-        view.performHapticFeedback(if (strong) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.KEYBOARD_TAP)
+        if (hapticsOn) view.performHapticFeedback(if (strong) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.KEYBOARD_TAP)
     }
+
+    override fun loadInt(key: String, def: Int): Int = prefs.getInt(key, def)
+    override fun saveInt(key: String, value: Int) { prefs.edit().putInt(key, value).apply() }
+    override fun setFeedback(sound: Boolean, haptics: Boolean) { soundOn = sound; hapticsOn = haptics }
+    override fun exitApp() { (context as? Activity)?.moveTaskToBack(true) }
 
     fun release() = sfx.release()
 }

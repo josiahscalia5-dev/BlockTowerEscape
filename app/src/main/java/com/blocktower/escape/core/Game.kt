@@ -59,6 +59,16 @@ class Game(val platform: Platform) {
     val view = WorldRenderer(this)
     val hud = Hud(this)
 
+    /** Set by the Select Level screen before the level starts. */
+    var levelNumber = 1
+    /** Player wallet at level start (shared with Home / Select Level). */
+    var startCoins = Tune.START_COINS
+    var startGems = Tune.START_GEMS
+    /** Leave gameplay for the Select Level screen (pause / fail / results buttons). */
+    var onExit: (() -> Unit)? = null
+    /** Called once when the results screen appears (stars + rewards final). */
+    var onComplete: ((Results) -> Unit)? = null
+
     var state = GS.INTRO
     var stateT = 0f
     var paused = false
@@ -113,7 +123,7 @@ class Game(val platform: Platform) {
         if (!first) world = Level.build()
         player.reset(world.spawnX, world.spawnY, world.spawnZ)
         state = GS.INTRO; stateT = 0f; paused = false; time = Tune.START_TIME
-        hearts = 2; coins = Tune.START_COINS; gems = Tune.START_GEMS; target = 0
+        hearts = 2; coins = startCoins; gems = startGems; target = 0
         shownCoins = coins; shownGems = gems; shownTarget = 0
         coinsCollected = 0; mysteryOpened = 0; targetsWrong = 0; falls = 0; checkpoint = 0
         tools[0].count = 3; tools[1].count = 2; tools[2].count = 3; tools[3].count = 3
@@ -1004,7 +1014,7 @@ class Game(val platform: Platform) {
             results = Results.compute(this)
             hud.bumpTarget()
         }
-        if (stateT > 3.4f) { state = GS.RESULTS; stateT = 0f; results?.let { r -> coins += r.bonusCoins; gems += r.gemReward } }
+        if (stateT > 3.4f) { state = GS.RESULTS; stateT = 0f; results?.let { r -> coins += r.bonusCoins; gems += r.gemReward; onComplete?.invoke(r) } }
     }
 
     // ------------------------------------------------------------------ camera

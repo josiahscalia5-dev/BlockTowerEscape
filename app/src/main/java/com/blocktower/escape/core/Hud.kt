@@ -91,6 +91,7 @@ class Hud(val g: Game) {
     fun touchDown(id: Int, x: Float, y: Float) {
         val st = g.state
         if (g.paused) { overlayButton(x, y); return }
+        if (st == GS.FAILED && g.stateT <= 1.1f) return
         if (st == GS.RESULTS || st == GS.FAILED) { overlayButton(x, y); return }
         if (x > ax(930f) && y < ayT(110f)) { pausePress = 1f; g.togglePause(); overlayT = 0f; return }
         for (k in 0..3) if (inCircle(x, y, toolX(k), toolY(k), 72f * s)) {
@@ -126,10 +127,11 @@ class Hud(val g: Game) {
         g.input.joyX = dx; g.input.joyY = -dy
     }
 
-    private var btnA = FloatArray(4); private var btnB = FloatArray(4)
+    private var btnA = FloatArray(4); private var btnB = FloatArray(4); private var btnC = FloatArray(4)
     private fun overlayButton(x: Float, y: Float) {
         if (x >= btnA[0] && x <= btnA[2] && y >= btnA[1] && y <= btnA[3]) { pressA(); return }
         if (x >= btnB[0] && x <= btnB[2] && y >= btnB[1] && y <= btnB[3]) { pressB(); return }
+        if (x >= btnC[0] && x <= btnC[2] && y >= btnC[1] && y <= btnC[3]) { pressC(); return }
     }
     private fun pressA() {
         g.platform.sound(Sfx.CLICK)
@@ -141,7 +143,12 @@ class Hud(val g: Game) {
     private fun pressB() {
         g.platform.sound(Sfx.CLICK)
         if (g.paused) { g.restartLevel(); overlayT = 0f }
-        else if (g.state == GS.RESULTS) g.fx.popupScreen("Next screens are not built yet", w * 0.5f, btnB[1] - 40f * s, 0xFFBFD8FF.toInt(), 34f)
+        else if (g.state == GS.RESULTS || g.state == GS.FAILED) g.onExit?.invoke()
+    }
+    /** Back to the Select Level map. */
+    private fun pressC() {
+        g.platform.sound(Sfx.CLICK)
+        if (g.paused) g.onExit?.invoke()
     }
     fun pressDefault() { if (g.paused || g.state == GS.RESULTS || g.state == GS.FAILED) pressA() }
 
@@ -178,7 +185,8 @@ class Hud(val g: Game) {
         drawRR(gr, l, t, r, b, 14f * s, 0xFF3FA9FF.toInt(), 0xFF1D5FE0.toInt())
         drawRR(gr, l + 5f * s, t + 5f * s, r - 5f * s, b - 5f * s, 10f * s, 0xFF15306C.toInt(), 0xFF0A1A44.toInt())
         gr.text("Lv", ax(59f), ayT(44f), 33f * s, Font.UI, Col.WHITE)
-        gr.text("23", ax(59f), ayT(84f), 48f * s, Font.UI, Col.WHITE)
+        val lv = g.levelNumber.toString()
+        gr.text(lv, ax(59f), ayT(84f), (if (lv.length > 2) 36f else 48f) * s, Font.UI, Col.WHITE)
 
         // hearts
         panel(gr, 112f, 20f, 314f, 92f, 16f, 0x8C0A1434.toInt())
@@ -497,12 +505,13 @@ class Hud(val g: Game) {
     }
 
     private fun drawPause(gr: Gfx) {
-        val top = h * 0.5f - 260f * s; val bot = h * 0.5f + 260f * s
+        val top = h * 0.5f - 325f * s; val bot = h * 0.5f + 325f * s
         overlayPanel(gr, top, bot)
         gr.text("PAUSED", w * 0.5f, top + 90f * s, 80f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 8f * s, 0xFF1A0A20.toInt())
-        gr.text("Level 23  •  ${g.timeText()} left  •  ${g.target}/12 blue", w * 0.5f, top + 170f * s, 32f * s, Font.UI, 0xFFCFE0FF.toInt())
-        button(gr, w * 0.5f, top + 290f * s, 520f * s, 100f * s, "RESUME", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
-        button(gr, w * 0.5f, top + 420f * s, 520f * s, 100f * s, "RESTART", 0xFFFFB84A.toInt(), 0xFFE0701A.toInt(), btnB)
+        gr.text("Level ${g.levelNumber}  •  ${g.timeText()} left  •  ${g.target}/12 blue", w * 0.5f, top + 170f * s, 32f * s, Font.UI, 0xFFCFE0FF.toInt())
+        button(gr, w * 0.5f, top + 285f * s, 520f * s, 100f * s, "RESUME", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
+        button(gr, w * 0.5f, top + 405f * s, 520f * s, 100f * s, "RESTART", 0xFFFFB84A.toInt(), 0xFFE0701A.toInt(), btnB)
+        button(gr, w * 0.5f, top + 525f * s, 520f * s, 100f * s, "LEVELS", 0xFF5AB6FF.toInt(), 0xFF1E62E6.toInt(), btnC)
     }
 
     private fun drawFail(gr: Gfx) {
@@ -512,8 +521,9 @@ class Hud(val g: Game) {
         gr.text(g.failReason, w * 0.5f, top + 185f * s, 38f * s, Font.TITLE, Col.WHITE, Align.CENTER, 5f * s, 0xFF1A0A20.toInt())
         gr.text("Blue blocks ${g.target}/12   •   Coins +${g.coinsCollected * Tune.COIN_VALUE}", w * 0.5f, top + 265f * s, 32f * s, Font.UI, 0xFFCFE0FF.toInt())
         gr.text("Checkpoints keep your progress — try again!", w * 0.5f, top + 320f * s, 28f * s, Font.UI, 0xFF9FB4E0.toInt())
-        button(gr, w * 0.5f, top + 460f * s, 520f * s, 110f * s, "RETRY", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
-        btnB[0] = -1f; btnB[1] = -1f; btnB[2] = -1f; btnB[3] = -1f
+        button(gr, w * 0.5f - 205f * s, top + 460f * s, 360f * s, 110f * s, "RETRY", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
+        button(gr, w * 0.5f + 205f * s, top + 460f * s, 360f * s, 110f * s, "LEVELS", 0xFF5AB6FF.toInt(), 0xFF1E62E6.toInt(), btnB)
+        btnC[0] = -1f; btnC[1] = -1f; btnC[2] = -1f; btnC[3] = -1f
     }
 
     private val starPath = VPath()
@@ -542,7 +552,7 @@ class Hud(val g: Game) {
         val top = h * 0.5f - 560f * s; val bot = h * 0.5f + 560f * s
         overlayPanel(gr, top, bot)
         val cxp = w * 0.5f
-        gr.text("LEVEL 23 COMPLETE!", cxp, top + 90f * s, 70f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 8f * s, 0xFF1A0A20.toInt())
+        gr.text("LEVEL ${g.levelNumber} COMPLETE!", cxp, top + 90f * s, 70f * s, Font.TITLE, 0xFFFFE14A.toInt(), Align.CENTER, 8f * s, 0xFF1A0A20.toInt())
         for (i in 0..2) {
             val st = t - 0.35f - i * 0.3f
             val on = i < r.stars
@@ -576,6 +586,7 @@ class Hud(val g: Game) {
         gr.image(gi, cxp + 90f * s, y - 30f * s, 58f * s, 58f * s * gi.h / gi.w)
         gr.text("+${r.gemReward}", cxp + 165f * s, y, 50f * s, Font.TITLE, 0xFFE59CFF.toInt(), Align.LEFT, 5f * s, 0xFF1A0A20.toInt())
         button(gr, cxp - 205f * s, bot - 110f * s, 360f * s, 110f * s, "REPLAY", 0xFF5AE07A.toInt(), 0xFF1E9E48.toInt(), btnA)
-        button(gr, cxp + 205f * s, bot - 110f * s, 360f * s, 110f * s, "NEXT", 0xFF5AB6FF.toInt(), 0xFF1E62E6.toInt(), btnB, false)
+        button(gr, cxp + 205f * s, bot - 110f * s, 360f * s, 110f * s, "NEXT", 0xFF5AB6FF.toInt(), 0xFF1E62E6.toInt(), btnB)
+        btnC[0] = -1f; btnC[1] = -1f; btnC[2] = -1f; btnC[3] = -1f
     }
 }
