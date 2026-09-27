@@ -21,7 +21,10 @@ The gate is visible from the first second, grows as you climb toward it, and onl
 
 | Control | Action |
 |---|---|
-| Joystick (bottom-left) | Move: up = forward, down = back, left / right |
+| Swipe up (lower screen) | Run forward. Short swipe = jog, medium = run, long = sprint. A quick flick keeps him running after you lift your thumb; a held swipe runs while you hold and eases to a stop when you let go |
+| Swipe left / right | Steer toward that side of the path: a short swipe is a small correction, a medium one about one block, a long one up to 2½ blocks. Slide back to steer back |
+| Swipe down | Slow down (short swipe) or stop (longer swipe); keep holding to step back carefully |
+| Flick up at an edge | With a gap, step or spikes just ahead, an upward flick also jumps, timed to the edge (on open ground it only runs) |
 | Big arrow (bottom-right) | Jump (hold for a higher jump) |
 | Magnet | Pulls in nearby coins, tool bubbles and blue blocks, even ones out of reach (8 s) |
 | Shield | Bubble that blocks one hit: spikes, debris, traps, the Tower Guard (10 s) |
@@ -31,6 +34,13 @@ The gate is visible from the first second, grows as you climb toward it, and onl
 
 Each tool has a use count (the badge), a duration ring while active and a short cooldown. More uses come from
 floating tool bubbles and from tool / lightning blocks.
+
+Swipe anywhere in the lower part of the screen that isn't a button. The pad at the bottom-left
+shows what your thumb is doing (its knob follows the swipe, and the arrow for each recognised swipe lights up briefly).
+Tiny accidental touches are ignored. Tools activate when you lift your finger on the button, so a swipe that starts on
+a tool or slides across one never uses it. Steering keeps the boy on the blocks: he glides toward the side you swipe to,
+stops at the edge of the path instead of walking off, and settles onto the middle of a block after a lane change.
+To switch to a path across a gap, jump and steer in the air. The camera looks slightly into turns and rises a little with jumps.
 
 On an emulator you can use the keyboard: WASD or the arrow keys, Space to jump, 1–4 for the tools, P to pause.
 
@@ -60,8 +70,13 @@ HUD, then the results: objectives, stars, score count-up, rewards and **NEXT LEV
 
 ## Headless playtest (`sim/`)
 `sim` runs the same game code on the desktop JVM with a Java2D renderer and an autopilot that plays the whole level
-with the joystick, jump and tool buttons: it falls once on purpose, lets the Tower Guard catch it once, continues
-from the checkpoint, uses every tool and finishes at the gate. It prints a timeline and a pass/fail checklist.
+with simulated touches (swipes in the movement area, taps on the jump and tool buttons), sent through the game's own
+touch handlers: it falls once on purpose, lets the Tower Guard catch it once, continues from the checkpoint, uses every
+tool and finishes at the gate. On the way it runs the movement tests: swipe forward, left and right, small corrections,
+jumping while running (button and context flick), choosing a path at the fork, steering around obstacles,
+falling and recovery, tools while running, and reaching the gate. It also checks that stray touches and swipes over tool
+buttons do nothing, that a flick on open ground doesn't jump, that the boy never ends up inside a block, and that
+steering stays smooth. It prints a timeline and a pass/fail checklist (`scenario=hearts` tests losing every heart and continuing).
 
 ```
 ./gradlew :sim:run --args="play out=sim-out"                                  # report only

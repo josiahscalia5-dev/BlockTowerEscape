@@ -95,7 +95,7 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
                 game.touchUp(e.getPointerId(i), e.getX(i), e.getY(i))
             }
             MotionEvent.ACTION_CANCEL -> {
-                for (i in 0 until e.pointerCount) game.touchUp(e.getPointerId(i), e.getX(i), e.getY(i))
+                for (i in 0 until e.pointerCount) game.touchCancel(e.getPointerId(i))
             }
         }
         return true

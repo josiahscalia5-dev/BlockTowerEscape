@@ -38,14 +38,14 @@ class Tool(val kind: Int, var count: Int, val duration: Float, val cooldownDur: 
 object Key { const val LEFT = 1; const val RIGHT = 2; const val UP = 3; const val DOWN = 4; const val JUMP = 5
     const val T1 = 6; const val T2 = 7; const val T3 = 8; const val T4 = 9; const val PAUSE = 10; const val ENTER = 11 }
 
+/** Keyboard (emulator) and button state. Touch movement goes through [SwipeControl]. */
 class Input {
-    var joyX = 0f; var joyY = 0f
     var kL = false; var kR = false; var kU = false; var kD = false
     var jumpHeld = false
     var jumpPressed = false
     val toolTap = BooleanArray(4)
-    fun axisX() = clamp(joyX + (if (kR) 1f else 0f) - (if (kL) 1f else 0f), -1f, 1f)
-    fun axisY() = clamp(joyY + (if (kU) 1f else 0f) - (if (kD) 1f else 0f), -1f, 1f)
+    fun keyX() = (if (kR) 1f else 0f) - (if (kL) 1f else 0f)
+    fun keyY() = (if (kU) 1f else 0f) - (if (kD) 1f else 0f)
 }
 
 /** Auto step-up height: half-block stairs can be walked, full blocks need a jump. */
@@ -60,6 +60,7 @@ class Game(val platform: Platform) {
     val input = Input()
     val tools = arrayOf(Tool(TK.MAGNET, 3, 8f, 3f), Tool(TK.SHIELD, 2, 10f, 3f), Tool(TK.SPEED, 3, 6f, 3f), Tool(TK.BLOCK, 3, 0f, 1.5f))
     val ev = Events(this)
+    val swipe = SwipeControl(this)
     val rig = PlayerRig(this)
     val view = WorldRenderer(this)
     val hud = Hud(this)
@@ -122,6 +123,15 @@ class Game(val platform: Platform) {
     private var kickY = 0f; private var kickV = 0f
     private var camInit = false
 
+    /** Lateral position the boy is steering toward (swipes move it; he glides after it). */
+    var steerX = 0f
+    /** Smoothed lateral motion -1..1 (turn lean, camera response). */
+    var turn = 0f
+    private var flickJumpT = 0f        // a context flick is waiting for the edge
+    private var autoHoldT = 0f          // a flick jump counts as a held jump button (full height)
+    var movedYet = false
+        private set
+
     val onArrive: (Flyer) -> Unit = { f -> arrive(f) }
     private val cand = ArrayList<Block>(64)
     private var magnetPullT = 0f
@@ -145,6 +155,7 @@ class Game(val platform: Platform) {
         camInit = false; camYaw = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
         combo = 0; lastTargetT = -9f
         kickY = 0f; kickV = 0f; camLead = 0f; camRoll = 0f; camFov = 1f
+        swipe.reset(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f; movedYet = false
         markSpawnContacts()
     }
 
@@ -173,6 +184,7 @@ class Game(val platform: Platform) {
         shake = 0f; flashRed = 0f; flashWhite = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
         state = GS.INTRO; stateT = 1.39f; introCountFrom = 1.39f; introSwoop = false; paused = false
         camInit = false; camYaw = 0f
+        swipe.stop(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f
         markSpawnContacts()
     }
 
@@ -195,10 +207,13 @@ class Game(val platform: Platform) {
     fun touchDown(id: Int, x: Float, y: Float) = hud.touchDown(id, x, y)
     fun touchMove(id: Int, x: Float, y: Float) = hud.touchMove(id, x, y)
     fun touchUp(id: Int, x: Float, y: Float) = hud.touchUp(id, x, y)
+    fun touchCancel(id: Int) = hud.touchCancel(id)
 
     fun togglePause() {
         if (state == GS.RESULTS || state == GS.FAILED || state == GS.COMPLETE) return
         paused = !paused
+        // pausing lets go of the movement swipe and stops running, so resuming never runs off by itself
+        if (paused) { swipe.cancel(swipe.id); swipe.stop() }
         platform.sound(Sfx.CLICK)
     }
 
@@ -226,6 +241,7 @@ class Game(val platform: Platform) {
             if (time <= 0f) timeUp()
         }
 
+        swipe.update(dt)
         updateTools(sdt)
         updateBlocks(sdt)
         ev.update(sdt)
@@ -395,7 +411,7 @@ class Game(val platform: Platform) {
             val z = floor(p.z).toFloat()
             if (!solidAt(lx, bottom, z)) { makeToolBlock(lx, bottom, z, 0); placed++ }
         }
-        val dirZ = if (input.axisY() < -0.5f) -1 else 1
+        val dirZ = if (player.vz < -0.5f || input.keyY() < 0f) -1 else 1
         var started = placed > 0
         for (k in 1..5) {
             val z = floor(p.z).toFloat() + k * dirZ
@@ -576,27 +592,71 @@ class Game(val platform: Platform) {
             PS.WIN, PS.CAUGHT -> return
             PS.DEAD -> { p.vy -= Tune.GRAVITY * dt; p.y += p.vy * dt; p.airW = 1f; return }
         }
+        updatePathExtent()
         val controllable = state == GS.PLAY && p.state == PS.NORMAL && !ev.revealing
-        var ax = 0f; var az = 0f
-        if (controllable) {
-            ax = input.axisX(); az = input.axisY()
-            val m = len2(ax, az)
-            if (m < 0.18f) { ax = 0f; az = 0f } else if (m > 1f) { ax /= m; az /= m }
-        }
         val maxV = if (speedOn) Tune.RUN_FAST else Tune.RUN
-        val accel = if (p.grounded) Tune.ACCEL else Tune.AIR_ACCEL
-        val tvx = ax * maxV
-        var tvz = az * maxV
+        // ---- forward: the swipe (or keyboard) sets a pace; the boy accelerates and eases off smoothly
+        var drive = 0f
+        val steerIn = swipe.takeSteer()
+        if (controllable) {
+            drive = swipe.drive
+            val ky = input.keyY()
+            if (ky != 0f) drive = if (ky > 0f) 1f else -0.45f
+            // ---- sideways: move the steering target; he glides after it (never snaps)
+            steerX += steerIn
+            val kx = input.keyX()
+            if (kx != 0f) { steerX += kx * 4.5f * dt; swipe.laneChange = true }
+            val gb = p.ground
+            if (p.grounded && gb != null && gb.type == BT.MOVING) steerX += gb.dxFrame
+            if (p.grounded) {
+                // stay on the path you are on: steering alone never walks you off its side (jump to change paths)
+                val lo = pathLo; val hi = pathHi
+                if (lo < hi) { val c = clamp(steerX, lo, hi); swipe.absorb(steerX - c); steerX = c }
+                // settle onto the middle of a block once the thumb stops steering
+                if (swipe.steerIdle > 0.18f && kx == 0f && swipe.laneChange) {
+                    val cx = nearestBlockCentre(steerX)
+                    if (!cx.isNaN()) steerX = lerp(steerX, cx, damp(7f, dt))
+                }
+            }
+            if (!movedYet && (abs(drive) > 0.05f || abs(steerX - p.x) > 0.05f)) movedYet = true
+        } else steerX = p.x
+        var tvz = drive * maxV
+        // a hard sideways move takes a little off the forward pace (he eases into the turn)
+        if (p.grounded && tvz > 0f) tvz *= 1f - 0.15f * clamp01(abs(p.vx) / maxV)
         if (p.boostT > 0f && p.vz > tvz) tvz = p.vz   // a star-block launch keeps its speed in the air
+        val err = steerX - p.x
+        val tvx = if (abs(err) < 0.01f) 0f else clamp(err * 7f, -maxV * 0.9f, maxV * 0.9f)
         // skid: sharp change of sideways direction while running
         if (p.grounded && abs(p.vx) > 2.6f && tvx * p.vx < 0f && abs(tvx) > 2.6f && p.skidT > 0.3f) {
             p.skidT = 0f; p.skidDir = sign(p.vx)
             fx.dust(p.x + p.skidDir * 0.2f, p.y, p.z, 5, 0xAAE8DCC8.toInt())
             platform.sound(Sfx.SKID, 0.35f)
         }
-        p.vx = approach(p.vx, tvx, accel * dt)
-        p.vz = approach(p.vz, tvz, accel * dt)
+        val fwdAcc = when {
+            !p.grounded -> 14f
+            abs(tvz) > abs(p.vz) && tvz * p.vz >= 0f -> 16f     // speeding up
+            drive < -0.01f -> 28f                                // swiped down: brake
+            else -> 14f                                          // easing off
+        }
+        p.vx = approach(p.vx, tvx, (if (p.grounded) 32f else 18f) * dt)
+        p.vz = approach(p.vz, tvz, fwdAcc * dt)
         if (!controllable && p.grounded) { p.vx *= 0.8f; p.vz *= 0.8f }
+
+        // ---- context jump: an upward flick with a gap, step or hazard just ahead jumps at the edge
+        val flicked = swipe.takeFlickUp()
+        if (controllable && flicked) {
+            val sp = len2(p.vx, p.vz)
+            if (edgeAhead(0.6f + sp * 0.32f + 0.3f) >= 0f) flickJumpT = 0.75f
+        }
+        if (flickJumpT > 0f) {
+            flickJumpT -= dt
+            val e = edgeAhead(0.9f)
+            val wall = lastEdgeWall
+            if (e >= 0f && e < (if (wall) 0.5f else 0.36f)) {
+                input.jumpPressed = true; autoHoldT = 0.3f; flickJumpT = 0f
+            } else if (!controllable || (len2(p.vx, p.vz) < 0.5f && e < 0f)) flickJumpT = 0f
+        }
+        if (autoHoldT > 0f) autoHoldT -= dt
 
         // jumping (coyote time + buffer, variable height)
         if (controllable) {
@@ -611,7 +671,7 @@ class Game(val platform: Platform) {
                 platform.sound(Sfx.JUMP, 0.7f, if (speedOn) 1.2f else 1f)
                 fx.dust(p.x, p.y, p.z, 4)
             }
-            if (p.jumping && !input.jumpHeld && p.vy > 3.5f) p.vy = 3.5f
+            if (p.jumping && !input.jumpHeld && autoHoldT <= 0f && p.vy > 3.5f) p.vy = 3.5f
         }
         val gr = if (p.vy < 0f) Tune.GRAVITY * 1.08f else Tune.GRAVITY
         p.vy = max(p.vy - gr * dt, -24f)
@@ -685,7 +745,8 @@ class Game(val platform: Platform) {
         }
         p.runW = approach(p.runW, if (p.grounded) clamp01(sp / 4f) else p.runW, dt * 8f)
         p.airW = if (p.grounded) approach(p.airW, 0f, dt * 18f) else if (p.airTime > 0.05f) approach(p.airW, 1f, dt * 10f) else p.airW
-        p.lean = lerp(p.lean, clamp(p.vx / Tune.RUN, -1f, 1f), min(1f, dt * 10f))
+        p.lean = lerp(p.lean, clamp(p.vx / Tune.RUN, -1f, 1f), min(1f, dt * 9f))
+        turn = lerp(turn, clamp(p.vx / Tune.RUN, -1f, 1f), damp(3.5f, dt))
 
         // fell off the course
         if (p.state == PS.NORMAL && !p.grounded && p.y < p.lastGroundY - Tune.FALL_DEPTH) startRescue("fall")
@@ -710,6 +771,82 @@ class Game(val platform: Platform) {
         if (!stable || b.destroyed || b.sx != 1f) return
         if (abs(p.x - b.x) > 0.42f || p.z < b.z + 0.08f || p.z > b.z1 - 0.08f) return
         p.safeX = b.x; p.safeY = b.y1; p.safeZ = b.z + 0.5f; p.safeBlock = b
+    }
+
+    // ------------------------------------------------------------------ path-aware steering helpers
+    /** Walkable extent (steering limits) of the path under the player, updated each frame. */
+    private var pathLo = 0f; private var pathHi = 0f
+    private val spanLo = FloatArray(48); private val spanHi = FloatArray(48)
+
+    /** Is this block something you can stand on at the player's height? */
+    private fun walkable(b: Block, y: Float) = (b.collides() || b.type == BT.RESCUE) && b.y1 >= y - 0.6f && b.y1 <= y + STEP + 0.05f
+
+    /** The stretch of blocks (this row and the next, merged) that the player is standing on. */
+    private fun updatePathExtent() {
+        val p = player
+        var n = 0
+        // rows the boy stands on now, plus the next one when he is about to reach it
+        for (r in floor(p.z - Tune.RADIUS + 0.02f).toInt()..floor(p.z + 0.3f + 0.08f * max(0f, p.vz)).toInt()) {
+            val row = world.row(r) ?: continue
+            for (b in row) if (walkable(b, p.y) && n < spanLo.size) { spanLo[n] = b.x0; spanHi[n] = b.x1; n++ }
+        }
+        pathLo = 0f; pathHi = 0f
+        if (n == 0) return
+        // grow the span that contains the player through every touching/overlapping block
+        var lo = p.x; var hi = p.x
+        var grew = true
+        var found = false
+        for (i in 0 until n) if (p.x >= spanLo[i] - 0.3f && p.x <= spanHi[i] + 0.3f) { lo = min(lo, spanLo[i]); hi = max(hi, spanHi[i]); found = true }
+        if (!found) return
+        while (grew) {
+            grew = false
+            for (i in 0 until n) if (spanHi[i] >= lo - 0.05f && spanLo[i] <= hi + 0.05f && (spanLo[i] < lo || spanHi[i] > hi)) {
+                lo = min(lo, spanLo[i]); hi = max(hi, spanHi[i]); grew = true
+            }
+        }
+        pathLo = lo + Tune.RADIUS + 0.04f; pathHi = hi - Tune.RADIUS - 0.04f
+    }
+
+    /** Centre of the nearest block ahead (this row or the next) within snapping distance of x, or NaN. */
+    private fun nearestBlockCentre(x: Float): Float {
+        val p = player
+        var best = Float.NaN; var bd = 0.34f
+        for (r in floor(p.z).toInt()..floor(p.z + 1f).toInt()) {
+            val row = world.row(r) ?: continue
+            for (b in row) {
+                if (!walkable(b, p.y) || b.type == BT.TRAP) continue
+                val d = abs(b.x - x)
+                if (d < bd) { bd = d; best = b.x }
+            }
+        }
+        return best
+    }
+
+    private var lastEdgeWall = false
+    /**
+     * Distance to the first jump-worthy thing ahead in the running direction (gap, step up, spikes),
+     * or -1 when the way ahead is clear for [maxD].
+     */
+    fun edgeAhead(maxD: Float): Float {
+        val p = player
+        val sp = len2(p.vx, p.vz)
+        val dx = if (sp > 0.8f) p.vx / sp else 0f
+        val dz = if (sp > 0.8f) p.vz / sp else 1f
+        var d = 0.1f
+        while (d <= maxD) {
+            val x = p.x + dx * d; val z = p.z + dz * d
+            val row = world.row(floor(z).toInt())
+            var support = false; var hazard = false; var wall = false
+            if (row != null) for (b in row) {
+                if (!(b.collides() || b.type == BT.RESCUE)) continue
+                if (x < b.x0 - 0.12f || x > b.x1 + 0.12f || z < b.z || z > b.z1) continue
+                if (b.y1 > p.y + STEP && b.y < p.y + Tune.HEIGHT) wall = true
+                else if (b.y1 >= p.y - 1.0f && b.y1 <= p.y + STEP) { support = true; if (b.type == BT.TRAP) hazard = true }
+            }
+            if (wall || !support || hazard) { lastEdgeWall = wall; return d }
+            d += 0.05f
+        }
+        return -1f
     }
 
     private fun blockedAbove(b: Block, x: Float, z: Float): Boolean {
@@ -1057,6 +1194,7 @@ class Game(val platform: Platform) {
             return
         }
         p.state = PS.RESCUE_FALL; p.stateT = 0f; p.rideT = 0f; p.fallFromY = p.y
+        swipe.stop(); flickJumpT = 0f
         p.vy = max(p.vy, -9f)
         if (cause == "lava") { p.vy = 9f; p.hurtT = 0f; p.hurtFlash = 1f }
         // the emergency platform materialises below the falling player
@@ -1120,6 +1258,7 @@ class Game(val platform: Platform) {
         if (p.rideT >= 1f) {
             val x = p.rideX1; val y = p.rideY1; val z = p.rideZ1
             p.reset(x, y, z)
+            steerX = x
             p.invuln = 1.5f; p.landT = 0f; p.landAmt = 0.6f
             ev.onRecovered(x, y, z)
             fx.burst(p.x, p.y + 0.3f, p.z, 20, PK.STAR, 0xFFB8F2FF.toInt(), 4f, 0.14f, 0.6f)
@@ -1192,7 +1331,7 @@ class Game(val platform: Platform) {
     private fun fire(tr: Trigger) {
         when (tr.event) {
             Ev.HINT_TARGET -> queueHint("Step on BLUE blocks to collect them!", 1)
-            Ev.HINT_JUMP -> queueHint("Tap the JUMP button to cross gaps!", 2)
+            Ev.HINT_JUMP -> queueHint("Tap JUMP (or flick up at the edge) to cross gaps!", 2)
             Ev.HINT_TOOLS -> queueHint("Tap a TOOL to use it!", 3)
             Ev.HINT_BLOCK -> queueHint("BLOCK tool bridges gaps!", 4)
             Ev.HINT_MAGNET -> queueHint("MAGNET pulls in blocks out of reach!", 5)
@@ -1278,6 +1417,7 @@ class Game(val platform: Platform) {
     fun beginCapture() {
         val p = player
         p.state = PS.CAUGHT; p.stateT = 0f; p.hurtFlash = 1f
+        swipe.stop()
         slowTarget = 0.4f; slowHold = 0.9f
         shake = max(shake, 0.9f); flashRed = 0.7f
         platform.sound(Sfx.GRAB); platform.sound(Sfx.ROAR); platform.haptic(true)
@@ -1315,6 +1455,9 @@ class Game(val platform: Platform) {
             dist = lerp(baseDist, 15f, u) * (1f - push); height = lerp(baseHeight, 3.4f, u); pitch = lerp(basePitch, 0.13f, u)
             yaw = 0.1f * u + (if (state == GS.RESULTS) sin(stateT * 0.35f) * 0.04f else 0f)
         }
+        // steering: look a touch into the turn and bank very slightly (never enough to disorient)
+        val steering = state == GS.PLAY && p.state == PS.NORMAL
+        if (steering) { yaw += turn * 0.045f; roll -= turn * 0.012f }
         if (!camInit) { camDist = dist; camHeight = height; camPitch = pitch; camFov = fov; camYaw = yaw }
         val k3 = damp(3f, dt)
         camDist = lerp(camDist, dist, k3); camHeight = lerp(camHeight, height, k3); camPitch = lerp(camPitch, pitch, k3)
@@ -1323,11 +1466,11 @@ class Game(val platform: Platform) {
         // follow: lead a little in the running direction; rise only partly with jumps
         val lead = if (state == GS.PLAY && p.state == PS.NORMAL) clamp(p.vz * 0.07f, -0.15f, 0.45f) else 0f
         camLead = lerp(camLead, lead, damp(3f, dt))
-        val tx = p.x * 0.78f
+        val tx = p.x * 0.78f + (if (steering) turn * 0.22f else 0f)
         val groundish = when {
             p.state == PS.DEAD -> max(p.y, p.lastGroundY - 3f)
             p.grounded || p.state != PS.NORMAL -> p.y
-            else -> min(p.y, p.lastGroundY + (p.y - p.lastGroundY) * 0.4f)
+            else -> min(p.y, p.lastGroundY + (p.y - p.lastGroundY) * 0.45f)
         }
         if (!camInit) { camX = tx; camY = groundish; camZ = p.z; camInit = true; kickY = 0f; kickV = 0f }
         camX = lerp(camX, tx, damp(6f, dt))

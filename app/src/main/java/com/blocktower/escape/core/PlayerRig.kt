@@ -146,8 +146,11 @@ class PlayerRig(val g: Game) {
         val take = decay(p.jumpT, 0.16f)
         if (take > 0f) { o.sy *= 1f + 0.09f * take; o.sx *= 1f - 0.06f * take }
         // ---- turning / side movement: lean into the turn, skid squeeze on direction change
-        o.rot += -p.lean * 9f
+        // (body banks a little more than the legs, the outer arm swings out for balance)
+        o.rot += -p.lean * 10f
+        o.bodyRot += -p.lean * 3f * (1f - airW)
         o.sx *= 1f - 0.05f * abs(p.lean)
+        if (p.lean > 0f) o.armL += 10f * p.lean * (1f - airW) else o.armR += 10f * p.lean * (1f - airW)
         val skid = env(p.skidT, 0.22f)
         if (skid > 0f) { o.rot += p.skidDir * 7f * skid; o.sx *= 1f - 0.08f * skid; o.bodyDy += 3f * skid }
         // ---- collect: quick fist pump

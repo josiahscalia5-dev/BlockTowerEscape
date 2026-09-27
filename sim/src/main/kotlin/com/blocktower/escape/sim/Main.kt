@@ -71,7 +71,7 @@ fun profile(assets: File) {
     val gfx = J2DGfx(assets, 540, 1170)
     game.hud.layout(540, 1170)
     for (i in 0 until 240) game.update(1f / 60f)
-    game.input.joyY = 1f
+    game.input.kU = true
     for (i in 0 until 60) game.update(1f / 60f)
     for (i in 0 until 40) { game.update(1f / 60f); gfx.clear(); game.render(gfx) }
     gfx.profileReset()
@@ -90,10 +90,10 @@ fun finishFrames(assets: File, out: File) {
     val po = game.world.portals.first()
     game.player.reset(0f, po.y, po.z - 3.2f)
     game.target = 12
-    game.input.joyY = 1f
+    game.input.kU = true
     var f = 0
     while (game.state != com.blocktower.escape.core.GS.COMPLETE && f < 600) { game.update(1f / 60f); f++ }
-    game.input.joyY = 0f
+    game.input.kU = false
     println("complete after $f frames, cam z=${game.cam.ez} y=${game.cam.ey} gate z=${po.z} y=${po.y}")
     for (k in 0 until 8) {
         for (i in 0 until 30) game.update(1f / 60f)

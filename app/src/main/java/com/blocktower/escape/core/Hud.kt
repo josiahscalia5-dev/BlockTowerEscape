@@ -9,7 +9,7 @@ import kotlin.math.sin
 
 /**
  * Screen 4 HUD. All positions are the artwork's coordinates (1024 x 1536) scaled by [s];
- * the top row is anchored to the top edge and the joystick / jump button to the bottom edge.
+ * the top row is anchored to the top edge and the movement pad / jump button to the bottom edge.
  */
 class Hud(val g: Game) {
     var w = 1024f; var h = 1536f
@@ -26,8 +26,10 @@ class Hud(val g: Game) {
     private var offX = 0f
 
     // controls state
-    private var joyId = -1
     private var jumpId = -1
+    private var toolId = -1; private var toolK = 0          // a finger resting on a tool button
+    private var toolDownX = 0f; private var toolDownY = 0f
+    /** Movement pad knob (-1..1): mirrors the swipe so the player sees what the thumb is doing. */
     var knobX = 0f; var knobY = 0f
     private var jumpDown = 0f
     private val toolPress = FloatArray(4)
@@ -91,10 +93,26 @@ class Hud(val g: Game) {
         for (i in 0..3) { toolPress[i] = max(0f, toolPress[i] - dt * 5f); toolDenied[i] = max(0f, toolDenied[i] - dt * 3f); toolBurst[i] = max(0f, toolBurst[i] - dt * 2.2f) }
         objectiveFlash = max(0f, objectiveFlash - dt * 0.6f)
         overlayT += dt
+        if (toolId >= 0) toolPress[toolK] = 1f
+        // the pad's knob follows the thumb while swiping and leans forward while the boy keeps running
+        val sw = g.swipe
+        var tx = 0f; var ty = 0f
+        if (sw.holding) {
+            tx = (sw.fingerX - sw.anchorX) / (120f * s); ty = (sw.fingerY - sw.anchorY) / (120f * s)
+        } else ty = -0.4f * sw.cruise
+        val m = len2(tx, ty)
+        if (m > 1f) { tx /= m; ty /= m }
+        val k = damp(16f, dt)
+        knobX = lerp(knobX, tx, k); knobY = lerp(knobY, ty, k)
     }
 
     // ------------------------------------------------------------------ touch
     private fun inCircle(x: Float, y: Float, cx: Float, cy: Float, r: Float) = sq(x - cx) + sq(y - cy) <= r * r
+
+    private fun inJump(x: Float, y: Float) = inCircle(x, y, jumpCX(), jumpCY(), 150f * s)
+    private fun inToolColumn(x: Float, y: Float) = x > ax(858f) && y > ayT(420f) && y < toolY(3) + 85f * s
+    /** Swipe / movement area: the lower part of the screen that is not a button. */
+    fun inSwipeArea(x: Float, y: Float) = y > h * 0.3f && !inJump(x, y) && !inToolColumn(x, y)
 
     fun touchDown(id: Int, x: Float, y: Float) {
         val st = g.state
@@ -104,35 +122,37 @@ class Hud(val g: Game) {
         if (st == GS.COMPLETE) return
         if (x > ax(930f) && y < ayT(110f)) { pausePress = 1f; g.togglePause(); overlayT = 0f; return }
         for (k in 0..3) if (inCircle(x, y, toolX(k), toolY(k), 72f * s)) {
-            toolPress[k] = 1f; g.input.toolTap[k] = true; return
+            // a tool fires when the finger lifts on its button, so a swipe can never trigger one
+            if (toolId < 0) { toolId = id; toolK = k; toolDownX = x; toolDownY = y; toolPress[k] = 1f }
+            return
         }
-        if (inCircle(x, y, jumpCX(), jumpCY(), 150f * s) || (x > w * 0.62f && y > h * 0.62f)) {
+        if (inJump(x, y)) {
             jumpId = id; jumpDown = 1f
             g.input.jumpHeld = true; g.input.jumpPressed = true
             return
         }
-        if (x < w * 0.62f && y > h * 0.5f) {
-            joyId = id
-            moveJoy(x, y)
-        }
+        if (inSwipeArea(x, y) && !g.swipe.holding) g.swipe.down(id, x, y)
     }
 
     fun touchMove(id: Int, x: Float, y: Float) {
-        if (id == joyId) moveJoy(x, y)
+        if (id == g.swipe.id) g.swipe.move(id, x, y)
+        else if (id == toolId && len2(x - toolDownX, y - toolDownY) > 30f * s) toolId = -1   // slid away: not a tap
     }
 
     fun touchUp(id: Int, x: Float, y: Float) {
-        if (id == joyId) { joyId = -1; knobX = 0f; knobY = 0f; g.input.joyX = 0f; g.input.joyY = 0f }
+        if (id == g.swipe.id) g.swipe.up(id, x, y)
         if (id == jumpId) { jumpId = -1; g.input.jumpHeld = false }
+        if (id == toolId) {
+            toolId = -1
+            if (inCircle(x, y, toolX(toolK), toolY(toolK), 80f * s)) g.input.toolTap[toolK] = true
+        }
     }
 
-    private fun moveJoy(x: Float, y: Float) {
-        val r = 110f * s
-        var dx = (x - joyCX()) / r; var dy = (y - joyCY()) / r
-        val m = len2(dx, dy)
-        if (m > 1f) { dx /= m; dy /= m }
-        knobX = dx; knobY = dy
-        g.input.joyX = dx; g.input.joyY = -dy
+    /** The system took the touch away (e.g. a gesture or dialog): release everything, trigger nothing. */
+    fun touchCancel(id: Int) {
+        g.swipe.cancel(id)
+        if (id == jumpId) { jumpId = -1; g.input.jumpHeld = false }
+        if (id == toolId) toolId = -1
     }
 
     private var btnA = FloatArray(4); private var btnB = FloatArray(4)
@@ -164,6 +184,7 @@ class Hud(val g: Game) {
         for (k in 0..3) drawTool(gr, k)
         drawJoystick(gr)
         drawJump(gr)
+        drawSwipeTrail(gr)
         drawMeter(gr)
         drawHint(gr)
         drawRings(gr)
@@ -327,9 +348,12 @@ class Hud(val g: Game) {
         gr.fillCircle(x, y, R, 0x5E14244A)
         gr.strokeCircle(x, y, R - 2f * s, 4f * s, 0xB8D2E2FF.toInt())
         gr.strokeCircle(x, y, R - 14f * s, 2f * s, 0x40FFFFFF)
-        val c = 0xD8C4D4F2.toInt()
-        tri(gr, x, y - 104f * s, 0f, s, c); tri(gr, x, y + 104f * s, 180f, s, c)
-        tri(gr, x - 104f * s, y, -90f, s, c); tri(gr, x + 104f * s, y, 90f, s, c)
+        // the arrow of the last recognised swipe lights up briefly; before the first move the forward arrow breathes
+        val sw = g.swipe
+        val idle = if (!g.movedYet && g.state == GS.PLAY && g.playT > 1.5f) 0.5f * pulse(g.t, 2.2f) else 0f
+        fun lit(dir: Int) = max(if (sw.lastSwipeDir == dir) sw.swipeFlash else 0f, if (dir == 2) idle else 0f)
+        arrow(gr, x, y - 104f * s, 0f, lit(2)); arrow(gr, x, y + 104f * s, 180f, lit(-2))
+        arrow(gr, x - 104f * s, y, -90f, lit(-1)); arrow(gr, x + 104f * s, y, 90f, lit(1))
         val kx = x + knobX * 78f * s; val ky = y + knobY * 78f * s
         val kr = 64f * s
         gr.fillCircle(kx, ky + 4f * s, kr + 3f * s, 0x55000010)
@@ -337,6 +361,22 @@ class Hud(val g: Game) {
         knob.ops.clear(); knob.native = null; knob.circle(kx, ky, kr)
         gr.fillPath(knob, Radial(kx - kr * 0.3f, ky - kr * 0.4f, kr * 1.3f, intArrayOf(0xFFF4F8FF.toInt(), 0xFFC6D4F0.toInt(), 0xFF8EA4D4.toInt()), floatArrayOf(0f, 0.55f, 1f)))
         gr.arc(kx, ky, kr * 0.78f, 200f, 90f, 5f * s, 0x99FFFFFF.toInt())
+    }
+
+    private fun arrow(gr: Gfx, x: Float, y: Float, rot: Float, lit: Float) {
+        if (lit > 0.01f) { gr.setAdditive(true); gr.glow(x, y, 34f * s, Col.withA(0xFF7CC8FF.toInt(), 0.55f * lit)); gr.setAdditive(false) }
+        tri(gr, x, y, rot, s, Col.mix(0xD8C4D4F2.toInt(), 0xFFFFFFFF.toInt(), lit))
+    }
+
+    /** A faint trace of the swipe under the thumb (where it started, where it is now). */
+    private fun drawSwipeTrail(gr: Gfx) {
+        val sw = g.swipe
+        val a = sw.trail
+        if (a < 0.02f || g.state != GS.PLAY && g.state != GS.INTRO) return
+        val ax0 = sw.anchorX; val ay0 = sw.anchorY; val fx = sw.fingerX; val fy = sw.fingerY
+        if (len2(fx - ax0, fy - ay0) > 16f * s) gr.line(ax0, ay0, fx, fy, 5f * s, Col.withA(0xFFCFE6FF.toInt(), 0.18f * a))
+        gr.strokeCircle(ax0, ay0, 30f * s, 3f * s, Col.withA(0xFFCFE6FF.toInt(), 0.22f * a))
+        gr.fillCircle(fx, fy, 16f * s, Col.withA(0xFFFFFFFF.toInt(), 0.2f * a))
     }
     private val knob = VPath()
 
