@@ -13,7 +13,7 @@ portal at the top before time runs out. The app runs **Splash → Home → Selec
   the castle and the portal, one per level, with numbers, stars, padlocks, short level names and SOON, and the same
   boy (seen from behind) standing on the level you are up to
 - **Five levels**: three teaching levels in the sky world, **Level 4** (the sky tower, built to match the Screen 4
-  design `design/screen4_reference.png`) and **Level 5** (the jungle temple, `design/level5_reference.png`)
+  design `design/screen4_reference.png`) and **Level 5** (the volcanic sky fortress, `design/level5_volcano_reference.png`)
 - **Saved progress** on the phone: unlocked levels, best stars and scores, the coin and gem wallet, relics,
   missions, the daily streak and settings
 
@@ -60,8 +60,8 @@ floating islands, castle and portal and the same block colours as the levels, wi
 - **PRIZE VAULT**: a relic for each level you finish, and three treasure chests that open at 5, 10 and 15 stars.
 - **SETTINGS**: sound, music, vibration, controls (swipe / joystick), sensitivity (low / normal / high) and
   RESET PROGRESS (asks first).
-- **Music**: a bright Home theme on the menus, an adventure theme in the sky levels and a marimba-and-toms variant in
-  the jungle temple. A level starts calm; the drums build with the action, and a fast "rush" layer (arpeggios,
+- **Music**: a bright Home theme on the menus, an adventure theme in the sky levels and a darker D-minor variant with
+  toms in the volcano fortress. A level starts calm; the drums build with the action, and a fast "rush" layer (arpeggios,
   open hats, fills) joins on the final approach to the portal and runs flat out in chases, rising lava and the final
   escape. It drops while paused and stops when the app goes to the background. Like the sound effects, it is
   synthesised on the phone at launch (no audio files).
@@ -98,29 +98,45 @@ Each ends at a block portal that opens once the blue blocks are collected.
 From the first second, a pillar of light marks where the portal is; up close the portal itself glows brighter and
 more magic spills out of it the nearer you get.
 
-## Level 5 — the jungle temple
-**Mission:** collect **10 blue blocks** and reach the **golden portal** at the top of the temple (01:15 on the clock,
-three hearts, tools 3 / 2 / 3 / 2). The portal stays sealed until you have 10/10.
+## Level 5 — the volcanic sky fortress (the approved Level 5 design)
+**Mission:** collect **12 blue blocks** and reach the **Fortress Portal** (02:30 on the clock, three hearts, tools
+3 / 2 / 3 / 2); bonus: catch the **Runaway Relic**. The portal stays sealed until you have 12/12.
 
-The start of the level reproduces the Level 5 design: the blue star block under the boy, the spike platform and the
-floating ? block on the left, the ? block and the red spring button on the right, the magnet, the spiked log
-swinging on its ropes, the stone steps up to the CHECKPOINT arch, the Temple Guardian watching from its ruins with
-the warning sign, the shield, the lightning block and the coin trail winding up to the portal. The picture pieces
-(portal temple, Guardian, checkpoint arch, spiked log, mossy log bridges, rope island) are cut from the design and
-stand in the 3D world where the start camera sees them in the design; the camera was fitted to the design's blocks.
+The fortress with its stone face and glowing portal stands far away at the top of the screen from the first second,
+exactly where the design shows it, over a sunset sky of floating castle islands and lava falls; it only slides into
+its real place at the end of one long, dangerous route (about 300 rows) over a sea of lava. The coloured blocks stand
+on fortress-stone pillars rising out of the lava, wooden bridges with chain railings cross the wider gaps, and towers
+with fire bowls and red crown banners line the way. The fortress, the lava golem, the golden relic, the spiked mace,
+the banner and the sky are cut from the design by `sim l5art` (`sim/.../L5Art.kt`, into `app/src/main/assets/l5v/`);
+the design's HUD, loop, track and characters are taken out of the sky and the wing of the fortress hidden behind the
+design's Time panel is rebuilt as the mirror of the other wing.
 
-1. **Temple entrance** — the design's opening, first swinging log, first checkpoint; the Guardian leaps away
-2. **Colourful block climb** — rising steps, gaps, an optional blue block on a raised pillar, a magnet box
-3. **Moving stones and hazards** — sliding platforms, cracked and crumbling stones, a swinging log, timed spikes, vanishing stepping stones
-4. **Tool trials** — blue blocks only the magnet reaches, a gap too wide to jump (BLOCK, LIGHTNING, or the vanishing stones), a spike run for the shield, a high ledge for the spring
-5. **Temple Guardian chase** — *DANGER!* It bounds along the ruins ahead on the left, hurls boulders onto the path and closes in whenever you slow down; if it reaches the path it grabs you (game over — continue from the checkpoint just before the chase). The temple crumbles behind you.
-6. **Checkpoint** — reach the arch and the Guardian's ledge gives way; a heart and a shield
-7. **Temple climb** — spring buttons, vanishing stairs, a moving stone, crumbling blocks, spikes and two more swinging logs
-8. **Final approach** — the temple collapses behind you on the way to the grand stairs
-9. **Escape through the portal** — the portal blazes, the boy runs in, the camera pulls back, LEVEL COMPLETE
+1. **The volcanic approach** — first lava gaps, the fortress courtyard, a wide bridge, spikes to steer round, the
+   first **speed pads** (blue chevron blocks: a burst of speed), a long jump. **Checkpoint 1**
+2. **Choose your path** — left: a safe bridge with coins; right: blue block and gems on moving blocks
+3. **The great loop** — speed pads for the run-up, then a real loop: run in at its foot and the boy goes all the way
+   round (he keeps his momentum; the climb slows him, the drop speeds him up, pushing forward adds pace), steering
+   across its three lanes for the coins and round the spike plates (or JUMP to hop one). The camera swings out to
+   show the whole ring. **Checkpoint 2** where it lets you out
+4. **Runaway Relic** — *CHASE & COLLECT!* (HUD: 0/1). The glowing golden relic pops up ahead and runs off along the
+   course on a fixed, readable route, hopping the gaps and steps, a little faster than a run: only a clean run that
+   uses the speed pads on its route (or Lightning) catches it, near the end. **RELIC CAPTURED!** pays +250 coins,
+   +10 gems and +2,500 score (sparkles, a coin burst, a flash and a short slow-motion) and the relic goes to the
+   Prize Vault. Miss it and it simply gets away: no heart, no restart, no checkpoint lost. **Checkpoint 3**
+5. **The Guardian chase** — *DANGER!* then *GUARDIAN APPROACHING!*: the lava golem climbs out of the lava beside
+   the path and chases on the left, closing in when you slow down and hurling lava rocks onto the path, through
+   spikes, a moving block, crumbling rows, a one-lane bridge and a swinging mace. It is as fast as in Level 4 and
+   never blocks the way; if it catches you it is game over (continue from checkpoint 3). At **checkpoint 4** the
+   bridge gives way under it and it sinks back into the lava
+6. **The fire bridges** — vanishing stepping stones, swinging maces, moving blocks, spikes, lava-cracked and
+   crumbling blocks, narrow bridges. **Checkpoint 5**
+7. **The final ascent** — *FINAL ESCAPE!* the bridge collapses behind you as you climb: rising steps, speed pads,
+   moving platforms, narrow steps; the portal grows as you get closer
+8. **The fortress stairs and the portal** — the portal blazes, the boy runs in, the camera pulls back, LEVEL COMPLETE
 
-Swinging logs knock you back and cost a heart (the shield blocks them): watch the swing and pass when it is clear.
-`design/level5/` holds the scripts that cut the Level 5 art out of its design.
+Maces knock you back and cost a heart (the shield blocks them): watch the swing and pass when it is clear.
+The HUD adds the route to the portal (a progress strip under the hearts), the score, and the relic's CHASE & COLLECT
+panel, in the left column clear of the timer, wallet, target panel and tools.
 
 ## Controls
 Swipes are the default. **SETTINGS → Controls → JOYSTICK** turns the movement pad into a thumb stick instead: push up
@@ -208,7 +224,9 @@ rewards, settings and the saved progress, and prints a pass/fail checklist.
 ./gradlew :sim:run --args="devices out=sim-out only=splash"                   # one screen (splash, home, map, daily, ... level5)
 ./gradlew :sim:run --args="music out=sim-out"                                 # the music themes as WAV files (calm and flat out)
 ./gradlew :sim:run --args="shot level=4 out=sim-out frames=240"               # one frame
-./gradlew :sim:run --args="poses out=sim-out"                                 # the character animation poses
+./gradlew :sim:run --args="poses out=sim-out"                                 # the character animation poses (+ hips close up, run cycle)
+./gradlew :sim:run --args="play level=5 relic=miss out=sim-out"               # Level 5, letting the Runaway Relic get away
+./gradlew :sim:run --args="l5art out=sim-out"                                 # re-cut the Level 5 art from its design
 ```
 
 ## Project layout
@@ -220,7 +238,11 @@ rewards, settings and the saved progress, and prints a pass/fail checklist.
 - `design/`: the approved references and the scripts that build the game's artwork from them (`home/build_home.py`, `menu/` for the splash / Home / level map pieces, `level5/`, `make_gate_assets.py`)
 - `sim/`: desktop playtest harness (not part of the APK)
 
-The boy's animations (run, jump, fall, land, turn, collect, hurt, celebrate, rescue, capture, portal) come from the
-original sprite cut into legs, body and arms at load time; nothing is repainted.
+The boy's animations (run, jump, fall, land, turn, collect, hurt, celebrate, rescue, capture, portal, the loop) come
+from the original sprite cut into legs, body and arms at load time; nothing is repainted. The legs swap sides every
+step by mirroring about the centre of the pants seat, and the cut between body and legs runs across the seat, which
+is symmetric, so the hips have the same outline in either stride; the legs hang from the hip joint and move and lean
+with the body, so they never separate from it (`sim poses` renders every pose, the hips close up and a run cycle at
+gameplay size to check this).
 
 Fonts: Fira Sans Condensed and Lilita One (SIL Open Font License, see `assets/fonts`).

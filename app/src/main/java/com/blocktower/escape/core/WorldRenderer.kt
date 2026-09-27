@@ -1130,6 +1130,10 @@ class WorldRenderer(val g: Game) {
         val depth = (cd[0] + cd[2]) * 0.5f
         // the ring's blocks close to the lens (as the camera swings back after the loop) fade away
         var a = nearFade(depth) * smooth((depth - 2.2f) / 3.5f)
+        // just out of the loop the ring towers right beside the path: its nearby blocks turn see-through so the
+        // way ahead stays clear
+        val pl = g.player
+        if (pl.state != PS.LOOP && pl.z > lp.z0 - 0.5f && pl.z < lp.z0 + lp.r + 4f) a *= lerp(0.3f, 1f, smooth((depth - 4f) / 7f))
         // blocks between the camera and the boy turn see-through, so he is never lost behind the ring
         if (depth < pdepth - 0.3f && maxX > pbox[0] && minX < pbox[2] && maxY > pbox[1] && minY < pbox[3]) a *= 0.35f
         if (a <= 0.01f) return
