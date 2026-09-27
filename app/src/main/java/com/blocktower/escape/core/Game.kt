@@ -233,7 +233,6 @@ class Game(val platform: Platform) {
         updateCoins(sdt)
         checkTriggers()
         if (state == GS.COMPLETE) updateComplete(dt, sdt)
-        if (state == GS.RESULTS) updateResults(dt)
         updateCamera(dt)
         fx.update(sdt, onArrive)
         updateHudCounters(dt)
@@ -1264,10 +1263,6 @@ class Game(val platform: Platform) {
             }
         }
         if (st > 3.5f) { state = GS.RESULTS; stateT = 0f; hud.resultsStarted() }
-    }
-
-    private fun updateResults(dt: Float) {
-        // the results panel drives its own animation from stateT; nothing to simulate
     }
 
     // ------------------------------------------------------------------ fail / capture

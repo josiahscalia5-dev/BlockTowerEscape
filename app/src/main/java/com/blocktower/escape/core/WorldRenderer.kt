@@ -17,7 +17,7 @@ class WorldRenderer(val g: Game) {
     private val art get() = g.art
     private val cam get() = g.cam
 
-    private object K { const val BLOCK = 0; const val COIN = 1; const val PLAYER = 2; const val BEACON = 3; const val PORTAL = 4
+    private object K { const val BLOCK = 0; const val COIN = 1; const val PLAYER = 2; const val BEACON = 3
         const val GUARD = 5; const val ROCK = 8; const val RIDE = 9; const val BUBBLE = 10 }
 
     private var n = 0
@@ -579,22 +579,6 @@ class WorldRenderer(val g: Game) {
                 star4(gr, midX + cos(an) * hPx * 0.22f, fy0 - hPx * 0.98f + sin(an) * hPx * 0.05f, hPx * 0.05f * a, Col.withA(0xFFFFF0A0.toInt(), a))
             }
         }
-    }
-
-    /** Builds q for a sprite anchored at its feet (ax, ay). */
-    private fun spriteQuad(ax: Float, ay: Float, w: Float, h: Float, rotDeg: Float, flip: Boolean, k: Float) {
-        val ww = w * k; val hh = h * k
-        val anchorU = 0.5f; val anchorV = 0.955f
-        val l = -ww * anchorU; val r = ww * (1f - anchorU); val tp = -hh * anchorV; val bt = hh * (1f - anchorV)
-        val rad = rotDeg * Math.PI.toFloat() / 180f
-        val cs = cos(rad); val sn = sin(rad)
-        fun px(x: Float, y: Float) = ax + x * cs - y * sn
-        fun py(x: Float, y: Float) = ay + x * sn + y * cs
-        val xl = if (flip) r else l; val xr = if (flip) l else r
-        q[0] = px(xl, tp); q[1] = py(xl, tp)
-        q[2] = px(xr, tp); q[3] = py(xr, tp)
-        q[4] = px(xr, bt); q[5] = py(xr, bt)
-        q[6] = px(xl, bt); q[7] = py(xl, bt)
     }
 
     private fun drawRidePlatform(gr: Gfx) {
