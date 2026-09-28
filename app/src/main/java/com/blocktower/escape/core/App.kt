@@ -28,7 +28,8 @@ class App(platform: Platform, showSplash: Boolean = true) : GameHost {
     val progress: Progress = Progress(platform).also { it.load(); prog = it }
 
     private val arts = java.util.concurrent.ConcurrentHashMap<Int, Art>()
-    fun art(theme: Int): Art = arts.getOrPut(theme) { Art(pf, theme) }
+    /** Level art, loaded once per theme; a big, high-resolution screen gets the sharper sky where there is one. */
+    fun art(theme: Int): Art = arts.getOrPut(theme) { Art(pf, theme, hd = kotlin.math.max(w, h) >= 2600) }
     /** Icons, coins and block textures used by the menus. */
     val baseArt get() = art(Theme.SKY_TOWER)
 

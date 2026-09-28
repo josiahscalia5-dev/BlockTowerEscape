@@ -1,11 +1,12 @@
 package com.blocktower.escape.core
 
 /** All bitmaps used by the game. Block skins are colourised at load time from grey tone maps. */
-class Art(p: Platform, val theme: Int = Theme.SKY_TOWER) {
+class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
     private val volcano = theme == Theme.VOLCANO
     private val temple = theme == Theme.SKY_TEMPLE
     private val plate = volcano || temple
-    val bg = p.loadImage(when { volcano -> "l5v/bg_plate.jpg"; temple -> "l6/bg_plate.jpg"; else -> "img/bg_plate.jpg" })
+    /** The sky: Level 6 has a sharper one (twice the design's size) for big, high-resolution screens ([hd]). */
+    val bg = p.loadImage(when { volcano -> "l5v/bg_plate.jpg"; temple -> if (hd) "l6/bg_plate_hd.jpg" else "l6/bg_plate.jpg"; else -> "img/bg_plate.jpg" })
     /** Where the design sits inside the background plate, and the design's size (in the design's own pixels). */
     val bgArtX = if (plate) 0f else 64f
     val bgArtY = if (plate) 0f else 480f

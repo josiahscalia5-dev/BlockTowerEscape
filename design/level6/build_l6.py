@@ -6,7 +6,7 @@ Nothing is painted by hand: every piece comes from the reference's own pixels.
   guardian.png  the stone Guardian with the purple eyes (IS-Net segmentation, the palm in front of it removed)
   heli.png      the yellow helicopter (IS-Net segmentation; the game spins its rotor)
   falls.png     a strip of the reference's waterfall, made to tile vertically (the game scrolls it)
-  bg_plate.jpg  the sky: blue sky, clouds, the floating islands with their waterfalls and ruins, and the far path
+  bg_plate.jpg  (and bg_plate_hd.jpg, twice the design's size, for big screens) the sky: blue sky, clouds, the floating islands with their waterfalls and ruins, and the far path
                 of blocks leading up to the temple. The HUD, the temple, the Guardian, the helicopter and the near
                 course (blocks, slides, hazards, the boy, the relic, coins) are taken out and the holes inpainted
                 (LaMa), since the game draws all of those live.
@@ -156,7 +156,8 @@ def build_gate():
     col = sprite.defringe(rgb, a)
     rgba = np.dstack([np.clip(col, 0, 255).astype(np.uint8), (a * 255 + .5).astype(np.uint8)])
     im = Image.fromarray(rgba, 'RGBA')
-    big = upscale_rgba(im, 2.0)
+    # full Real-ESRGAN resolution: the temple fills much of the screen over the last stretch and at the finale
+    big = upscale_rgba(im, 4.0)
     big.save(os.path.join(OUT, 'gate.png'), optimize=True)
     save_prev('gate_prev.png', sprite.preview(big, scale=1.0))
     print('gate.png', big.size, 'portal centre in the picture:', ((653 - x0) / (x1 - x0), (190 - y0) / (y1 - y0)))
@@ -232,7 +233,8 @@ def build_falls():
         k = i / ov
         body[i] = strip[h - ov + i] * (1 - k) + strip[i] * k
     im = Image.fromarray(np.clip(body, 0, 255).astype(np.uint8))
-    big = upscale_rgb(im, 2.0)
+    # full Real-ESRGAN resolution: near waterfalls are drawn many times the strip's size
+    big = upscale_rgb(im, 4.0)
     big.save(os.path.join(OUT, 'falls.png'), optimize=True)
     print('falls.png', big.size)
 
@@ -302,6 +304,9 @@ def build_plate(gate_fg, guard, heli):
     save_prev('plate_lama.png', filled)
     big = upscale_rgb(filled, 1.5)
     big.save(os.path.join(OUT, 'bg_plate.jpg'), quality=90)
+    # a sharper one (2x the design) for big, high-resolution screens (the game picks it by screen size)
+    w, h = filled.size
+    Image.open(os.path.join(TMP, '_p4.png')).resize((w * 2, h * 2), Image.LANCZOS).save(os.path.join(OUT, 'bg_plate_hd.jpg'), quality=92, optimize=True)
     print('bg_plate.jpg', big.size)
 
 

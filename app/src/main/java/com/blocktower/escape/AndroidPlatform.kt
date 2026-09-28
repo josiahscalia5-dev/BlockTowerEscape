@@ -26,6 +26,9 @@ class AndroidPlatform(private val context: Context, private val view: View) : Pl
 
     override fun loadImage(path: String): Img {
         val b = decode(path)
+        // mipmaps: drawn smaller than its size (a far block, the sky on a small screen, the distant temple) it is
+        // filtered from a matching smaller copy, so it stays smooth and clean instead of shimmering or aliasing
+        b.setHasMipMap(true)
         b.prepareToDraw()
         return Img(b.width, b.height, b)
     }
@@ -41,6 +44,7 @@ class AndroidPlatform(private val context: Context, private val view: View) : Pl
 
     override fun createImage(p: Pixels): Img {
         val b = Bitmap.createBitmap(p.argb, p.w, p.h, Bitmap.Config.ARGB_8888)
+        b.setHasMipMap(true)
         b.prepareToDraw()
         return Img(p.w, p.h, b)
     }
