@@ -10,3 +10,10 @@
 .cxx/
 *.apk
 *.aab
+/sim/build/
+.kotlin/
+*.mp4
+/sim-out/
+/design/*/models
+/design/*/hs/
+__pycache__/

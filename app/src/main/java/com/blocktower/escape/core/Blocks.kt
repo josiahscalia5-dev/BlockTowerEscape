@@ -5,7 +5,14 @@ object BC {
     const val RED = 0; const val GREEN = 1; const val YELLOW = 2; const val BLUE = 3; const val PURPLE = 4
     const val ORANGE = 5; const val BRICK = 6; const val GOLD = 7; const val CYAN = 8; const val MAGENTA = 9
     const val STONE = 10; const val IRON = 11; const val ENERGY = 12
-    const val COUNT = 13
+    /** Level 5: the fortress's stone bricks, dark volcanic rock (spike bases, the Guardian's boulders) and bridge planks. */
+    const val FORT = 13; const val BASALT = 14; const val WOOD = 15
+    /** Level 6: the sky temple's sun-bleached stone (the floating islands, the temple steps). */
+    const val SAND = 16
+    const val COUNT = 17
+
+    /** Colours drawn with the brick tone map (courses of stones or planks) instead of the cracked-stone ones. */
+    fun bricky(c: Int) = c == BRICK || c == FORT || c == WOOD || c == SAND
 
     /** 5-stop colour ramps: shadow, base, bright, highlight, white-hot. */
     val ramps: Array<IntArray> = arrayOf(
@@ -22,6 +29,10 @@ object BC {
         intArrayOf(0xFF2A2436.toInt(), 0xFF4E4660.toInt(), 0xFF7A7090.toInt(), 0xFFA89CBC.toInt(), 0xFFE0DAEA.toInt()),  // stone (trap)
         intArrayOf(0xFF14161E.toInt(), 0xFF2A2E3C.toInt(), 0xFF484E62.toInt(), 0xFF7C8498.toInt(), 0xFFC8D0E0.toInt()),  // iron (guard)
         intArrayOf(0xFF1060B0.toInt(), 0xFF40A8F0.toInt(), 0xFF90E0FF.toInt(), 0xFFD0F8FF.toInt(), 0xFFFFFFFF.toInt()),  // energy (tool block)
+        intArrayOf(0xFF2A2024.toInt(), 0xFF564650.toInt(), 0xFF7E6A70.toInt(), 0xFFAA9294.toInt(), 0xFFE2CEC6.toInt()),  // fortress stone (Level 5)
+        intArrayOf(0xFF161012.toInt(), 0xFF2E2426.toInt(), 0xFF4A3A38.toInt(), 0xFF766058.toInt(), 0xFFB8988A.toInt()),  // basalt (Level 5)
+        intArrayOf(0xFF3A1E0C.toInt(), 0xFF6A3C1A.toInt(), 0xFF96602C.toInt(), 0xFFC4904E.toInt(), 0xFFEED0A0.toInt()),  // bridge planks (Level 5)
+        intArrayOf(0xFF4A3A48.toInt(), 0xFF866E76.toInt(), 0xFFB09A98.toInt(), 0xFFD6C2B2.toInt(), 0xFFF4E8DA.toInt()),  // temple stone (Level 6)
     )
 
     /** Representative colours (for particles, far LOD and silhouettes). */
@@ -32,7 +43,9 @@ object BC {
 
 enum class BT {
     NORMAL, TARGET, BRICK, MOVING, DISAPPEAR, BOUNCE, FALLING, CRACKED, COLORSHIFT,
-    MYSTERY, BOOST, SAVE, TRAP, APPEAR, CHECKPOINT, TOOLBLOCK, RESCUE, DECOR
+    MYSTERY, BOOST, SAVE, TRAP, APPEAR, CHECKPOINT, TOOLBLOCK, RESCUE, DECOR,
+    /** Speed pad (Level 5): a blue block with glowing chevrons; running over it gives a burst of speed. */
+    PAD
 }
 
 object Reward { const val COINS = 0; const val GEMS = 1; const val TOOL_MAGNET = 2; const val TOOL_SHIELD = 3; const val TOOL_SPEED = 4
@@ -86,6 +99,9 @@ class Block(
     @JvmField var sortKey = 0f
     @JvmField var contact = false    // player touching this frame
     @JvmField var wasContact = false
+    @JvmField var crackT = 0f        // collected blue block: 0 idle, 0..1 cracking, then it shatters
+    @JvmField var pop = 0f           // scale pop after a shell shatters / a block is built
+    @JvmField var star = false       // decorative star emblem on the front face (Level 5 start block)
 
     val x0 get() = x - sx * 0.5f
     val x1 get() = x + sx * 0.5f
@@ -110,9 +126,16 @@ object Tune {
     const val AIR_ACCEL = 20f
     const val RADIUS = 0.28f
     const val HEIGHT = 1.45f
-    const val START_TIME = 102f      // 01:42
-    const val TARGET_NEED = 12
-    const val START_COINS = 4250
-    const val START_GEMS = 320
+    const val FALL_DEPTH = 4.6f      // how far below the last ground a fall triggers the rescue
     const val COIN_VALUE = 10
+    /** Speed pad (Level 5): top speed and how long the burst lasts. */
+    const val RUN_DASH = 9.2f
+    const val DASH_T = 1.1f
+    /** The great loop (Level 5): the slowest and fastest pace round it. */
+    const val LOOP_MIN = 6.2f
+    const val LOOP_MAX = 11.5f
+    /** Rainbow slides (Level 6): the slowest and fastest pace down one, and the steepest he rides up a wall (rad). */
+    const val SLIDE_MIN = 5.0f
+    const val SLIDE_MAX = 13.5f
+    const val SLIDE_WALL = 1.2f
 }

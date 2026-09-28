@@ -1,0 +1,4 @@
+<resources>
+    <!-- Sky blue of the game world: shown before the first frame instead of black. -->
+    <color name="sky">#FF3A86E0</color>
+</resources>

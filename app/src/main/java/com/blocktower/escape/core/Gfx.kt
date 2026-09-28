@@ -98,6 +98,11 @@ interface Platform {
     fun createImage(p: Pixels): Img
     fun sound(id: Int, volume: Float = 1f, rate: Float = 1f)
     fun haptic(strong: Boolean)
+    /** Background music: which theme ([Music]), how intense the moment is (0..1) and its volume (0..1). */
+    fun music(track: Int, intensity: Float, volume: Float) {}
+    /** Small persistent key-value storage (saved progress). */
+    fun loadText(key: String): String? = null
+    fun saveText(key: String, value: String) {}
 }
 
 class Pixels(val w: Int, val h: Int, val argb: IntArray)

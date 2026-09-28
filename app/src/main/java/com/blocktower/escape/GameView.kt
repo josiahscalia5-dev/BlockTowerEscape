@@ -6,11 +6,12 @@ import android.os.Build
 import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.RoundedCorner
 import android.view.View
 import android.view.WindowInsets
-import com.blocktower.escape.core.GS
-import com.blocktower.escape.core.Game
+import com.blocktower.escape.core.App
 import com.blocktower.escape.core.Key
+import kotlin.math.max
 
 /**
  * Hardware-accelerated view that runs the game loop on the UI thread via Choreographer:
@@ -18,29 +19,34 @@ import com.blocktower.escape.core.Key
  */
 class GameView(context: Context) : View(context), Choreographer.FrameCallback {
     private val platform = AndroidPlatform(context, this)
-    private val game = Game(platform)
+    private val app = App(platform)
     private val gfx = AndroidGfx(context.assets)
     private var lastNanos = 0L
     private var running = false
+    private val safe = FloatArray(4)
 
     init {
         isFocusable = true
         isFocusableInTouchMode = true
         keepScreenOn = true
+        app.density = resources.displayMetrics.density
     }
 
     fun resume() {
         if (running) return
         running = true
         lastNanos = 0L
+        platform.resumeAudio()
         Choreographer.getInstance().postFrameCallback(this)
         requestFocus()
+        requestApplyInsets()
     }
 
     fun pause() {
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
-        if (game.state == GS.PLAY && !game.paused) game.togglePause()
+        app.onPause()
+        platform.pauseAudio()
     }
 
     fun release() {
@@ -48,7 +54,8 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         platform.release()
     }
 
-    fun backPressed() { game.togglePause() }
+    /** Returns false when back should leave the app (on the Home screen). */
+    fun backPressed(): Boolean = app.back()
 
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
@@ -56,28 +63,30 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         Choreographer.getInstance().postFrameCallback(this)
     }
 
+    /**
+     * The safe area. The game draws edge to edge (behind the hidden system bars and into the camera cut-out); only
+     * buttons and text keep inside the safe area: the status and navigation bars as if shown (they slide in over the
+     * game on a swipe, in gesture and 3-button navigation alike), the camera cut-out, the gesture-navigation strip
+     * (a swipe that starts there goes to the system) and room for rounded display corners.
+     */
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        var top = 0f
-        var bottom = 0f
-        if (Build.VERSION.SDK_INT >= 28) {
-            insets.displayCutout?.let { top = it.safeInsetTop.toFloat(); bottom = it.safeInsetBottom.toFloat() }
-        }
-        game.hud.setInsets(top, bottom)
+        safeInsets(insets, safe)
+        app.setInsets(safe[1], safe[3], safe[0], safe[2])
         return super.onApplyWindowInsets(insets)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        game.hud.layout(w, h)
+        app.layout(w, h)
     }
 
     override fun onDraw(canvas: Canvas) {
         val now = System.nanoTime()
         val dt = if (lastNanos == 0L) 1f / 60f else ((now - lastNanos) / 1e9f).coerceIn(0f, 0.05f)
         lastNanos = now
-        if (running) game.update(dt)
+        if (running) app.update(dt)
         gfx.begin(canvas, width, height)
-        game.render(gfx)
+        app.render(gfx)
         gfx.end()
     }
 
@@ -85,17 +94,17 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val i = e.actionIndex
-                game.touchDown(e.getPointerId(i), e.getX(i), e.getY(i))
+                app.touchDown(e.getPointerId(i), e.getX(i), e.getY(i))
             }
             MotionEvent.ACTION_MOVE -> {
-                for (i in 0 until e.pointerCount) game.touchMove(e.getPointerId(i), e.getX(i), e.getY(i))
+                for (i in 0 until e.pointerCount) app.touchMove(e.getPointerId(i), e.getX(i), e.getY(i))
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val i = e.actionIndex
-                game.touchUp(e.getPointerId(i), e.getX(i), e.getY(i))
+                app.touchUp(e.getPointerId(i), e.getX(i), e.getY(i))
             }
             MotionEvent.ACTION_CANCEL -> {
-                for (i in 0 until e.pointerCount) game.touchUp(e.getPointerId(i), e.getX(i), e.getY(i))
+                for (i in 0 until e.pointerCount) app.touchCancel(e.getPointerId(i))
             }
         }
         return true
@@ -119,14 +128,43 @@ class GameView(context: Context) : View(context), Choreographer.FrameCallback {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val k = mapKey(keyCode)
         if (k == 0) return false
-        if (event.repeatCount == 0) game.onKey(k, true)
+        if (event.repeatCount == 0) app.onKey(k, true)
         return true
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         val k = mapKey(keyCode)
         if (k == 0) return false
-        game.onKey(k, false)
+        app.onKey(k, false)
         return true
+    }
+
+    companion object {
+        /** Safe insets in pixels: [left, top, right, bottom]. */
+        @Suppress("DEPRECATION")
+        fun safeInsets(wi: WindowInsets, out: FloatArray) {
+            var l: Int; var t: Int; var r: Int; var b: Int
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars = wi.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                val gest = wi.getInsets(WindowInsets.Type.mandatorySystemGestures())
+                l = bars.left; t = bars.top; r = bars.right; b = max(bars.bottom, gest.bottom)
+            } else {
+                l = wi.stableInsetLeft; t = wi.stableInsetTop; r = wi.stableInsetRight; b = wi.stableInsetBottom
+                if (Build.VERSION.SDK_INT >= 28) wi.displayCutout?.let { c ->
+                    l = max(l, c.safeInsetLeft); t = max(t, c.safeInsetTop); r = max(r, c.safeInsetRight); b = max(b, c.safeInsetBottom)
+                }
+                if (Build.VERSION.SDK_INT >= 29) b = max(b, wi.mandatorySystemGestureInsets.bottom)
+            }
+            if (Build.VERSION.SDK_INT >= 31) {
+                // something tucked into a rounded corner needs about (1 - 1/sqrt2) of its radius of clearance
+                fun rad(pos: Int) = wi.getRoundedCorner(pos)?.radius ?: 0
+                val k = 0.3f
+                val tl = rad(RoundedCorner.POSITION_TOP_LEFT); val tr = rad(RoundedCorner.POSITION_TOP_RIGHT)
+                val bl = rad(RoundedCorner.POSITION_BOTTOM_LEFT); val br = rad(RoundedCorner.POSITION_BOTTOM_RIGHT)
+                t = max(t, (max(tl, tr) * k).toInt()); b = max(b, (max(bl, br) * k).toInt())
+                l = max(l, (max(tl, bl) * k).toInt()); r = max(r, (max(tr, br) * k).toInt())
+            }
+            out[0] = l.toFloat(); out[1] = t.toFloat(); out[2] = r.toFloat(); out[3] = b.toFloat()
+        }
     }
 }

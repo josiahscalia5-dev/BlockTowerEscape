@@ -10,9 +10,12 @@ import kotlin.math.sin
 class Camera {
     var ex = 0f; var ey = 0f; var ez = 0f
     var yaw = 0f; var pitch = 0.28f
+    /** Screen roll in radians (dramatic moments, shake). */
+    var roll = 0f
     var f = 1000f
     var cx = 0f; var cy = 0f
     private var cyaw = 1f; private var syaw = 0f; private var cp = 1f; private var sp = 0f
+    private var cr = 1f; private var sr = 0f
 
     // results of the last project() call
     @JvmField var sx = 0f
@@ -20,7 +23,7 @@ class Camera {
     @JvmField var depth = 0f
 
     fun update() {
-        cyaw = cos(yaw); syaw = sin(yaw); cp = cos(pitch); sp = sin(pitch)
+        cyaw = cos(yaw); syaw = sin(yaw); cp = cos(pitch); sp = sin(pitch); cr = cos(roll); sr = sin(roll)
     }
 
     /** Camera-space depth of a world point (forward distance). */
@@ -39,8 +42,10 @@ class Camera {
         val yc = fz * sp + dy * cp
         depth = zc
         if (zc < NEAR) return false
-        sx = cx + f * rx / zc
-        sy = cy - f * yc / zc
+        val px = f * rx / zc
+        val py = -f * yc / zc
+        sx = cx + px * cr - py * sr
+        sy = cy + px * sr + py * cr
         return true
     }
 
