@@ -644,6 +644,8 @@ class WorldRenderer(val g: Game) {
         val worldH = g.spec.boyH
         val lp = p.loop
         if (lp != null && p.state == PS.LOOP) loopFooting(gr, p, lp)
+        val psl = p.slide
+        if (psl != null && p.state == PS.SLIDE) slideContact(gr, p, psl)
         if (!cam.project(p.x, p.y, p.z)) return
         val fx0 = cam.sx; val fy0 = cam.sy
         val scale = cam.scaleAt(cam.depth)
@@ -661,8 +663,13 @@ class WorldRenderer(val g: Game) {
         val hurt = p.hurtFlash
         if (hurt > 0f) g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, 1f, 0xFFFF3030.toInt(), hurt * 0.55f)
         else g.rig.draw(gr, art.rig, pose, fx0, fy0, hPx, 1f, if (blink) 0xFFFFFFFF.toInt() else 0, if (blink) 0.42f else 0f)
+        if (p.state == PS.SLIDE) handSplash(gr, p, hPx)
         var midX = fx0; var midY = fy0 - hPx * 0.45f
-        if (p.state == PS.LOOP || p.state == PS.SLIDE) { val r = p.loopRot * Math.PI.toFloat() / 180f; midX = fx0 + sin(r) * hPx * 0.45f; midY = fy0 - cos(r) * hPx * 0.45f }
+        if (p.state == PS.LOOP || p.state == PS.SLIDE) {
+            val r = p.loopRot * Math.PI.toFloat() / 180f
+            val up = hPx * 0.45f * (if (p.state == PS.SLIDE) lerp(1f, p.slideSy, p.slidePose) else 1f)
+            midX = fx0 + sin(r) * up; midY = fy0 - cos(r) * up
+        }
         if (g.shieldOn) {
             val tl = g.tools[TK.SHIELD]
             val grow = easeOutBack(clamp01((tl.duration - tl.active) / 0.3f))
@@ -687,6 +694,86 @@ class WorldRenderer(val g: Game) {
             for (k in 0..2) {
                 val an = t * 7f + k * TAU / 3f
                 star4(gr, midX + cos(an) * hPx * 0.22f, fy0 - hPx * 0.98f + sin(an) * hPx * 0.05f, hPx * 0.05f * a, Col.withA(0xFFFFF0A0.toInt(), a))
+            }
+        }
+    }
+
+    private val sc3 = FloatArray(3)
+    private val contactPoly = FloatArray(40)
+
+    /** A point on a slide's surface, [s] along it (straight on past its ends), [th] round it, [inset] above it. */
+    private fun slideAt(sl: Slide, s: Float, th: Float, inset: Float): Boolean {
+        sl.point(clamp(s, 0f, sl.length), th, inset, sc3, 0)
+        val o = if (s > sl.length) s - sl.length else if (s < 0f) s else 0f
+        if (o != 0f) { val e = if (o > 0f) sl.length else 0f; sc3[0] += sl.tanX(e) * o; sc3[1] += sl.tanY(e) * o; sc3[2] += sl.tanZ(e) * o }
+        return cam.project(sc3[0], sc3[1], sc3[2])
+    }
+
+    /**
+     * Where he lies in the slide: the water under his body darker (his weight in it), a rim of foam round him and two
+     * lines of wake spreading out behind his feet, so he is plainly on the surface, not over it.
+     */
+    private fun slideContact(gr: Gfx, p: Player, sl: Slide) {
+        val w = smooth(p.slidePose) * clamp01(1f - p.slideHop / 0.7f)
+        if (w < 0.03f) return
+        val s = p.slideS; val th = p.slideTh
+        var m = 0
+        for (i in 0 until 18) {
+            val a = i / 18f * TAU
+            // his outline on the water: from his trailing feet to his chest, a little wider at the shoulders
+            val along = 0.8f + cos(a) * 0.95f
+            val across = sin(a) * (0.36f + 0.07f * cos(a))
+            if (!slideAt(sl, s + along, th + across / sl.r, 0.025f)) return
+            contactPoly[m * 2] = cam.sx; contactPoly[m * 2 + 1] = cam.sy; m++
+        }
+        gr.fillPoly(contactPoly, m, Col.withA(0xFF0A3470.toInt(), 0.3f * w))
+        gr.strokePoly(contactPoly, m, 3.4f * g.hud.s, Col.withA(Col.WHITE, 0.5f * w))
+        // the wake: foam spreading back from his feet, fading
+        val spread = 0.07f + 0.004f * p.slideV
+        for (side in -1..1 step 2) {
+            var px0 = 0f; var py0 = 0f
+            for (j in 0..8) {
+                val back = j * 0.32f
+                if (!slideAt(sl, s - back, th + side * (0.26f + j * spread) / sl.r, 0.025f)) break
+                if (j > 0) {
+                    val a = (1f - j / 9f) * 0.55f * w
+                    gr.line(px0, py0, cam.sx, cam.sy, (5.5f - j * 0.45f) * g.hud.s, Col.withA(0xFFF4FCFF.toInt(), a))
+                }
+                px0 = cam.sx; py0 = cam.sy
+            }
+        }
+    }
+
+    /**
+     * His hands in the slide's water: at each fist a patch of foam, a crown of droplets thrown up and a short wake
+     * streaming back from it (drawn at the fists' places on screen, so they always meet his hands).
+     */
+    private fun handSplash(gr: Gfx, p: Player, hPx: Float) {
+        val w = smooth((p.slidePose - 0.4f) / 0.6f) * clamp01(1f - p.slideHop / 0.25f)
+        if (w < 0.03f) return
+        val t = g.t
+        val r = hPx * 0.05f * (0.8f + 0.03f * p.slideV)
+        val h = g.rig.hands
+        val rot = p.loopRot * Math.PI.toFloat() / 180f
+        // "back" along the slide on screen: down the picture, turned with him
+        val bx = -sin(rot); val by = cos(rot)
+        for (k in 0..1) {
+            val hx = h[k * 2]; val hy = h[k * 2 + 1] + r * 0.2f
+            val out = if (k == 0) -1f else 1f
+            val ox = cos(rot) * out; val oy = sin(rot) * out
+            gr.fillCircle(hx, hy, r * 1.15f, Col.withA(0xFFEAF8FF.toInt(), 0.42f * w))
+            // wake: two streaks spreading back from the hand
+            for (side in -1..1 step 2) {
+                val sx = hx + (bx * 3f + ox * side * 1.1f) * r; val sy = hy + (by * 3f + oy * side * 1.1f) * r
+                gr.line(hx, hy, sx, sy, r * 0.42f, Col.withA(Col.WHITE, 0.3f * w))
+            }
+            // droplets thrown up and out, flickering as the water breaks round the hand
+            for (d in 0 until 6) {
+                val ph = fract(t * 3.1f + d * 0.37f + k * 0.5f)
+                val spread = (d - 2.5f) * 0.55f
+                val dx = (ox * (0.6f + ph * 1.6f) + bx * spread * 0.4f + (-oy) * 0f) * r + ox * spread * 0.3f * r
+                val dy = (oy * (0.6f + ph * 1.6f)) * r - (1.2f + 2.2f * ph * (1f - ph) * 4f) * r * 0.5f + by * spread * 0.3f * r
+                gr.fillCircle(hx + dx, hy + dy, r * (0.34f - 0.18f * ph), Col.withA(Col.WHITE, 0.8f * (1f - ph) * w))
             }
         }
     }
@@ -1613,7 +1700,10 @@ class WorldRenderer(val g: Game) {
         val m = if (sl.ride) 12 else 14
         val s0 = sg.s0; val s1 = sg.s1; val sm = (s0 + s1) * 0.5f
         val depth = cam.depthOf(sg.cx, sg.cy, sg.cz)
-        var a = nearFade(depth) * smooth((depth - 1.4f) / 2.4f)
+        // the stretch he is riding stays solid right up to the lens (he lies on it); the rest fades as it passes by
+        val p = g.player
+        val riding = p.state == PS.SLIDE && p.slide === sl && sg.s1 > p.slideS - 3.2f && sg.s0 < p.slideS + 0.9f
+        var a = if (riding) smooth((depth - 0.5f) / 1.1f) else nearFade(depth) * smooth((depth - 1.4f) / 2.4f)
         if (a <= 0.01f) return
         val band = slideBands[(sg.i / 2) % slideBands.size]
         val haze = hazeFor(depth)
@@ -1633,8 +1723,8 @@ class WorldRenderer(val g: Game) {
             // light: a soft top light on the outside (and the inside, a shade lighter), a shine where it catches the sun
             val nx = if (inner) sp3[3] else -sp3[3]; val ny = if (inner) sp3[4] else -sp3[4]; val nz = if (inner) sp3[5] else -sp3[5]
             val lam = max(0f, nx * lightX + ny * lightY + nz * lightZ)
-            // inside: the bands in soft pastel under the water; outside: the bright rainbow bands
-            var c = if (inner) Col.scale(Col.mix(band, 0xFFEAF6FF.toInt(), 0.52f), 0.66f + 0.4f * lam) else Col.scale(band, 0.5f + 0.62f * lam)
+            // inside: the rainbow bands seen through the water (a touch lighter); outside: the bright rainbow bands
+            var c = if (inner) Col.scale(Col.mix(band, 0xFFEAF6FF.toInt(), 0.3f), 0.7f + 0.38f * lam) else Col.scale(band, 0.5f + 0.62f * lam)
             if (!inner) {
                 val vl = kotlin.math.sqrt(vx * vx + vy * vy + vz * vz).coerceAtLeast(1e-3f)
                 val hx = lightX + vx / vl; val hy = lightY + vy / vl; val hz = lightZ + vz / vl
@@ -1660,8 +1750,6 @@ class WorldRenderer(val g: Game) {
         if (n == 0) return
         if (maxX < -20f || minX > gr.width + 20f || maxY < -20f || minY > gr.height + 20f) return
         // it turns see-through where it would hide the boy (never the stretch he rides in: that is drawn under him)
-        val p = g.player
-        val riding = p.state == PS.SLIDE && p.slide === sl && sg.s1 > p.slideS - 3.2f && sg.s0 < p.slideS + 0.9f
         if (!riding && depth < pdepth - 0.3f && maxX > pbox[0] && minX < pbox[2] && maxY > pbox[1] && minY < pbox[3]) a *= 0.4f
         for (k in 0 until n) ford[k] = k
         java.util.Arrays.sort(ford, 0, n) { x, y -> fdep[y].compareTo(fdep[x]) }
@@ -1680,7 +1768,7 @@ class WorldRenderer(val g: Game) {
             }
             if (fkind[k] == 0 && sl.ride && abs(fth[k]) < 0.75f) {
                 // water running down the channel: a clear blue sheet with streaks of foam flowing toward the exit
-                gr.fillPoly(poly, 4, Col.withA(0xFF6CCBFF.toInt(), a * 0.42f))
+                gr.fillPoly(poly, 4, Col.withA(0xFF6CCBFF.toInt(), a * 0.34f))
                 val ph = fract(t * 1.7f - sg.i * 0.37f + fth[k] * 1.3f)
                 val u0 = ph; val u1 = min(1f, ph + 0.45f)
                 // along the stretch: from the s0 edge (corners 0,1) to the s1 edge (corners 3,2)

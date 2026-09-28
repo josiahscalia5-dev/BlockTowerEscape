@@ -92,13 +92,14 @@ class Fx {
         }
     }
 
-    fun shards(b: Block, color: Int, n: Int = 14) {
+    /** Pieces of a broken block; [cvx], [cvy], [cvz] carry them along (a block smashed at speed), [size] scales them. */
+    fun shards(b: Block, color: Int, n: Int = 14, cvx: Float = 0f, cvy: Float = 0f, cvz: Float = 0f, size: Float = 1f) {
         for (i in 0 until n) {
             val p = spawn()
             p.x = b.x + rng.f(-0.45f, 0.45f); p.y = b.y + rng.f(0.2f, 1f); p.z = b.z + rng.f(0.05f, 0.95f)
-            p.vx = (p.x - b.x) * rng.f(4f, 9f); p.vz = (p.z - b.z - 0.5f) * rng.f(4f, 9f); p.vy = rng.f(3f, 8f)
+            p.vx = (p.x - b.x) * rng.f(4f, 9f) + cvx; p.vz = (p.z - b.z - 0.5f) * rng.f(4f, 9f) + cvz; p.vy = rng.f(3f, 8f) + cvy
             p.life = rng.f(0.6f, 1.1f); p.maxLife = p.life
-            p.size = rng.f(0.12f, 0.26f); p.color = color; p.kind = PK.SHARD; p.gravity = 22f
+            p.size = rng.f(0.12f, 0.26f) * size; p.color = color; p.kind = PK.SHARD; p.gravity = 22f
             p.rot = rng.f(0f, TAU); p.vrot = rng.f(-12f, 12f)
         }
     }

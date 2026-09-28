@@ -228,31 +228,49 @@ class PlayerRig(val g: Game) {
                 o.spin = cos(p.spin)
             }
             PS.DEAD -> { o.armL = 50f + 20f * sin(t * 19f); o.armR = -50f - 20f * sin(t * 19f + 1f); o.legsMirror = ((t * 8f).toInt() and 1) == 1 }
-            PS.SLIDE -> {
-                // riding a slide: knees bent, hips low, arms out for balance and leaning into the bend (surfing, not
-                // dragged); the legs stay planted under the hips (they bend, the hip joint never opens)
-                val k = 1f - airW
-                val lean = p.slideLean
-                o.bodyDy += 7f * k
-                o.legsSy *= 1f - 0.06f * k
-                o.legsMirror = false; o.legsRot = lean * 4f
-                o.armL = 46f + 8f * sin(t * 4.2f) + lean * 18f + airW * 20f
-                o.armR = -46f - 8f * sin(t * 4.2f + 1.3f) + lean * 18f - airW * 20f
-                o.armLS = 1.02f; o.armRS = 1.02f
-                o.rot += -lean * 4f
-                o.bodyRot += -lean * 4f + sin(t * 3.1f) * 1.2f
-                o.sx *= 1.03f
-            }
         }
         if (speed < 0.01f && airW < 0.01f && p.state == PS.NORMAL) o.legsRot = 0f
-        // round the loop (or on a slide's wall) the boy is turned to stand on the track (see WorldRenderer.drawPlayer)
+        // down a rainbow slide he lies on his front (and blends back to running after the exit)
+        val pw = p.slidePose * p.slidePose * (3f - 2f * p.slidePose)
+        if (pw > 0f) prone(o, p, t, pw)
+        // round the loop the boy is turned to stand on the track; on a slide his shoulders lie across the channel
         if (p.state == PS.LOOP || p.state == PS.SLIDE) o.rot += p.loopRot
+        else if (pw > 0f) o.rot += p.loopRot * pw
         // on the ground the feet stay planted: when the hips dip (landing, skid) the legs bend to
         // absorb it instead of pushing the feet through the floor; a rising body half-lifts them
         val reach = anchorY - BoyRig.HIP_Y
         val lock = (1f - airW) * (if (o.bodyDy > 0f) 1f else 0.5f)
         o.legsSy *= (reach - o.bodyDy * lock) / reach
         return o
+    }
+
+    /**
+     * The belly slide, blended in by [w]: he lies on his front going head first, so from behind he looks shortened
+     * (the back of his head and the backpack toward the far end, his legs trailing toward the camera with the raised
+     * shoe's sole showing). Arms spread wide with the hands on the water for balance (the one on the inside of a bend
+     * reaching lower, the outer one up), his body curling toward where the channel heads, his legs trailing the other
+     * way with a little flutter; pressed into the water where the slide bottoms out, lighter over a crest.
+     */
+    private fun prone(o: Pose, p: Player, t: Float, w: Float) {
+        val lean = p.slideLean
+        val air = p.airW
+        val bob = p.slideBob
+        o.sy *= lerp(1f, p.slideSy * (1f - 0.25f * bob), w)
+        o.sx *= lerp(1f, 1.03f + 0.04f * bob, w)
+        o.dy = lerp(o.dy, bob * 14f, w)
+        o.rot = lerp(o.rot, 0f, w)
+        // (the sprite's arms already hang out at an angle, the left about 60 degrees from straight down and the right
+        // about 33: turned so both reach straight out to the sides, the hands down on the water)
+        o.armL = lerp(o.armL, 16f + 5f * sin(t * 5.3f) - lean * 12f + air * 22f, w)
+        o.armR = lerp(o.armR, -44f - 5f * sin(t * 5.3f + 1.2f) - lean * 12f - air * 22f, w)
+        o.armLS = lerp(o.armLS, 1.05f, w); o.armRS = lerp(o.armRS, 1.05f, w)
+        val curl = p.slideTurn * 0.75f - lean * 4f
+        o.bodyRot = lerp(o.bodyRot, curl + sin(t * 3.3f) * 1.2f, w)
+        o.bodyDy = lerp(o.bodyDy, 3f, w)
+        if (w > 0.5f) o.legsMirror = false
+        o.legsRot = lerp(o.legsRot, -curl * 1.6f + 2.5f * sin(t * 9.5f), w)
+        o.legsSx = lerp(o.legsSx, 1.08f, w)
+        o.legsSy = lerp(o.legsSy, 0.88f + 0.03f * sin(t * 9.5f + 0.7f), w)
     }
 
     // ------------------------------------------------------------------ drawing
@@ -269,7 +287,13 @@ class PlayerRig(val g: Game) {
         drawPart(gr, rig.body, o, 1, alpha, addColor, addAmt)
         drawPart(gr, rig.armL, o, 2, alpha, addColor, addAmt)
         drawPart(gr, rig.armR, o, 3, alpha, addColor, addAmt)
+        // where his fists ended up on screen (for the splashes where his hands meet a slide's water)
+        corner(rig.armL, o, 2, 13f, 201f, 0); hands[0] = q[0]; hands[1] = q[1]
+        corner(rig.armR, o, 3, 226f, 240f, 0); hands[2] = q[0]; hands[3] = q[1]
     }
+
+    /** The boy's fists on screen after the last draw: left x, y, right x, y. */
+    val hands = FloatArray(4)
 
     /** kind: 0 legs, 1 body, 2 left arm, 3 right arm */
     private fun drawPart(gr: Gfx, part: RigPart, o: Pose, kind: Int, alpha: Float, addColor: Int, addAmt: Float) {

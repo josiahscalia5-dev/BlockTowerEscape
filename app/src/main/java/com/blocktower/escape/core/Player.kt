@@ -51,6 +51,13 @@ class Player {
     var slideS = 0f; var slideV = 0f; var slideTh = 0f; var slideThV = 0f; var slideHop = 0f; var slideHopV = 0f; var slideLean = 0f
     /** Dropping into a slide's mouth: where he was relative to the channel, blended away over a moment (no snap). */
     var slideInX = 0f; var slideInY = 0f; var slideInZ = 0f; var slideIn = 0f
+    /**
+     * Lying on the slide (head first, on his front): [slidePose] 0..1 blends the belly-slide pose in as he dives into
+     * the mouth and back out to running after the exit; [slideSy] is how much shorter his lying body looks from the
+     * camera than standing; [slideTurn] how far (degrees) the channel ahead swings his head toward one side; [slideBob]
+     * a spring that presses him into the water where the slide bottoms out and lifts him over a crest.
+     */
+    var slidePose = 0f; var slideSy = 1f; var slideTurn = 0f; var slideBob = 0f; var slideBobV = 0f
     var portalScale = 1f
     var spin = 0f
     var sortKey = 0f
@@ -72,6 +79,7 @@ class Player {
         portalScale = 1f; spin = 0f; airTime = 0f; boostT = 0f; dashT = 0f; runW = 0f; airW = 0f
         loop = null; loopU = 0f; loopV = 0f; loopLat = 0f; loopHop = 0f; loopHopV = 0f; loopRot = 0f
         slide = null; slideS = 0f; slideV = 0f; slideTh = 0f; slideThV = 0f; slideHop = 0f; slideHopV = 0f; slideLean = 0f; slideIn = 0f
+        slidePose = 0f; slideSy = 1f; slideTurn = 0f; slideBob = 0f; slideBobV = 0f
         landT = 9f; jumpT = 9f; skidT = 9f; collectT = 9f; castT = 9f; hurtT = 9f; celebrateT = 9f
         safeX = x0; safeY = y0; safeZ = z0; safeBlock = null
     }

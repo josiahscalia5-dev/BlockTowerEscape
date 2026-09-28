@@ -152,8 +152,8 @@ private fun runShots(assets: File, out: File, w: Int, h: Int, opts: Map<String, 
             gfx.clear(); game.render(gfx)
             ImageIO.write(gfx.image, "png", File(out, "run_%04d.png".format(k)))
             val p = game.player
-            println("run_%04d f=%d state=%d z=%.2f x=%.2f y=%.2f v=%.1f slide=%.1f th=%.2f rot=%.0f cam yaw=%.2f".format(k, f, p.state, p.z, p.x, p.y,
-                kotlin.math.sqrt(p.vx * p.vx + p.vz * p.vz + p.vy * p.vy), p.slideS, p.slideTh, p.loopRot, game.cam.yaw))
+            println("run_%04d f=%d state=%d z=%.2f x=%.2f y=%.2f v=%.1f slide=%.1f th=%.2f rot=%.0f sy=%.2f turn=%.0f pose=%.2f cam yaw=%.2f".format(k, f, p.state, p.z, p.x, p.y,
+                kotlin.math.sqrt(p.vx * p.vx + p.vz * p.vz + p.vy * p.vy), p.slideS, p.slideTh, p.loopRot, p.slideSy, p.slideTurn, p.slidePose, game.cam.yaw))
             k++
         }
     }

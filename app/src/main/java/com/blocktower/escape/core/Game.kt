@@ -636,6 +636,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         p.tickAnim(dt)
         if (p.boostT > 0f) p.boostT -= dt
         if (p.dashT > 0f) p.dashT -= dt
+        // out of a slide: the belly-slide pose and its turn blend back out to running (no snap)
+        if (p.state != PS.SLIDE && p.slidePose > 0f) { p.slidePose = max(0f, p.slidePose - dt / 0.42f); if (p.slidePose <= 0f) p.loopRot = 0f }
 
         when (p.state) {
             PS.RESCUE_RIDE -> { updateRide(dt); return }
@@ -918,10 +920,15 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     }
 
     // ------------------------------------------------------------------ the rainbow slides (Level 6)
+    /** How quickly the camera follows him down a slide (1/s). */
+    private val SLIDE_FOLLOW = 11f
     /** How far the thumb has steered him up the channel's walls (radians, - left, + right). */
     var slideSteer = 0f
         private set
     private val sv = FloatArray(6)
+    /** His height up the channel's wall last frame (climbing it costs pace, coming down gives it back). */
+    private var slideH = 0f
+    private val sf = FloatArray(12)
 
     private fun enterSlide(sl: Slide) {
         val p = player
@@ -930,7 +937,11 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         p.slideV = clamp(max(p.vz, 3.5f) + 1.2f, Tune.SLIDE_MIN, Tune.SLIDE_MAX)
         p.slideTh = clamp((p.x - sl.x0) / sl.r, -0.8f, 0.8f); p.slideThV = 0f
         slideSteer = p.slideTh
-        p.slideHop = 0f; p.slideHopV = 0f; p.slideLean = 0f
+        p.slideLean = 0f
+        // he dives in: a short hop off the lip, landing on his front with a splash
+        p.slideHop = 0.02f; p.slideHopV = 2.8f
+        p.slideTurn = 0f; p.slideBob = 0f; p.slideBobV = 0f
+        slideH = sl.r * (1f - kotlin.math.cos(p.slideTh))
         p.grounded = true; p.jumping = false; p.airW = 0f
         p.vy = 0f
         // where he is now against where the channel puts him: blended away over the first moment
@@ -977,16 +988,32 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         p.slideThV += ((want - p.slideTh) * 38f - p.slideThV * 10f) * dt
         p.slideTh = clamp(p.slideTh + p.slideThV * dt, -Tune.SLIDE_WALL - 0.08f, Tune.SLIDE_WALL + 0.08f)
         p.slideLean = lerp(p.slideLean, clamp(eq * 0.9f + (want - p.slideTh) * 1.5f, -1f, 1f), min(1f, dt * 8f))
+        // up a wall he climbs, which costs him a little pace (sliding back down gives it back)
+        val hNow = sl.r * (1f - kotlin.math.cos(p.slideTh))
+        p.slideV = kotlin.math.sqrt(max(Tune.SLIDE_MIN * Tune.SLIDE_MIN, p.slideV * p.slideV - 2f * Tune.GRAVITY * 0.6f * (hNow - slideH)))
+        slideH = hNow
+        // lying on his front: the pose comes in as he lands in the channel
+        p.slidePose = min(1f, p.slidePose + dt / 0.24f)
+        // where the slide bottoms out he is pressed into the water, over a crest he lightens: a small spring
+        val sb = min(p.slideS, sl.length)
+        val bendUp = (sl.tanY(min(sl.length, sb + 0.5f)) - sl.tanY(max(0f, sb - 0.5f)))
+        val press = clamp(p.slideV * p.slideV * bendUp / Tune.GRAVITY, -1.5f, 1.5f)
+        p.slideBobV += (press * 9f - p.slideBob * 70f - p.slideBobV * 10f) * dt
+        p.slideBob = clamp(p.slideBob + p.slideBobV * dt, -0.5f, 0.5f)
         if (p.slideHop > 0f || p.slideHopV > 0f) {
             p.slideHop += p.slideHopV * dt; p.slideHopV -= 24f * dt
-            if (p.slideHop <= 0f) { p.slideHop = 0f; p.slideHopV = 0f; p.landT = 0f; p.landAmt = 0.35f; splash(p.x, p.y, p.z, 10) }
+            if (p.slideHop <= 0f) {
+                // back down on his front: a smack on the water
+                p.slideHop = 0f; p.slideHopV = 0f; p.landT = 0f; p.landAmt = 0.35f; p.slideBobV += 3.5f
+                splash(p.x, p.y, p.z, 10); slideSpray(sl, 0.9f, 0f, 10, 1.4f)
+            }
         }
         val before = p.slideS
         p.slideS += p.slideV * dt
         // speed rings across the channel
         for (pu in sl.pads) if (before < pu && p.slideS >= pu) {
             p.dashT = Tune.DASH_T; p.slideV = min(p.slideV + 3f, top + 2f)
-            platform.sound(Sfx.SPEED, 0.9f, 1.4f); kickV += 0.8f
+            platform.sound(Sfx.SPEED, 0.9f, 1.4f); kickV += 0.8f; p.slideBobV -= 2f
             fx.popupWorld("SPEED!", p.x, p.y + 2f, p.z, 0xFF9AF0FF.toInt(), 42f)
         }
         val ss = min(p.slideS, sl.length)
@@ -1016,11 +1043,22 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             val row = world.row(r) ?: continue
             for (i in row.indices) {
                 val b = row[i]
-                if (b.type == BT.TARGET && b.decor && len3(b.x - bx, b.y + b.sy * 0.5f - by, b.z + b.sz * 0.5f - bz) < 1.05f) { collectTarget(b, false); break }
+                if (b.type == BT.TARGET && b.decor && len3(b.x - bx, b.y + b.sy * 0.5f - by, b.z + b.sz * 0.5f - bz) < 1.05f) {
+                    // it bursts as he slides through it (it does not hang in the channel for the camera to fly into)
+                    collectTarget(b, false)
+                    fx.shards(b, BC.base(BC.BLUE), 14, p.vx * 0.9f, p.vy * 0.9f, p.vz * 0.9f, 0.6f); b.visible = false
+                    break
+                }
             }
         }
-        // spray off his feet
-        if (p.grounded && fx.rng.f() < dt * (18f + 3f * p.slideV)) splash(p.x, p.y, p.z, 1)
+        // water: spray off his trailing feet, off both hands (spread on the water) and a bow wave at his chest
+        if (p.grounded && fx.rng.f() < dt * (10f + 2f * p.slideV)) splash(p.x, p.y, p.z, 1)
+        if (p.grounded && p.slidePose > 0.6f) {
+            val rate = dt * (5f + 1.5f * p.slideV)
+            if (fx.rng.f() < rate) slideSpray(sl, 1.05f, -0.8f, 1, 1f)
+            if (fx.rng.f() < rate) slideSpray(sl, 1.05f, 0.8f, 1, 1f)
+            if (fx.rng.f() < rate * 0.8f) slideSpray(sl, 1.6f, 0f, 1, 0.8f)
+        }
         if (before < sl.length * 0.5f && p.slideS >= sl.length * 0.5f) platform.sound(Sfx.WHOOSH, 0.5f, 1.4f)
         if (p.slideS >= sl.length) exitSlide(sl)
     }
@@ -1030,7 +1068,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         val p = player
         val v = p.slideV
         val s = sl.length
-        p.state = PS.NORMAL; p.stateT = 0f; p.slide = null; p.loopRot = 0f
+        p.state = PS.NORMAL; p.stateT = 0f; p.slide = null
         p.vz = clamp(v * sl.tanZ(s), 2f, Tune.RUN_DASH + 0.8f)
         p.vy = max(0f, v * sl.tanY(s)) + 3.4f; p.vx = 0f
         p.boostT = 0.7f; p.grounded = false; p.jumping = false; p.lastGroundY = p.y; p.airTime = 0f; p.airW = 0.6f
@@ -1043,6 +1081,34 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         addScore(200, p.x, p.y + 2f, p.z)
         platform.sound(Sfx.WHOOSH, 0.8f, 1.5f)
         kickV += 1.2f
+    }
+
+    /**
+     * Water thrown off him as he lies in the channel: [along] units ahead of his feet down the slide, [across] units to
+     * the side (his hands at about 0.8 either side, his chest in the middle); it flies out sideways and up and is left
+     * behind as he shoots on.
+     */
+    private fun slideSpray(sl: Slide, along: Float, across: Float, n: Int, power: Float) {
+        val p = player
+        val s = min(sl.length, p.slideS + along)
+        val th = p.slideTh + across / sl.r
+        sl.point(s, th, 0.03f, sf, 0)
+        sl.point(s, th + 0.2f, 0.03f, sf, 3)
+        sl.normal(s, th, sf, 6)
+        var ax = sf[3] - sf[0]; var ay = sf[4] - sf[1]; var az = sf[5] - sf[2]
+        val al = len3(ax, ay, az).coerceAtLeast(1e-4f); ax /= al; ay /= al; az /= al
+        val side = if (across > 0.1f) 1f else if (across < -0.1f) -1f else 0f
+        val tX = sl.tanX(s); val tY = sl.tanY(s); val tZ = sl.tanZ(s)
+        for (i in 0 until n) {
+            val q = fx.spawn()
+            val out = (if (side == 0f) fx.rng.f(-1f, 1f) * 2.6f else side * fx.rng.f(1.2f, 3.2f)) * power
+            val up = fx.rng.f(1.8f, 3.8f) * power
+            val fwd = p.slideV * fx.rng.f(0.45f, 0.7f)
+            q.x = sf[0] + fx.rng.f(-0.12f, 0.12f); q.y = sf[1] + 0.04f; q.z = sf[2] + fx.rng.f(-0.12f, 0.12f)
+            q.vx = ax * out + sf[6] * up + tX * fwd; q.vy = ay * out + sf[7] * up + tY * fwd; q.vz = az * out + sf[8] * up + tZ * fwd
+            q.life = fx.rng.f(0.25f, 0.5f); q.maxLife = q.life; q.size = fx.rng.f(0.04f, 0.09f)
+            q.color = if (fx.rng.f() < 0.6f) 0xFFF2FBFF.toInt() else 0xFFA8DCFF.toInt(); q.kind = PK.DUST; q.gravity = 14f
+        }
     }
 
     /** Water thrown up round the boy's feet on a slide. */
@@ -1442,7 +1508,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         platform.sound(Sfx.COIN, 0.8f, 1f + (coinsCollected % 5) * 0.04f)
         if (cam.project(c.x, c.y, c.z)) {
             fx.fly(FK.COIN, cam.sx, cam.sy, hud.coinIconX(), hud.coinIconY(), 0, 0f, 0.55f)
-            fx.burst(c.x, c.y, c.z, 6, PK.SPARK, 0xFFFFE070.toInt(), 2.5f, 0.1f, 0.35f)
+            // (down a slide the coins come thick and fast: fewer sparks, so they don't blaze over the boy)
+            fx.burst(c.x, c.y, c.z, if (player.state == PS.SLIDE) 2 else 6, PK.SPARK, 0xFFFFE070.toInt(), 2.5f, 0.1f, 0.35f)
         }
     }
 
@@ -1915,7 +1982,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             // higher and steeper on the drops, rolling gently as he rides up a wall
             val s = p.slideS
             val slope = sl.tanY(min(sl.length, s + 1.5f))
-            dist = 4.4f; height = 2.1f - slope * 1.6f; pitch = 0.28f - slope * 0.35f
+            // close behind him and low, so he is the focus lying in the water, with the channel ahead in view
+            dist = 3.5f; height = 1.75f - slope * 1.3f; pitch = 0.25f - slope * 0.32f
             yaw = lerpAngle(sl.heading(s), sl.heading(min(sl.length, s + 3f)), 0.55f); fov = 0.88f
             roll = -p.slideTh * 0.1f
         }
@@ -1953,17 +2021,20 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             val by = p.y + 0.8f * lp.upY(u); val bz = p.z + 0.8f * lp.upZ(u)
             tx = lerp(lp.cx(0.5f), p.x, 0.6f); groundish = lerp(lp.y0 + lp.r * 0.9f, by, 0.55f) - 1f; tz = lerp(lp.z0, bz, 0.55f)
         }
-        if (sl != null && p.state == PS.SLIDE) {
-            // follow the channel's bottom (not his height up a wall), so the camera rides smoothly and he moves in it
-            val s = p.slideS
+        val sliding = sl != null && p.state == PS.SLIDE
+        if (sl != null && sliding) {
+            // follow the channel's bottom (not his height up a wall), so the camera rides smoothly and he moves in it;
+            // aimed as far ahead as the follow lags at his pace, so it stays right behind him even flat out
+            val s = min(p.slideS + p.slideV / SLIDE_FOLLOW, sl.length + 3f)
             sl.point(min(s, sl.length), 0f, 0f, sv, 0)
+            if (s > sl.length) { val o = s - sl.length; sv[0] += sl.tanX(sl.length) * o; sv[1] += sl.tanY(sl.length) * o; sv[2] += sl.tanZ(sl.length) * o }
             tx = sv[0]; groundish = sv[1]; tz = sv[2]
         }
-        val kz = if (p.state == PS.LOOP || p.stateT < 0.8f && lp == null && camLoopT > 0f) 3f else if (p.state == PS.SLIDE) 9f else 14f
+        val kz = if (p.state == PS.LOOP || p.stateT < 0.8f && lp == null && camLoopT > 0f) 3f else if (sliding) SLIDE_FOLLOW else 14f
         camLoopT = if (p.state == PS.LOOP) 1.2f else max(0f, camLoopT - dt)
         if (!camInit) { camX = tx; camY = groundish; camZ = tz; camInit = true; kickY = 0f; kickV = 0f }
-        camX = lerp(camX, tx, damp(if (camLoopT > 0f) 3f else 6f, dt))
-        camY = lerp(camY, groundish, damp(if (camLoopT > 0f) 3f else if (groundish < camY) 7f else 4.5f, dt))
+        camX = lerp(camX, tx, damp(if (camLoopT > 0f) 3f else if (sliding) SLIDE_FOLLOW else 6f, dt))
+        camY = lerp(camY, groundish, damp(if (camLoopT > 0f) 3f else if (sliding) SLIDE_FOLLOW else if (groundish < camY) 7f else 4.5f, dt))
         camZ = lerp(camZ, tz, damp(if (camLoopT > 0f) 3f else kz, dt))
         // Levels 5 and 6: the lava sea (the cloud sea) lies far below the course and follows its climb
         if (spec.plate) { val want = camY - world.seaDepth; seaY = if (seaY < -99f) want else lerp(seaY, want, damp(0.7f, dt)) }
@@ -2002,23 +2073,43 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     }
 
     /**
-     * On a slide the boy stands on the channel's surface: his up is its normal (up the wall when he rides one), seen
-     * through the camera as a screen angle he turns to smoothly.
+     * On a slide the boy lies on his front, head first down the channel. His shoulders (and outstretched arms) lie
+     * across the surface where he is, so the picture turns with the channel's wall as he rides up it; seen from behind,
+     * his lying body looks shorter than standing, by as much as the channel runs away from the camera; and where the
+     * channel swings left or right ahead of him, his head swings with it. All followed smoothly, never snapped.
      */
     private fun turnOnSlide(p: Player, dt: Float) {
         val sl = p.slide ?: return
-        sl.normal(p.slideS, p.slideTh, sv, 3)
-        if (!cam.project(p.x, p.y, p.z)) return
-        val fx0 = cam.sx; val fy0 = cam.sy
-        if (!cam.project(p.x + 1.2f * sv[3], p.y + 1.2f * sv[4], p.z + 1.2f * sv[5])) return
-        val dx = cam.sx - fx0; val dy = cam.sy - fy0
-        if (dx * dx + dy * dy < 1f) return
-        // he leans a little less than the wall is steep: riding it, not lying on it
-        val want = 0.72f * Math.toDegrees(kotlin.math.atan2(dx.toDouble(), (-dy).toDouble())).toFloat()
+        val s = min(p.slideS, sl.length); val th = p.slideTh
+        sl.point(s, th - 0.16f, p.slideHop, sf, 0); sl.point(s, th + 0.16f, p.slideHop, sf, 3)
+        if (!cam.project(sf[0], sf[1], sf[2])) return
+        val lx = cam.sx; val ly = cam.sy
+        if (!cam.project(sf[3], sf[4], sf[5])) return
+        val ax = cam.sx - lx; val ay = cam.sy - ly
+        if (ax * ax + ay * ay < 1f) return
+        val want = Math.toDegrees(kotlin.math.atan2(ay.toDouble(), ax.toDouble())).toFloat()
         var diff = want - p.loopRot
         while (diff > 180f) diff -= 360f
         while (diff < -180f) diff += 360f
-        p.loopRot += diff * min(1f, dt * 14f)
+        p.loopRot += diff * min(1f, dt * 12f)
+        // his feet are here; his head (raised a little, looking ahead) about 1.6 further down the channel
+        if (!cam.project(p.x, p.y, p.z)) return
+        val fx0 = cam.sx; val fy0 = cam.sy
+        val hPx = spec.boyH * cam.scaleAt(cam.depth)
+        val hs = s + 1.6f
+        sl.point(min(hs, sl.length), th, p.slideHop + 0.42f, sf, 0)
+        if (hs > sl.length) { val o = hs - sl.length; sf[0] += sl.tanX(sl.length) * o; sf[1] += sl.tanY(sl.length) * o; sf[2] += sl.tanZ(sl.length) * o }
+        if (!cam.project(sf[0], sf[1], sf[2]) || hPx < 1f) return
+        val dx = cam.sx - fx0; val dy = cam.sy - fy0
+        val r = Math.toRadians(p.loopRot.toDouble())
+        val upX = kotlin.math.sin(r).toFloat(); val upY = -kotlin.math.cos(r).toFloat()
+        val along = dx * upX + dy * upY
+        val side = dx * -upY + dy * upX
+        // a character game keeps him readable: only part of the true foreshortening
+        val sy = clamp(lerp(1f, along / (0.955f * hPx), 0.85f), 0.6f, 0.86f)
+        p.slideSy = lerp(p.slideSy, sy, min(1f, dt * 6f))
+        val turnDeg = clamp(Math.toDegrees(kotlin.math.atan2(side.toDouble(), max(1f, along).toDouble())).toFloat(), -28f, 28f)
+        p.slideTurn = lerp(p.slideTurn, turnDeg, min(1f, dt * 6f))
     }
 
     /**

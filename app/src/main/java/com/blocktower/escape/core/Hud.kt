@@ -622,8 +622,9 @@ class Hud(val g: Game) {
                 else -> when (f.value) { TK.MAGNET -> g.art.magnet; TK.SHIELD -> g.art.shield; TK.SPEED -> g.art.lightning; else -> g.art.blockTool }
             }
             val size = (if (f.kind == FK.TARGET) 70f else 50f) * s * (1.2f - 0.4f * f.t)
+            // the glow comes up as it flies (not a flash where it was picked up, over the boy)
             gr.setAdditive(true)
-            gr.glow(x, y, size * 0.9f, if (f.kind == FK.TARGET) 0x6650B0FF else 0x55FFD040)
+            gr.glow(x, y, size * 0.9f, Col.mulA(if (f.kind == FK.TARGET) 0x6650B0FF else 0x55FFD040, smooth(f.t / 0.35f)))
             gr.setAdditive(false)
             gr.image(img, x - size * 0.5f, y - size * 0.5f * img.h / img.w, size, size * img.h / img.w)
         }
