@@ -10,24 +10,32 @@ package com.blocktower.escape.core
  * bridges and stepping stones over a sea of pink clouds, with spiked balls swinging on chains, arcane beams, spiked
  * blocks, the Sorcerer's minions and creatures, and his Wrath. Rows run along +z; "lvl" is the walking-surface height.
  *
- * Nine cinematic phases (Ev.PHASE: the sky's light and the music follow them):
- *  1 PLATFORMING      the enchanted isles        (speed pads, the first gaps, a spiked ball, moving blocks)   CP 1
- *  2 MINION CHASE     the minion ambush          (MINIONS AHEAD! patrolling imps, swooping orb imps, bolts)  CP 2
+ * Nine cinematic phases (Ev.PHASE: the sky's light and the music follow them). GRAB ATTACKS ([GrabSystem]) are the
+ * level's signature threat: the Sorcerer's magic tries to grab the boy (jump, step aside or change pace to escape).
+ *  1 PLATFORMING      the enchanted isles        (speed pads, the first gaps, a spiked ball, moving blocks;
+ *                                                 SOMETHING IS FOLLOWING: little imps creep up behind the boy)  CP 1
+ *  2 MINION CHASE     the minion ambush          (MINIONS AHEAD! patrolling imps, swooping orb imps, bolts;
+ *                                                 THE FIRST GRAB: a giant shadow hand out of a rift)             CP 2
  *  3 GOLDEN SPRITE    the golden sprite          (THE GOLDEN SPRITE ESCAPED! CHASE & COLLECT: a bonus)       CP 3
  *  4 SECRET ROUTE     the crystal stairs         (narrow climbs, beams, vanishing stones; a rune beside the path
- *                                                 raises a SECRET stair of blue blocks to a treasure island; the fork)
- *                                                                                                              CP 4
+ *                                                 raises a SECRET stair of blue blocks to a treasure island; the fork;
+ *                                                 magical vines lash up at the top)                            CP 4
  *  5 MAGICAL WARNING  the Sorcerer's gauntlet    (THE SORCERER AWAKENS! stray shards crash round the path; maces,
- *                                                 beams, spiked blocks; a HIDDEN LEDGE under the narrow bridge)  CP 5
+ *                                                 beams, spiked blocks; a HIDDEN LEDGE under the narrow bridge;
+ *                                                 a magic chain swings its shackle across the path)             CP 5
  *                     the starwind bridges       (MAGICAL WIND over spike-lined paths and jumps)              CP 6
- *  6 GUARDIAN EVENT   the Sorcerer's Wrath       (he rises over the course: shockwaves, hands and cursed blocks,
- *                                                 falling shards and crumbling floors; three STAR RUNES drive him
- *                                                 back; rings of starlight are safe)                            CP 7, 8
+ *  6 GUARDIAN EVENT   the Sorcerer's Wrath       (he rises over the course (the camera looks up at him) and reaches
+ *                                                 down with his own claw (the GUARDIAN'S GRAB); then shockwaves,
+ *                                                 hands and cursed blocks, falling shards and crumbling floors;
+ *                                                 three STAR RUNES drive him back; rings of starlight are safe) CP 7, 8
  *  7 ESCAPE SEQUENCE  the minion pursuit         (imps fly after the boy and lunge when he slows, ships bomb the
- *                                                 path, ROLLING STONES roll at him, a SPIRIT blinks onto the path) CP 9
- *                     the floating maze          (platforms in turn, a patrolled bridge, the last imps)         CP 10
+ *                                                 path, ROLLING STONES roll at him, a SPIRIT blinks onto the path,
+ *                                                 vines across the road)                                        CP 9
+ *                     the floating maze          (platforms in turn, a patrolled bridge, a shadow hand, the last
+ *                                                 imps and the flying GRABBERS)                                 CP 10
  *  8 FINAL ASCENT     the final ascent           (FINAL ESCAPE: the star bridge fades behind you; the long climb)
- *  9 FINAL ESCAPE     the celestial stairs       (THE CELESTIAL GATE AWAKENS: into the star portal)
+ *  9 FINAL ESCAPE     the celestial stairs       (THE FINAL GUARDIAN GRAB at their foot — EPIC ESCAPE! — then THE
+ *                                                 CELESTIAL GATE AWAKENS: into the star portal)
  *
  * Row string legend: see [CourseWriter] ('p' is a speed pad, 'K' moonstone in this level, 'M' magenta).
  */
@@ -125,6 +133,24 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
     fun secret(id: Int, x: Float, lvl: Float, z: Int, r: Float, switch: Boolean, title: String) {
         w.secrets.add(Secret(id, ox + x, lvl + lo, z + zo + 0.5f, r, switch, title))
     }
+    // ---- the grab attacks (see [GrabSystem]); each placed on a stretch with floor in every lane before and after it
+    /** A giant shadow hand rising out of a rift on [side] (-1 left, 1 right) that grabs at row z. */
+    fun shadowHand(side: Float, lvl: Float, z: Int) { w.grabs.add(GrabSpot(GK.HAND, side, lvl + lo, (z + zo).toFloat())) }
+    /** Magical vines across row z, [half] lanes either side of the path's middle. */
+    fun vines(lvl: Float, z: Int, half: Float = 1f) { w.grabs.add(GrabSpot(GK.VINES, 0f, lvl + lo, (z + zo).toFloat(), half)) }
+    /** A magical chain swinging across row z from a floating rune ring above the path; [atGo]: its phase at GO. */
+    fun grabChain(lvl: Float, z: Int, period: Float, atGo: Float, len: Float = 3.6f) {
+        w.grabs.add(GrabSpot(GK.CHAIN, 0f, lvl + lo, (z + zo).toFloat(), len, period, atGo))
+    }
+    /** Flying grabbers diving at the boy over rows z0..z1, one every [every] s (the first after [first] s). */
+    fun grabbers(lvl: Float, z0: Int, z1: Int, every: Float, first: Float) {
+        w.grabs.add(GrabSpot(GK.GRABBERS, 0f, lvl + lo, (z0 + zo).toFloat(), (z1 - z0).toFloat(), every, first))
+    }
+    /** The Guardian's grab: the Sorcerer's claw out of the sky at row z ([final]: his last grab, before the gate). */
+    fun guardianGrab(lvl: Float, z: Int, final: Boolean) { w.grabs.add(GrabSpot(GK.GUARDIAN, 0f, lvl + lo, (z + zo).toFloat(), flag = if (final) 1 else 0)) }
+    /** [n] little imps following the boy over rows z0..z1 (they never attack: they build the tension before the ambush). */
+    fun followers(z0: Int, z1: Int, n: Int) { w.grabs.add(GrabSpot(GK.FOLLOWERS, 0f, lo, (z0 + zo).toFloat(), (z1 - z0).toFloat(), flag = n)) }
+
     fun moonCheckpoint(z: Int, lvl: Int) { row(z, lvl, "K.K"); checkpoint(z, lvl) }
     fun stoneRow(z: Int, lvl: Float, x0: Int, x1: Int) { for (x in x0..x1) blk(x.toFloat(), lvl, z, BC.MOON, BT.BRICK); setPath(z, lvl) }
     /** Wooden bridge planks between islands (rows z0..z1, lanes x0..x1), chain railings at both sides. */
@@ -192,6 +218,9 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         row(43, 3, "YMY"); row(44, 3, "GYG"); row(45, 3, "RYR")
         island(43, 45, 3f, 0f, 4.8f, 1, 1)
         gem(0f, 3f, 44)
+        // something is following...: two little imps creep up behind the boy (they never attack) and fly off to join the
+        // Sorcerer's ambush when it begins
+        followers(26, 45, 2)
 
         // ================= SECTION 2 : THE MINION AMBUSH =================
         zo = 46; lo = 3f
@@ -220,10 +249,11 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         island(18, 22, 1f, 0f, 5f, 3, 1)
         patrol(1, 0f, 1f, 20, 1.0f, 1.3f, 1.5f)
         coin(-1f, 1f, 18); coin(1f, 1f, 22)
-        // up the steps, a second orb imp, the checkpoint
+        // up the steps: THE FIRST GRAB: a giant shadow hand rises out of a rift on the left, rears up and lunges at the boy
+        // (GRAB ATTACK! — jump or step aside as it strikes: NARROW ESCAPE!); then the checkpoint
         row(23, 1.5f, "YGY"); row(24, 2, "GRG"); row(25, 2, "YGY"); row(26, 2, "GYG"); row(27, 2, "MGM"); row(28, 2, "YGY")
         tower(23, 23, 1.5f); island(24, 28, 2f, 0f, 5.2f, 1, 2)
-        swoop(1, 0f, 2f, 26, 1.2f, 3.0f, 1.4f)
+        shadowHand(-1f, 2f, 26)
         gem(0f, 2f, 28)
         row(29, 2, "GYG"); moonCheckpoint(30, 2); row(31, 2, "YGY"); row(32, 2, "GpG"); row(33, 2, "YGY")
         island(29, 33, 2f, 0f, 5.6f, 3, 2)
@@ -348,6 +378,8 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         spire(-4.8f, 6f, 47); spire(4.8f, 6f, 48, 1.3f)
         row(52, 6, "GYG"); row(53, 6.5f, "YGY"); row(54, 7, "RYR"); row(55, 7.5f, "GYG"); row(56, 8, "YRY"); row(57, 8, "GMG"); row(58, 8, "YGY")
         island(52, 52, 6f, 0f, 4.4f, 0, 0); tower(53, 53, 6.5f); tower(54, 54, 7f); tower(55, 55, 7.5f); island(56, 58, 8f, 0f, 4.6f, 2, 1)
+        // magical vines stir in the top of the stairs and lash up round the legs: jump them (or wait for them to rest)
+        vines(8f, 57)
 
         // ================= SECTION 5 : THE SORCERER'S GAUNTLET (THE MAGICAL WARNING) =================
         zo = 204; lo = 16f
@@ -401,6 +433,8 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         spikeBox(0f, 2f, 45, amp = 1.3f, speed = 1.7f, phase = 0f)
         row(46, 2, "GYG"); row(47, 2, "YGY"); row(48, 2, "GYG"); moonCheckpoint(49, 2); row(50, 2, "YGY"); row(51, 2, "GMG"); row(52, 2, "YGY"); row(53, 2, "GYG")
         island(46, 53, 2f, 0f, 6f, 3, 3)
+        // a magic chain swings low across the path from a floating rune ring: jump its shackle as it sweeps past
+        grabChain(2f, 47, 2.6f, 0f)
         mystery(-2f, 2f, 50, Reward.HEART, BC.GREEN); mystery(2f, 2f, 50, Reward.TOOL_SHIELD, BC.GREEN)
         coinLine(0f, 2f, 50, 53); gem(0f, 0f, 27); gem(0f, 2f, 47)
         spire(-4.4f, 0f, 1); spire(4.5f, 2f, 47, 1.3f); crystal(-3.4f, 2f, 52); crystal(3.3f, 0f, 36)
@@ -448,9 +482,12 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         island(2, 9, 0f, 0f, 6.8f, 3, 2)
         coinLine(0f, 0f, 3, 9); gem(-2f, 0f, 5); gem(2f, 0f, 8)
         spire(-4.9f, 0f, 4); spire(4.9f, 0f, 8, 1.3f)
-        // 1: shockwaves roll down a long straight road at the boy: jump each one as it reaches him
-        trig(10, Ev.WRATH_MODE, "", "1")
-        trig(10, Ev.TUT, "SHOCKWAVES! JUMP each one as it reaches you", "7")
+        // THE GUARDIAN ATTACKS: as he finishes rising he reaches down out of the sky with his own claw (WARNING!, his
+        // shadow on the path, the camera draws back): dodge it on the bridge (GUARDIAN ESCAPED!)
+        guardianGrab(0f, 20, false)
+        // 1: then shockwaves roll down the long straight road at the boy: jump each one as it reaches him
+        trig(24, Ev.WRATH_MODE, "", "1")
+        trig(23, Ev.TUT, "SHOCKWAVES! JUMP each one as it reaches you", "7")
         val road = arrayOf("GYG", "YRY", "GYG", "YGY", "GBG", "YGY", "GYG", "RYR")
         for (z in 10..17) row(z, 0, road[(z - 10) % road.size])
         island(10, 17, 0f, 0f, 5f, 3, 1)
@@ -529,6 +566,8 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         coin(-1f, 0f, 19); coin(1f, 0f, 21); coin(-1f, 0f, 23); coin(1f, 0f, 25); coin(-1f, 0f, 27); coin(1f, 0f, 29); gem(0f, 0f, 30)
         row(32, 0, "GYG"); row(33, 0, "YGY"); row(34, 0, "GYG"); row(35, 0, "RBR"); row(36, 0, "GYG")
         island(32, 36, 0f, 0f, 5f, 2, 1)
+        // the escape grows wild: vines lash up across the road (jump them — the imps are right behind)
+        vines(0f, 34)
         // half steps up (no stopping: they are after you)
         row(37, 0.5f, "YGY"); row(38, 1, "GYG"); row(39, 1.5f, "YRY"); row(40, 2, "GMG")
         tower(37, 37, 0.5f); tower(38, 38, 1f); tower(39, 39, 1.5f); tower(40, 40, 2f)
@@ -580,6 +619,8 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         patrol(3, 0f, 0f, 15, 1.0f, 1.4f, 0f)
         row(19, 0, "GYG"); row(20, 0, "YGY"); row(21, 0, "GYG")
         island(19, 21, 0f, 0f, 4.8f, 2, 1)
+        // a giant shadow hand out of a rift on the right grabs at the landing
+        shadowHand(1f, 0f, 20)
         // vanishing stones zig-zagging up
         row(22, 0, "d.d", -1); row(23, 0.5f, ".d.", -1); row(24, 1, "d.d", -1)
         save(0f, -2, 23)
@@ -587,6 +628,9 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         row(25, 1, "GYG"); row(26, 1, "YGY"); row(27, 1, "GRG"); row(28, 1, "YGY"); row(29, 1, "GYG"); row(30, 1, "YBY")
         island(25, 30, 1f, 0f, 5f, 3, 2)
         swoop(3, 0f, 1f, 29, 1.2f, 2.7f, 0.4f)
+        // GRABBERS: small flying grabbers dive at the boy from the sides, from ahead and from behind, one after another
+        // (they wait while he is in the air over a gap: they only dive where he can dodge)
+        grabbers(1f, 25, 41, 2.8f, 0.3f)
         // a moving platform, an arcane beam
         moving(0f, 1, 32, 1.2f, 2.0f, 0.8f, 2f, BC.MAGENTA)
         save(0f, -2, 32)
@@ -668,7 +712,10 @@ private class Level7Writer(w: World) : CourseWriter(w, 7) {
         w.finalSafeZ = (0 + zo).toFloat()
         row(0, 0, "YGY"); row(1, 0, "GRG")
         island(0, 1, 0f, 0f, 5f, 3, 1)
-        val stairs = arrayOf("KYPYK", "KGMGK", "KYBYK", "KGRGK", "KYPYK", "KGMGK", "KYPYK", "KGRGK", "KYPYK", "KGMGK", "KYPYK", "KGRGK")
+        // THE FINAL GUARDIAN GRAB: the Sorcerer comes back out of the mist for one last grab at the foot of the stairs;
+        // escape it (EPIC ESCAPE!) and the Celestial Gate is revealed, its light pouring over the sky
+        guardianGrab(0f, 1, true)
+        val stairs =arrayOf("KYPYK", "KGMGK", "KYBYK", "KGRGK", "KYPYK", "KGMGK", "KYPYK", "KGRGK", "KYPYK", "KGMGK", "KYPYK", "KGRGK")
         for ((i, st) in stairs.withIndex()) row(2 + i, 0.5f + i * 0.5f, st, -2)
         for (i in stairs.indices) coin(0f, 0.5f + i * 0.5f, 2 + i)
         for (i in stairs.indices) tower(2 + i, 2 + i, 0.5f + i * 0.5f, 0f, 5.3f)

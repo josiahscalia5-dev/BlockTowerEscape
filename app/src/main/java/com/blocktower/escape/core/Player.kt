@@ -30,6 +30,16 @@ class Player {
     var skidT = 9f; var skidDir = 0f
     var collectT = 9f
     var castT = 9f
+    /** Which tool the last cast was (the pose differs: the magnet pulls, the shield braces, the block tool points down). */
+    var castKind = TK.SPEED
+    /**
+     * Level 7's grab attacks: how much a threat has his attention (0..1) and which side of him it is on (-1 left .. 1
+     * right); a narrow escape's startled flinch ([dodgeT], away toward [dodgeDir]); held by a grab (0 no, 1 lifted in a
+     * hand, 2 vines round his legs).
+     */
+    var threat = 0f; var threatSide = 0f
+    var dodgeT = 9f; var dodgeDir = 0f
+    var held = 0
     var hurtT = 9f; var hurtDir = 1f
     var celebrateT = 9f
     var invuln = 0f
@@ -81,11 +91,12 @@ class Player {
         slide = null; slideS = 0f; slideV = 0f; slideTh = 0f; slideThV = 0f; slideHop = 0f; slideHopV = 0f; slideLean = 0f; slideIn = 0f
         slidePose = 0f; slideSy = 1f; slideTurn = 0f; slideBob = 0f; slideBobV = 0f
         landT = 9f; jumpT = 9f; skidT = 9f; collectT = 9f; castT = 9f; hurtT = 9f; celebrateT = 9f
+        threat = 0f; threatSide = 0f; dodgeT = 9f; dodgeDir = 0f; held = 0
         safeX = x0; safeY = y0; safeZ = z0; safeBlock = null
     }
 
     /** Advances the animation timers. */
     fun tickAnim(dt: Float) {
-        landT += dt; jumpT += dt; skidT += dt; collectT += dt; castT += dt; hurtT += dt; celebrateT += dt
+        landT += dt; jumpT += dt; skidT += dt; collectT += dt; castT += dt; hurtT += dt; celebrateT += dt; dodgeT += dt
     }
 }

@@ -187,9 +187,32 @@ class PlayerRig(val g: Game) {
         // ---- collect: quick fist pump
         val col = env(p.collectT, 0.34f)
         if (col > 0f) { o.armL += 34f * col; o.armR -= 34f * col; o.sy *= 1f + 0.05f * col; o.bodyDy -= 4f * col }
-        // ---- tool cast: right arm thrust up
+        // ---- tool cast: each tool its own gesture (the magnet pulls with both hands out in front, the shield is braced
+        // behind raised arms, the block tool points down at the gap, the lightning / hourglass is thrust up)
         val cast = env(p.castT, 0.4f)
-        if (cast > 0f) { o.armR -= 50f * cast; o.armRS *= 1f - 0.08f * cast; o.sy *= 1f + 0.03f * cast }
+        if (cast > 0f) when (p.castKind) {
+            TK.MAGNET -> { o.armL += 44f * cast; o.armR -= 44f * cast; o.armLS *= 1f - 0.1f * cast; o.armRS *= 1f - 0.1f * cast; o.bodyDy += 3f * cast }
+            TK.SHIELD -> { o.armL += 64f * cast; o.armR -= 64f * cast; o.sy *= 1f - 0.04f * cast; o.bodyDy += 5f * cast; o.legsSy *= 1f - 0.05f * cast }
+            TK.BLOCK -> { o.armR += 18f * cast; o.armRS *= 1f + 0.06f * cast; o.bodyDy += 5f * cast; o.bodyRot += 3f * cast; o.legsSy *= 1f - 0.06f * cast }
+            else -> { o.armR -= 50f * cast; o.armRS *= 1f - 0.08f * cast; o.sy *= 1f + 0.03f * cast }
+        }
+        // ---- Level 7's grab attacks: when one is coming he watches it, leans away from it with his arm up on its side
+        // and bends his knees ready to jump; after a narrow escape a startled flinch (arms flung out) and he runs on
+        val th = p.threat
+        if (th > 0.01f) {
+            val sd = p.threatSide
+            o.rot += -sd * 5f * th
+            o.bodyRot += -sd * 2.5f * th
+            o.bodyDy += 3f * th * ground
+            if (sd < -0.1f) o.armL += 24f * th * min(1f, -sd * 2f) else if (sd > 0.1f) o.armR -= 24f * th * min(1f, sd * 2f)
+            else { o.armL += 10f * th; o.armR -= 10f * th }
+        }
+        val dodge = env(p.dodgeT, 0.5f)
+        if (dodge > 0f) {
+            o.armL += 36f * dodge; o.armR -= 36f * dodge
+            o.sy *= 1f + 0.05f * dodge; o.bodyDy -= 3f * dodge
+            o.rot += p.dodgeDir * 7f * dodge
+        }
         // ---- damage: knocked back, arms thrown up, legs tucked
         val hurt = decay(p.hurtT, 0.55f)
         if (hurt > 0f) {
@@ -228,6 +251,14 @@ class PlayerRig(val g: Game) {
                 o.spin = cos(p.spin)
             }
             PS.DEAD -> { o.armL = 50f + 20f * sin(t * 19f); o.armR = -50f - 20f * sin(t * 19f + 1f); o.legsMirror = ((t * 8f).toInt() and 1) == 1 }
+        }
+        // held by a grab: struggling in a giant hand (arms flailing, legs kicking), or tugging at the vines round his legs
+        if (p.held == 1) {
+            o.armL = 48f + 22f * sin(t * 18f); o.armR = -48f - 22f * sin(t * 18f + 1.1f)
+            o.legsMirror = ((t * 11f).toInt() and 1) == 1; o.rot += sin(t * 9f) * 8f; o.legsSy *= 0.94f
+        } else if (p.held == 2) {
+            o.armL = 20f + 16f * sin(t * 15f); o.armR = -20f - 16f * sin(t * 15f + 1.3f)
+            o.bodyRot += sin(t * 13f) * 5f; o.bodyDy += 5f; o.legsMirror = false; o.legsRot = 0f
         }
         if (speed < 0.01f && airW < 0.01f && p.state == PS.NORMAL) o.legsRot = 0f
         // down a rainbow slide he lies on his front (and blends back to running after the exit)

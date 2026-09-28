@@ -86,6 +86,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     /** Level 7: the Sorcerer's creatures and his Wrath; the secret routes, chests and the world answering the boy. */
     val sorcery = Sorcery(this)
     val wonders = Wonders(this)
+    /** Level 7: the grab attacks (shadow hands, vines, grabbers, chains, the Guardian's grabs) and the followers. */
+    val grabs = GrabSystem(this)
     /** Level 7: the Sorcerer's minions. */
     val minions = MinionSystem(this)
     /** Levels 5 and 6: height of the lava sea (the cloud sea), far below the course (it follows the climb). */
@@ -196,11 +198,12 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         coinsCollected = 0; mysteryOpened = 0; falls = 0; checkpoint = 0
         for (k in 0..3) tools[k].count = spec.toolCounts[k]
         for (tl in tools) { tl.active = 0f; tl.cooldown = 0f; tl.anim = 0f; tl.gain = 0f; tl.readyFlash = 0f }
-        fx.clear(); ev.reset(); relic.reset(); minions.reset(); sorcery.reset(); wonders.reset(); seaY = -100f; hazK = 1f
+        fx.clear(); ev.reset(); relic.reset(); minions.reset(); sorcery.reset(); wonders.reset(); grabs.reset(); seaY = -100f; hazK = 1f
         gemsCollected = 0
         results = null; failReason = ""
         shake = 0f; rumble = 0f; flashWhite = 0f; flashRed = 0f; hint = ""; hintT = 0f; pendingHint = ""; shieldHit = 0f; magnetLinks.clear()
         camInit = false; camYaw = 0f; camCyK = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f; minionCam = 0f; wrathCam = 0f; gateCam = 0f
+        grabCam = 0f; riseCam = 0f; revealCam = 0f
         combo = 0; lastTargetT = -9f
         kickY = 0f; kickV = 0f; camLead = 0f; camRoll = 0f; camFov = 1f
         swipe.reset(); joy.release(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f; movedYet = false
@@ -229,6 +232,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         minions.resetAfter(cp.z)
         sorcery.resetAfter(cp.z)
         wonders.resetAfter(cp.z)
+        grabs.resetAfter(cp.z)
         hazK = 1f
         player.reset(cp.x, cp.y, cp.z)
         hearts = maxHearts; hud.bumpHearts()
@@ -238,7 +242,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         fx.clear(); results = null; failReason = ""
         shake = 0f; flashRed = 0f; flashWhite = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
         state = GS.INTRO; stateT = 1.39f; introCountFrom = 1.39f; introSwoop = false; paused = false
-        camInit = false; camYaw = 0f; camCyK = 0f; minionCam = 0f; wrathCam = 0f; gateCam = 0f
+        camInit = false; camYaw = 0f; camCyK = 0f; minionCam = 0f; wrathCam = 0f; gateCam = 0f; grabCam = 0f; riseCam = 0f; revealCam = 0f
         swipe.stop(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f
         markSpawnContacts()
     }
@@ -309,7 +313,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         // (Level 7's hourglass slows the Sorcerer's creatures, his minions and the golden sprite too)
         relic.update(if (spec.enchanted) sdt * hazK else sdt)
         minions.update(sdt * hazK)
-        if (spec.enchanted) { sorcery.update(sdt, hazK); wonders.update(sdt) }
+        if (spec.enchanted) { sorcery.update(sdt, hazK); grabs.update(sdt, hazK); wonders.update(sdt) }
         updatePlayer(sdt)
         updateCoins(sdt)
         checkTriggers()
@@ -450,7 +454,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
                 return
             }
             tl.count--; tl.cooldown = tl.cooldownDur; tl.anim = 1f; toolUses++
-            p.castT = 0f
+            p.castT = 0f; p.castKind = k
             hud.toolFx(k)
             platform.sound(Sfx.BLOCK); platform.haptic(false)
             return
@@ -458,7 +462,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         tl.count--; toolUses++
         tl.active = tl.duration
         tl.anim = 1f
-        p.castT = 0f
+        p.castT = 0f; p.castKind = k
         hud.toolFx(k)
         when (k) {
             TK.MAGNET -> { platform.sound(Sfx.MAGNET); fx.popupWorld("MAGNET!", p.x, p.y + 2.4f, p.z, 0xFFFF6B6B.toInt(), 44f)
@@ -689,6 +693,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             PS.WIN, PS.CAUGHT -> return
             PS.DEAD -> { p.vy -= Tune.GRAVITY * dt; p.y += p.vy * dt; p.airW = 1f; return }
         }
+        // Level 7: a grab attack has him (lifted in a hand, or the vines round his legs) for a moment
+        if (grabs.holding != null) { swipe.takeSteer(); swipe.takeFlickUp(); grabs.holdPlayer(dt); return }
         updatePathExtent()
         val controllable = state == GS.PLAY && p.state == PS.NORMAL && !ev.revealing
         val maxV = if (p.dashT > 0f) Tune.RUN_DASH else if (speedOn) Tune.RUN_FAST else Tune.RUN
@@ -1825,6 +1831,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             ev.onRecovered(x, y, z)
             minions.onRecovered()
             sorcery.onRecovered()
+            if (spec.enchanted) grabs.onRecovered()
             fx.burst(p.x, p.y + 0.3f, p.z, 20, PK.STAR, 0xFFB8F2FF.toInt(), 4f, 0.14f, 0.6f)
             fx.popupWorld("BACK ON TRACK!", p.x, p.y + 2.3f, p.z, Col.WHITE, 42f)
             gather(p.z - 1f, p.z + 1f)
@@ -2029,12 +2036,26 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     /** 0..1: Level 7's camera during the Sorcerer's Wrath (back and up, the sky in view), and at the Celestial Gate's awakening. */
     private var wrathCam = 0f
     private var gateCam = 0f
+    /**
+     * Level 7's cinematic moments: the chase camera drawing back while the Sorcerer grabs at the boy (so the boy, the
+     * way ahead and the Sorcerer's claw are all in view), the look up at him as his Wrath begins, and the lift toward
+     * the Celestial Gate as it is revealed. Each eases in and back out to the normal camera.
+     */
+    private var grabCam = 0f
+    private var riseCam = 0f
+    private var revealCam = 0f
 
     private fun updateCamera(dt: Float) {
         val p = player
         minionCam = approach(minionCam, if (minions.pursuit && state == GS.PLAY) 1f else 0f, dt * 0.8f)
         wrathCam = approach(wrathCam, if (sorcery.active && state == GS.PLAY) 1f else 0f, dt * 0.7f)
         gateCam = approach(gateCam, if (sorcery.gateT >= 0f && state == GS.PLAY) 1f else 0f, dt * 0.9f)
+        if (spec.enchanted) {
+            val play = state == GS.PLAY
+            grabCam = approach(grabCam, if (grabs.cinematic && play) 1f else 0f, dt * (if (grabs.cinematic) 1.1f else 0.6f))
+            riseCam = approach(riseCam, if (sorcery.wrath == WS.RISE && play) 1f else 0f, dt * (if (sorcery.wrath == WS.RISE) 1.6f else 0.8f))
+            revealCam = approach(revealCam, if (grabs.reveal > 0.35f && play) 1f else 0f, dt * (if (grabs.reveal > 0.35f) 1.2f else 0.5f))
+        }
         var dist = baseDist; var height = baseHeight; var pitch = basePitch; var fov = 1f; var roll = 0f; var yaw = 0f
         if (state == GS.INTRO && introSwoop) {
             val u = smooth(stateT / 2.8f)
@@ -2052,6 +2073,12 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         // the Wrath: back and a little up (the Sorcerer looms over the course); the gate's awakening: up, slow, wide
         if (wrathCam > 0.001f) { dist += 0.5f * wrathCam; height += 0.3f * wrathCam; fov = lerp(fov, 0.95f, wrathCam); roll += sin(t * 0.9f) * 0.006f * wrathCam }
         if (gateCam > 0.001f) { dist += 1.1f * gateCam; height += 0.8f * gateCam; pitch -= 0.04f * gateCam; fov = lerp(fov, 0.92f, gateCam) }
+        // the Sorcerer grabs at him: back and up a little more (the boy, the way ahead and the claw in one view)
+        if (grabCam > 0.001f) { val k = smooth(grabCam); dist += 1.25f * k; height += 0.7f * k; pitch -= 0.025f * k; fov = lerp(fov, 0.93f, k); roll += sin(t * 1.1f) * 0.006f * k }
+        // his Wrath begins: the camera lifts its gaze to him rising in the sky (a moment), then back down to the path
+        if (riseCam > 0.001f) { val k = smooth(riseCam); pitch -= 0.075f * k; dist += 0.5f * k; yaw -= 0.05f * k }
+        // the Celestial Gate revealed: lift toward it for a moment, as its light pours out
+        if (revealCam > 0.001f) { val k = smooth(revealCam); pitch -= 0.06f * k; dist += 0.6f * k; height += 0.35f * k }
         if (ev.lavaOn && !ev.lavaStop) { dist += 0.5f; height += 0.5f; pitch += 0.03f }
         if (ev.finalOn && state == GS.PLAY) {
             // the final escape: a lower, closer, wider camera that sways with the collapse
@@ -2260,6 +2287,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (minions.pursuit) i = 1f
         if (sorcery.active) i = 1f
         if (sorcery.warned && sorcery.wrath == WS.NONE) i = max(i, 0.7f)
+        if (spec.enchanted && grabs.cinematic) i = 1f
         if (ev.lavaOn && !ev.lavaStop) i = max(i, 0.9f)
         return i
     }

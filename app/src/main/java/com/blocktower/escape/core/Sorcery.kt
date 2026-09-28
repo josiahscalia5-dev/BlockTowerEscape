@@ -258,7 +258,8 @@ class Sorcery(val g: Game) {
             }
             WS.RISE -> {
                 g.rumble = max(g.rumble, 0.25f * (1f - wrathT / RISE_T))
-                if (wrathT >= RISE_T) { wrath = WS.ATTACK; wrathT = 0f; attackT = 0.4f; if (mode == 0) mode = 1 }
+                // (his opening move is the Guardian's grab: his spells start at the course's first WRATH_MODE trigger)
+                if (wrathT >= RISE_T) { wrath = WS.ATTACK; wrathT = 0f; attackT = 0.4f }
             }
             WS.STUN -> if (wrathT >= STUN_T) { wrath = WS.ATTACK; wrathT = 0f; attackT = 0.8f }
             WS.ATTACK -> {
@@ -271,6 +272,8 @@ class Sorcery(val g: Game) {
                     3 -> { castShard(false); attackT = SHARD_EVERY + rng.f(-0.15f, 0.2f) }
                     else -> attackT = 1f
                 }
+                // no shockwave or shard while his claw is grabbing at the boy (one threat at a time)
+                if (g.grabs.cinematic) attackT = max(attackT, 0.9f)
             }
         }
     }

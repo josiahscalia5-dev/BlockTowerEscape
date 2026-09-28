@@ -139,8 +139,9 @@ object Levels {
      * Level 7: the enchanted sky realm from the approved Level 7 design (design/level7_reference.png): the longest,
      * hardest route yet, in nine cinematic phases, over floating islands with waterfalls and witch-hat towers to the
      * Celestial Gate (the golden crystal castle with the star portal) far away in the violet sky, while the hooded
-     * Sorcerer sends his minions and creatures after the boy and, halfway, rises in his Wrath; the Golden Sprite to chase,
-     * two secret routes to find, and the hourglass among the tools.
+     * Sorcerer sends his minions and creatures after the boy and, halfway, rises in his Wrath; his GRAB ATTACKS (shadow
+     * hands, vines, grabbers, a chain and his own claw) all the way to his last grab at the gate; the Golden Sprite to
+     * chase, two secret routes to find, and the hourglass among the tools.
      */
     val level7 = LevelSpec(
         number = 7, name = "Enchanted Sky", theme = Theme.ENCHANTED, targetNeed = 20, startTime = 250f,
@@ -148,7 +149,7 @@ object Levels {
         guardName = "", gateName = "Celestial Gate",
         camDist = 4.6f, camHeight = 3.45f, camPitch = 0.36f, camFocal = 1.0f,
         extraObjective = "Survive the Sorcerer's Wrath",
-        newThings = listOf("The Sorcerer's Wrath", "Minions, rolling stones and a spirit", "Secret routes and treasure", "The Hourglass slows his magic", "Golden Sprite (bonus)"),
+        newThings = listOf("Grab attacks: dodge his grabs", "The Sorcerer's Wrath", "Minions, rolling stones and a spirit", "Secret routes and treasure", "The Hourglass slows his magic", "Golden Sprite (bonus)"),
         coinStar = 0.5f, timeStar = 40, rewardCoins = 520, rewardGems = 14,
     ) { Level7.build() }
 

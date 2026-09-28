@@ -12,9 +12,10 @@ portal at the top before time runs out. The app runs **Splash → Home → Selec
 - **Level map** (Select Level) from the approved Select Level artwork: a path of big coloured blocks climbing toward
   the castle and the portal, one per level, with numbers, stars, padlocks, short level names and SOON, and the same
   boy (seen from behind) standing on the level you are up to
-- **Six levels**: three teaching levels in the sky world, **Level 4** (the sky tower, built to match the Screen 4
-  design `design/screen4_reference.png`), **Level 5** (the volcanic sky fortress, `design/level5_volcano_reference.png`)
-  and **Level 6** (the sky temple with its rainbow slides, `design/level6_reference.png`)
+- **Seven levels**: three teaching levels in the sky world, **Level 4** (the sky tower, built to match the Screen 4
+  design `design/screen4_reference.png`), **Level 5** (the volcanic sky fortress, `design/level5_volcano_reference.png`),
+  **Level 6** (the sky temple with its rainbow slides, `design/level6_reference.png`) and **Level 7** (the enchanted
+  sky realm with the Sorcerer's GRAB ATTACKS, `design/level7_reference.png`)
 - **Saved progress** on the phone: unlocked levels, best stars and scores, the coin and gem wallet, relics,
   missions, the daily streak and settings
 
@@ -185,6 +186,64 @@ the relic's slide and the Great Rainbow Run; the tubes curving round the islands
 Lasers, maces and spiked blocks knock you back and cost a heart (the shield blocks them). The HUD is the same as in
 Level 5 (route strip, score, the relic's CHASE & COLLECT panel).
 
+## Level 7 — the enchanted sky realm (the approved Level 7 design)
+**Mission:** collect **20 blue blocks** and reach the **Celestial Gate** (04:10 on the clock, three hearts, tools
+magnet 3 / shield 3 / **hourglass** 2 / block 3) and survive the Sorcerer's Wrath; bonus: catch the **Golden Sprite**.
+The longest and hardest level (about 615 rows, ten checkpoints).
+
+The Celestial Gate (the golden crystal castle with the star portal) stands far away in the violet sky from the first
+second, where the design shows it, and the hooded Sorcerer looms on the left with his imps about him. The course is a
+rainbow road of blocks over floating moonstone islands, waterfalls, witch-hat towers, crystals and blossom trees above a
+sea of pink clouds. The art is cut from the design by `design/level7/build_l7.py` (into `app/src/main/assets/l7/`).
+
+**GRAB ATTACKS** (`core/Grabs.kt`) are the level's signature threat: the Sorcerer's magic tries to grab the boy.
+- **Giant shadow hand**: the Sorcerer's claw (cut from his own picture at load time and darkened into violet shadow)
+  rises out of a magic rift beside the path, rears up and follows the boy's lane (a dashed ring on the path), then
+  lunges at where he is heading and snaps shut.
+- **Magical vines** stir in a row of the path (it glows, sprouts wriggle), then lash up round the legs for a moment.
+- **Flying grabbers**: the realm's little orb imps with clawed arms appear beside, ahead of or behind the boy, hover
+  (eyes flaring, a dotted line to him), then dive at him, one after another (never while he is in the air over a gap).
+- **The magic chain** swings low across the path from a floating rune ring: jump its shackle as it sweeps past.
+- **The Guardian's grab**: the Sorcerer reaches down out of the sky with his own claw on a stream of lightning
+  (*WARNING!*, its shadow on the path); the camera draws back so the boy, the way ahead and the claw are all in view.
+  His **last grab**, at the foot of the celestial stairs, is the finale's big moment.
+
+Every grab is announced (a sound, a glowing "!" over it that stays on screen and points to it when it is off screen, the
+anticipation of the hand or creature) and aims only when it strikes, at the boy's lane and where his pace carries him:
+**jump, step aside or change pace** to escape. A grab that catches him costs a heart like any hazard, holds him for a
+moment (lifted in the hand, or the vines round his legs) and lets him go on the path; with the last heart it is GAME OVER
+and CONTINUE from the checkpoint, as everywhere. The **shield** takes the grab instead (the hand is burnt pale and turned
+away), the **hourglass** slows every grab. Escaping pays: **NARROW ESCAPE!** +100, **PERFECT DODGE!** +150 (jumped
+clean over it), **GUARDIAN ESCAPED!** +250, **EPIC ESCAPE!** +500 (the last grab), each a short popup by the boy.
+
+The boy reacts: he watches a threat coming, leans away from it with his arm up on its side and bends his knees ready to
+jump; a narrow escape makes him flinch (arms flung out, air whipping past); each tool has its gesture (the magnet pulls
+with both hands, the shield is braced behind raised arms, the block tool points down, the hourglass is held up).
+
+1. **The enchanted isles** — speed pads, the first gaps, a spiked ball, moving blocks. *SOMETHING IS FOLLOWING YOU...*:
+   two little imps creep up behind the boy (they never attack). **Checkpoint 1**
+2. **The minion ambush** — *MINIONS AHEAD!* (the followers fly off to join them): patrolling and swooping imps, bolts.
+   **THE FIRST GRAB**: *GRAB ATTACK!* a giant shadow hand out of a rift (NARROW ESCAPE!). **Checkpoint 2**
+3. **The Golden Sprite** — *THE GOLDEN SPRITE ESCAPED!* CHASE & COLLECT (a bonus: coins, gems, score; missing it costs
+   nothing). **Checkpoint 3**
+4. **The crystal stairs** — narrow climbs, an arcane beam, vanishing stones; a glowing rune beside the path raises a
+   **SECRET** stair of blue blocks to a treasure island; the fork; magical vines at the top. **Checkpoint 4**
+5. **The Sorcerer's gauntlet** — *THE SORCERER AWAKENS!* stray shards crash round the path; maces, beams, spiked blocks,
+   a **HIDDEN LEDGE** with a chest under the narrow bridge, the magic chain. **Checkpoint 5**
+6. **The starwind bridges** — magical wind over spike-lined paths and jumps. **Checkpoint 6**
+7. **The Sorcerer's Wrath** — he rises over the course (the camera looks up; he glares at the boy), then reaches down
+   for him (the Guardian's grab: GUARDIAN ESCAPED!); then shockwaves, hands slamming the sides and cursed blocks,
+   falling shards; three **star runes** drive him back, rings of starlight are safe. **Checkpoints 7, 8**
+8. **The minion pursuit** (the escape sequence) — imps fly after the boy and lunge when he slows, ships bomb the path,
+   rolling stones, a spirit that blinks onto the path, vines across the road. **Checkpoint 9**
+9. **The floating maze** — platforms in turn, a patrolled bridge, a shadow hand, the last imps and the flying grabbers.
+   **Checkpoint 10**
+10. **The final ascent** — *FINAL ESCAPE!* the star bridge fades behind the boy on the long climb; the gate grows, its
+    rays of light turning brighter the nearer he gets
+11. **The celestial stairs** — the Sorcerer comes back out of the mist for his **last grab**: escape it (**EPIC ESCAPE!**)
+    and the Celestial Gate is revealed (its light pours over the sky, the camera lifts toward it); *THE CELESTIAL GATE
+    AWAKENS!*, into the star portal, LEVEL COMPLETE
+
 ## Controls
 Swipes are the default. **SETTINGS → Controls → JOYSTICK** turns the movement pad into a thumb stick instead: push up
 to run (a little is a jog, all the way a sprint), down to slow down and step back, left / right to steer (the further,
@@ -253,16 +312,18 @@ obstacles, falling and recovery, tools while running, and reaching the portal. I
 swipes over tool buttons do nothing, that a flick on open ground doesn't jump, that the boy never ends up inside a
 block, and that steering stays smooth. It prints a timeline and a pass/fail checklist of what that level contains
 (`scenario=hearts` tests losing every heart and continuing; `scenario=clear` just plays through;
-`controls=joystick` plays the level with the joystick instead of swipes).
+`controls=joystick` plays the level with the joystick instead of swipes). In Level 7 it lets the first grab attack catch
+it (a heart, or GAME OVER and CONTINUE with the last one), blocks the maze's shadow hand with the shield, uses the
+hourglass on the Sorcerer's last grab and steps aside from or jumps every other grab.
 
 `flow` plays the whole app from a fresh install by tapping the screen: Home, daily rewards (claim, the next day, a
-missed day), the level map (a locked level stays shut), the level card, pause -> LEVEL MAP, Levels 1-6 in a row
+missed day), the level map (a locked level stays shut), the level card, pause -> LEVEL MAP, Levels 1-7 in a row
 through NEXT LEVEL (the autopilot plays each one), "more levels soon", missions, the vault, settings, the app closed
 and opened again, and RESET. It checks unlocks, stars, the wallet (saved and on the HUD), relics, mission and chest
 rewards, settings and the saved progress, and prints a pass/fail checklist.
 
 ```
-./gradlew :sim:run --args="play level=6 out=sim-out"                          # one level (1-6; Level 4 by default)
+./gradlew :sim:run --args="play level=6 out=sim-out"                          # one level (1-7; Level 4 by default)
 ./gradlew :sim:run --args="play out=sim-out video=sim-out/run.mp4 ffmpeg=ffmpeg"  # also record a video
 ./gradlew :sim:run --args="flow out=sim-out shots=1"                          # the whole app, a screenshot of each screen
 ./gradlew :sim:run --args="flow w=720 h=1560 out=sim-out video=sim-out/tour.mp4 ffmpeg=ffmpeg"  # the whole app as a video tour
@@ -275,6 +336,8 @@ rewards, settings and the saved progress, and prints a pass/fail checklist.
 ./gradlew :sim:run --args="play level=5 relic=miss out=sim-out"               # Level 5, letting the Runaway Relic get away
 ./gradlew :sim:run --args="l5art out=sim-out"                                 # re-cut the Level 5 art from its design
 ./gradlew :sim:run --args="play level=6 relic=miss out=sim-out"               # Level 6, letting the Runaway Relic get away
+./gradlew :sim:run --args="play level=7 out=sim-out"                          # Level 7: every grab attack, the Wrath, EPIC ESCAPE
+./gradlew :sim:run --args="secrets"                                           # Level 7's secret routes and chests, checked directly
 ./gradlew :sim:run --args="run level=6 z=45 frames=240 every=20 out=sim-out"  # start anywhere (here: the first slide), frames every 20
 python3 design/level6/build_l6.py                                            # re-cut the Level 6 art from its design (LaMa, IS-Net, Real-ESRGAN)
 ```

@@ -78,6 +78,12 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
     val minionShip = if (enchanted) p.loadImage("l7/m_ship.png") else null
     val balloon = if (enchanted) p.loadImage("l7/balloon.png") else null
     val gemBig = if (enchanted) p.loadImage("l7/gem.png") else null
+    /**
+     * The Sorcerer's clawed hand, cut out of his picture at load time (nothing repainted): the giant hands of the grab
+     * attacks (tinted into a shadow hand for the rifts, full colour for the Guardian's own grab). Its gold-trimmed sleeve
+     * fades into magic toward the upper left, where it joins the stream of magic it reaches out of.
+     */
+    val claw = if (enchanted) p.createImage(cutClaw(p.loadPixels("l7/sorcerer.png"))) else null
     /** A tool's icon (Level 7's third tool is the hourglass). */
     fun toolIcon(k: Int) = when (k) { TK.MAGNET -> magnet; TK.SHIELD -> shield; TK.SPEED -> hourglass; else -> blockTool }
     /** The design's wooden RUN • JUMP • COLLECT • ESCAPE plank along the bottom of the screen (the Home screen's). */
@@ -139,6 +145,26 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
             out[y * size + x] = col or (0xFF shl 24)
         }
         return Pixels(size, size, out)
+    }
+
+    /**
+     * The claw of the Sorcerer (l7/sorcerer.png, 688 x 676): the hand and the cuff of its sleeve (x 372..676, y 244..544 of
+     * the picture; the palm's middle is at 528, 392). The alpha fades out along the forearm, away from the palm toward the
+     * upper left, so the sleeve dissolves into the magic the hand reaches out of.
+     */
+    private fun cutClaw(src: Pixels): Pixels {
+        val k = src.w / 688f
+        val x0 = (372 * k).toInt(); val y0 = (244 * k).toInt()
+        val w = kotlin.math.min((304 * k).toInt(), src.w - x0); val h = kotlin.math.min((300 * k).toInt(), src.h - y0)
+        val out = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            val c = src.argb[(y0 + y) * src.w + x0 + x]
+            val px = (x0 + x + 0.5f) / k; val py = (y0 + y + 0.5f) / k
+            val d = (px - 528f) * -0.725f + (py - 392f) * -0.689f
+            val a = ((c ushr 24) * (1f - smooth((d - 55f) / 85f))).toInt()
+            out[y * w + x] = (a shl 24) or (c and 0xFFFFFF)
+        }
+        return Pixels(w, h, out)
     }
 
     private fun colorize(src: Pixels, ramp: IntArray, isTop: Boolean): Pixels {

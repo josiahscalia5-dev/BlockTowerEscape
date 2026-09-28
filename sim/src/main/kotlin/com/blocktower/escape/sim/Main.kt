@@ -33,6 +33,7 @@ fun main(args: Array<String>) {
         "flow" -> Flow(assets, out, opts).run()
         "devices" -> Devices(assets, out, opts).run()
         "music" -> musicFiles(out)
+        "secrets" -> secretsCheck(assets)
         "l5art" -> L5Art(File("."), File(out, "l5art")).run()
         else -> error("unknown mode ${args[0]}")
     }
@@ -48,7 +49,8 @@ private fun posesSheet(assets: File, out: File, one: String) {
     val cellW = 300; val cellH = 470
     val names = listOf("rest", "run A", "run B", "run pass", "run pass B", "sprint/boost", "jump up",
         "jump top", "fall", "land", "land hard", "turn L", "turn R", "skid", "collect", "cast",
-        "hurt", "celebrate", "rescue", "ride", "caught", "win")
+        "hurt", "celebrate", "rescue", "ride", "caught", "win",
+        "cast magnet", "cast shield", "cast block", "threat L", "threat R", "threat run", "dodge", "held hand", "held vines")
     val cols = 8
     val rows = (names.size + cols - 1) / cols
     val gfx = J2DGfx(assets, cellW * cols, cellH * rows)
@@ -82,6 +84,15 @@ private fun posesSheet(assets: File, out: File, one: String) {
             "ride" -> { p.state = PS.RESCUE_RIDE }
             "caught" -> p.state = PS.CAUGHT
             "win" -> { p.state = PS.WIN; p.stateT = 1f }
+            "cast magnet" -> { p.castT = 0.2f; p.castKind = com.blocktower.escape.core.TK.MAGNET }
+            "cast shield" -> { p.castT = 0.2f; p.castKind = com.blocktower.escape.core.TK.SHIELD }
+            "cast block" -> { p.castT = 0.2f; p.castKind = com.blocktower.escape.core.TK.BLOCK }
+            "threat L" -> { p.threat = 1f; p.threatSide = -1f }
+            "threat R" -> { p.threat = 1f; p.threatSide = 1f }
+            "threat run" -> { p.threat = 1f; p.threatSide = -0.4f; p.vz = 5f; p.runW = 1f; p.runPhase = 1.5f }
+            "dodge" -> { p.dodgeT = 0.25f; p.dodgeDir = 1f; p.vz = 5f; p.runW = 1f; p.runPhase = 0.5f }
+            "held hand" -> { p.held = 1; p.grounded = false; p.airW = 1f; p.hurtT = 0.2f }
+            "held vines" -> { p.held = 2; p.hurtT = 0.2f }
         }
     }
     for ((i, n) in names.withIndex()) {
@@ -157,6 +168,32 @@ private fun runShots(assets: File, out: File, w: Int, h: Int, opts: Map<String, 
             k++
         }
     }
+}
+
+/**
+ * Level 7's secret routes, checked directly (the autopilot's secret=1 run rarely lands on the stair's rune at a full run):
+ * standing on each secret's rune (or its hidden ledge) finds it and raises its hidden blocks, and each treasure chest opens.
+ */
+private fun secretsCheck(assets: File) {
+    val game = Game(SimPlatform(assets), 7)
+    for (i in 0 until 200) game.update(1f / 60f)
+    var ok = true
+    for (se in game.world.secrets) {
+        game.player.reset(se.x, se.y, se.z); game.steerX = se.x
+        repeat(90) { game.update(1f / 60f) }
+        val blocks = game.world.blocks.filter { it.shortcutId == se.id }
+        val risen = blocks.all { it.state != 0 && it.visible }
+        val pass = se.found && risen && game.wonders.secretsFound > 0
+        println("[${if (pass) "PASS" else "FAIL"}] secret ${se.id} (${se.title}): found=${se.found}, ${blocks.count { it.state != 0 }}/${blocks.size} hidden blocks risen")
+        ok = ok && pass
+    }
+    for (c in game.world.chests) {
+        game.player.reset(c.x, c.y, c.z - 0.2f); game.steerX = c.x
+        repeat(30) { game.update(1f / 60f) }
+        println("[${if (c.open) "PASS" else "FAIL"}] treasure chest at z=${c.z}: open=${c.open} (coins ${game.coins}, gems ${game.gems})")
+        ok = ok && c.open
+    }
+    println(if (ok) "SECRETS OK" else "SECRETS FAILED")
 }
 
 /** Times rendering of a few frames (for keeping the video recorder fast). */

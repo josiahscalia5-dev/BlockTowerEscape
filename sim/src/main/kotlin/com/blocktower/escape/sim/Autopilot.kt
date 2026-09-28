@@ -230,7 +230,7 @@ class Autopilot(
                 lastAnyWave = g.minions.anyWave
             }
             if (g.ev.finalOn) seen.add("final escape")
-            if (g.spec.enchanted) watchSorcery()
+            if (g.spec.enchanted) { watchSorcery(); watchGrabs() }
             // round the loop: the stride keeps going, the turn follows the track smoothly, feet stay on it
             if (p.state == PS.LOOP) {
                 if (!inLoop) { inLoop = true; loopRot0 = p.loopRot; lastLoopRot = p.loopRot; loopPhase0 = p.runPhase; loopFrames = 0; loopCoins0 = g.coinsCollected; loopTurn = 0f }
@@ -440,6 +440,12 @@ class Autopilot(
             val si = shockIn()
             if (si in 0.08f..0.24f) { pressJump(); shockJumps++; note("jumping a shockwave") }
             else if (rollerJumpIn in 0.05f..0.22f) { pressJump(); note("jumping a rolling stone") }
+            else if (grabJumpIn in 0.12f..0.3f) { pressJump(); note("jumping a grab as it shuts") }
+            else if (!letGrab()) {
+                // vines stirring or lashing, a chain's shackle sweeping: jump over their row (airborne while crossing it)
+                val vr = grabRowAhead()
+                if (vr in 0.1f * lv0()..0.2f * lv0()) { pressJump(); note("jumping ${if (grabRowKind == 0) "the vines" else "the chain's shackle"}") }
+            }
         }
         // --- a laser gate just ahead: jump its beam (timed so he is above it as he passes)
         val la = laserAhead()
@@ -613,12 +619,14 @@ class Autopilot(
      * be within a row of it, in its lane, while it is.
      */
     private fun boltDodge(): Float {
-        dangerList.clear(); rollerJumpIn = -1f
+        dangerList.clear(); rollerJumpIn = -1f; grabJumpIn = -1f
         g.minions.boltTargets(boltList)
         for (b in boltList) dangerList.add(floatArrayOf(b[0], b[1], b[2] - 0.35f, b[2] + 0.15f, 0f))
         if (g.spec.enchanted) {
             g.sorcery.dangers(spellList)
             for (d in spellList) dangerList.add(floatArrayOf(d[0], d[1], d[2], d[3], 1f))
+            // grab attacks that have struck (a hand closing on a spot, a grabber diving), unless we are letting one catch us
+            if (!letGrab()) { g.grabs.dangers(spellList); for (d in spellList) dangerList.add(floatArrayOf(d[0], d[1], d[2], d[3], 3f, d[4])) }
             for (r in g.sorcery.rollers) if (r.state == 1 || r.state == 2) {
                 val dz = r.z - p.z
                 if (dz < -0.3f || dz > 15f) continue
@@ -635,12 +643,16 @@ class Autopilot(
             val cands = floatArrayOf(px - 2f, px - 1f, px, px + 1f, px + 2f).filter { x ->
                 abs(x - d[0]) > 0.9f && dangerList.none { hits(it, x) } && laneHasFloor(x, floor(p.z).toInt(), row)
             }
-            val lane = cands.minByOrNull { abs(it - p.x) }
+            // (from a grab, step away from the side it comes from: a diving grabber's path crosses the lanes on its side)
+            val lane = if (d[4] == 3f && d.size > 5) cands.minByOrNull { abs(it - p.x) + (if ((it - d[0]) * (d[0] - d[5]) < 0f) 3f else 0f) }
+                else cands.minByOrNull { abs(it - p.x) }
             if (abs(boltDodgeZ - d[1]) > 2.5f) {
                 boltDodgeZ = d[1]; boltDodges++
-                note("dodging ${when (d[4].toInt()) { 0 -> "a magic bolt"; 1 -> "a shard / the spirit"; else -> "a rolling stone" }} at x=${"%.1f".format(d[0])}")
+                note("dodging ${when (d[4].toInt()) { 0 -> "a magic bolt"; 1 -> "a shard / the spirit"; 2 -> "a rolling stone"; else -> "a grab" }} at x=${"%.1f".format(d[0])}")
             }
             if (lane == null && d[4] == 2f) { rollerJumpIn = max(0f, d[2] + 0.4f); return Float.NaN }
+            // no lane to step into from a grab: jump it as it shuts
+            if (lane == null && d[4] == 3f) { grabJumpIn = max(0f, d[2]); return Float.NaN }
             return lane ?: -99f
         }
         return Float.NaN
@@ -663,6 +675,106 @@ class Autopilot(
         }
         return true
     }
+
+    // ---- Level 7: the grab attacks
+    /** No lane to step into from a grab that has struck: seconds until it shuts (jump then), or -1. */
+    private var grabJumpIn = -1f
+    /** What [grabRowAhead] found: 0 vines, 1 the chain. */
+    private var grabRowKind = 0
+    /** Forward pace for jump timing (never below a jog). */
+    private fun lv0() = max(2.5f, p.vz)
+
+    /**
+     * The scripted grab test: the first grab attack we meet is allowed to catch us (a heart, held, then back on the path;
+     * with the last heart: GAME OVER, CONTINUE from the checkpoint), and after that every one is dodged.
+     */
+    private var grabTest = 0          // 0 waiting, 1 letting one catch us, 2 caught (checking the recovery), 3 done
+    private var grabHearts0 = 0; private var grabHitFrame = -1; private var grabHeld = false; private var grabGameOver = false
+    private fun letGrab() = grabTest == 1 || shieldTesting()
+
+    /**
+     * Distance to where we would enter the row of vines that are stirring or lashing, or of a magic chain whose shackle
+     * sweeps our lane (-1: none): jump when it is under a metre ahead, so we are in the air as we cross it.
+     */
+    private fun grabRowAhead(): Float {
+        var best = -1f
+        for (v in g.grabs.vines) {
+            if (v.state != 1 && v.state != 2) continue
+            if (p.x < v.x0 - 0.6f || p.x > v.x1 + 0.6f) continue
+            val d = v.z - (0.5f + Tune.RADIUS) - p.z
+            if (d > -0.2f && (best < 0f || d < best)) { best = d; grabRowKind = 0 }
+        }
+        for (c in g.grabs.chains) {
+            val d = c.pz - (com.blocktower.escape.core.GrabSystem.SHACKLE_R + Tune.RADIUS) - p.z
+            if (d < -0.2f || d > 3f || abs(p.y - (c.py - c.spot.len - 0.4f)) > 1f) continue
+            if (best < 0f || d < best) { best = d; grabRowKind = 1 }
+        }
+        return best
+    }
+
+    private var lastGrabRewards = 0; private var lastGrabHits = 0; private var lastGrabBlocked = 0
+    private var lastGuardian = 0; private var lastEpic = 0
+    private var grabShieldTest = 0    // 0 waiting for the maze's shadow hand, 1 shield up (not dodging), 2 done
+    private var grabHourglass = false
+    private var revealSeen = false
+
+    /** Level 7's grab attacks on the timeline, and the scripted grab tests (caught once; the shield; the hourglass). */
+    private fun watchGrabs() {
+        val gs = g.grabs
+        val rewards = gs.narrow + gs.perfect + gs.guardianEscapes + gs.epic
+        if (rewards != lastGrabRewards) {
+            note("grab escaped: narrow ${gs.narrow}, perfect ${gs.perfect}, guardian ${gs.guardianEscapes}, epic ${gs.epic} (score ${g.score})")
+            lastGrabRewards = rewards
+        }
+        if (gs.guardianGrabs != lastGuardian) { note("the Guardian's grab begins (${gs.guardianGrabs})"); lastGuardian = gs.guardianGrabs }
+        if (gs.epic != lastEpic) { note("EPIC ESCAPE: the Celestial Gate is revealed"); lastEpic = gs.epic }
+        if (gs.reveal > 0.5f) revealSeen = true
+        if (gs.grabsBlocked != lastGrabBlocked) {
+            note("the shield blocked a grab (hearts ${g.hearts})"); lastGrabBlocked = gs.grabsBlocked; seen.add("grab:blocked")
+            if (grabTest == 1) grabTest = 0
+        }
+        if (gs.grabsHit != lastGrabHits) {
+            note("GRABBED by ${g.lastHurt} (hearts ${g.hearts})")
+            lastGrabHits = gs.grabsHit
+            if (grabTest == 1) { grabTest = 2; grabHitFrame = frame; seen.add("grab:caught") }
+        }
+        // the grab test: wait for the first grab attack with two hearts or more, let it catch us, then watch the recovery
+        if (!clear && grabTest == 0 && !g.shieldOn && p.state == PS.NORMAL && g.state == GS.PLAY &&
+            (gs.hands.any { !it.guardian && it.state == com.blocktower.escape.core.GST.WARN } || gs.vines.any { it.state == 1 && it.z - p.z < 6f })) {
+            grabTest = 1; grabHearts0 = g.hearts; note("grab test: letting this grab catch us (hearts ${g.hearts})")
+        }
+        if (grabTest == 1 && gs.hands.none { it.state in com.blocktower.escape.core.GST.WARN..com.blocktower.escape.core.GST.SNAP } && gs.vines.none { it.state == 1 || it.state == 2 }) {
+            // it missed us anyway: try the next one
+            if (gs.grabsHit == lastGrabHits) grabTest = 0
+        }
+        if (grabTest == 2) {
+            if (p.held > 0) grabHeld = true
+            if (g.state == GS.FAILED) grabGameOver = true
+            // back on the path: held for a moment then let go (or, with no heart left: GAME OVER, CONTINUE from the checkpoint)
+            if (g.state == GS.PLAY && gs.holding == null && p.held == 0 && p.state == PS.NORMAL && p.grounded && frame - grabHitFrame > 20) {
+                grabTest = 3
+                // (with the last heart the level is lost at once, as with any hazard: GAME OVER, then CONTINUE)
+                val ok = if (grabGameOver) grabHearts0 == 1 && g.hearts == g.maxHearts else grabHeld && g.hearts == grabHearts0 - 1
+                result("grab attack: caught -> -1 heart -> held, then back on the path", ok,
+                    "hearts $grabHearts0 -> ${if (grabGameOver) "0: GAME OVER, CONTINUE from checkpoint ${g.checkpoint} with ${g.hearts}" else g.hearts.toString()}, held: $grabHeld, standing on the path at z=${"%.1f".format(p.z)}")
+            }
+        }
+        // the shield test: the maze's shadow hand, shield up, no dodging: it must take the grab instead of a heart
+        val mazeHand = gs.hands.firstOrNull { !it.guardian && it.spot.z > sec("maze") }
+        if (!clear && grabShieldTest == 0 && mazeHand != null && mazeHand.state == com.blocktower.escape.core.GST.WARN && p.grounded) {
+            if (g.tools[TK.SHIELD].ready) { tapTool(TK.SHIELD); grabShieldTest = 1; shieldHearts = g.hearts; note("shield test: shield up, letting the shadow hand grab") }
+            else grabShieldTest = 2
+        }
+        if (grabShieldTest == 1 && mazeHand != null && (mazeHand.state == com.blocktower.escape.core.GST.BACK || mazeHand.state == com.blocktower.escape.core.GST.DONE)) {
+            grabShieldTest = 2
+            result("the shield absorbs a grab", seen.contains("grab:blocked") && g.hearts == shieldHearts, "blocked: ${seen.contains("grab:blocked")}, hearts $shieldHearts -> ${g.hearts}")
+        }
+        // the hourglass on the Sorcerer's last grab: it slows the claw down
+        val last = gs.hands.firstOrNull { it.final }
+        if (!grabHourglass && last != null && last.state == com.blocktower.escape.core.GST.WARN && g.tools[TK.SPEED].ready) { tapTool(TK.SPEED); grabHourglass = true; note("hourglass on the Sorcerer's last grab") }
+    }
+    private var shieldHearts = 0
+    private fun shieldTesting() = grabShieldTest == 1
 
     /** Seconds until a shockwave rolling at us reaches us (or -1). */
     private fun shockIn(): Float {
@@ -1172,12 +1284,26 @@ class Autopilot(
             val so = g.sorcery
             result("the Sorcerer's Wrath: survived, star runes lit", seen.contains("wrath:${com.blocktower.escape.core.WS.DONE}") && so.runesLit == g.world.runes.size,
                 "runes lit ${so.runesLit}/${g.world.runes.size}; shockwaves $shocksSeen (jumped $shockJumps), hand slams $handSlams, shards $shardsSeen; hits from his spells $spellHits")
-            result("chase elements: rolling stones and the spirit came", rollersSeen >= g.sorcery.rollers.size && spiritHops.size >= 2,
+            // (at a full run through the pursuit the spirit has time for one blink onto the path; waiting there gives it more)
+            result("chase elements: rolling stones and the spirit came", rollersSeen >= g.sorcery.rollers.size && spiritHops.size >= 1,
                 "$rollersSeen of ${g.sorcery.rollers.size} rolling stones dropped in, the spirit blinked onto ${spiritHops.size} spots; dodged $boltDodges bolts / shards / spirits / stones")
             result("cinematic phases 1..9 in order", (2..9).all { seen.contains("phase:$it") }, "phases reached: ${(1..9).filter { it == 1 || seen.contains("phase:$it") }.joinToString()}")
             if (seen.contains("tool:HOURGLASS")) result("hourglass slows the Sorcerer's magic", minHazK < 0.5f, "hazard clock down to ${"%.2f".format(minHazK)} of its pace")
             if (opts["secret"] == "1") result("secret routes: both found, both chests opened", g.world.secrets.all { it.found } && g.world.chests.all { it.open },
                 "secrets ${g.world.secrets.count { it.found }}/${g.world.secrets.size}, chests ${g.world.chests.count { it.open }}/${g.world.chests.size}")
+            // ---- the grab attacks
+            val gs = g.grabs
+            val hands = gs.hands.count { !it.guardian }
+            result("grab attacks: every kind came (shadow hands, vines, the chain, grabbers, the Guardian's grabs)",
+                gs.grabsAttempted >= hands + 2 && gs.vineLashes >= 2 && gs.chainPasses >= 1 && gs.grabberDives >= 2 && gs.guardianGrabs >= 2,
+                "${gs.grabsAttempted} grabs (hands and the Guardian's ${hands + 2}+), vine lashes ${gs.vineLashes}, chain sweeps ${gs.chainPasses}, grabber dives ${gs.grabberDives}, Guardian grabs ${gs.guardianGrabs}")
+            result("grab attacks: escaped, with rewards (NARROW ESCAPE / PERFECT DODGE / GUARDIAN ESCAPED / EPIC ESCAPE)",
+                gs.grabsDodged >= 4 && gs.narrow + gs.perfect >= 2 && gs.epic >= 1,
+                "dodged ${gs.grabsDodged}, caught ${gs.grabsHit}, blocked by the shield ${gs.grabsBlocked}; narrow ${gs.narrow}, perfect ${gs.perfect}, guardian ${gs.guardianEscapes}, epic ${gs.epic}")
+            result("EPIC ESCAPE reveals the Celestial Gate", gs.epic >= 1 && revealSeen, "epic escapes ${gs.epic}, gate revealed: $revealSeen")
+            result("something is following: the followers came and never attacked", gs.followersSeen >= 2 && gs.hands.isNotEmpty(), "${gs.followersSeen} followers crept up behind")
+            if (grabHourglass) result("the hourglass slows the grab attacks", gs.slowedGrabT > 0.1f, "grabs struck in slow time for ${"%.2f".format(gs.slowedGrabT)} s")
+            if (!clear && grabTest < 3) result("grab attack: caught -> -1 heart -> held, then back on the path", false, "no grab caught us (test state $grabTest)")
         } else if (plan.trapZ0 < 9999f) {
             result("7 moving around obstacles", trapHurts == 0, "hits in the hazard section: $trapHurts")
         }

@@ -305,6 +305,32 @@ class SpellSpot(@JvmField val kind: Int, @JvmField val x: Float, @JvmField val y
     companion object { const val AIM = 9f }
 }
 
+/** Level 7: kinds of grab attacks (the level's signature threat, see [GrabSystem]). */
+object GK {
+    /** A giant shadow hand rising out of a magic rift beside the path: it rears up, then lunges at the boy and snaps shut. */
+    const val HAND = 0
+    /** Magical vines erupting from the path across a row and lashing up round the legs (jump them, or wait). */
+    const val VINES = 1
+    /** A stretch where small flying grabbers dart at the boy from different directions, one after another. */
+    const val GRABBERS = 2
+    /** A magical chain swinging low across the path from a floating rune ring, an open shackle on its end (jump it). */
+    const val CHAIN = 3
+    /** The Guardian's grab: the Sorcerer's own claw reaching down out of the sky at the boy. */
+    const val GUARDIAN = 4
+    /** Little imps that follow the boy from behind for a stretch without attacking (something is following...). */
+    const val FOLLOWERS = 5
+}
+
+/**
+ * Level 7: a grab attack waiting on the course ([kind] from [GK]) at row [z], walking level [y]. By kind:
+ *  HAND: [x] the side it rises on (-1 left, 1 right). VINES: [len] how many lanes either side of the path's middle.
+ *  GRABBERS and FOLLOWERS: rows z .. z + [len]; grabbers come every [period] s (the first after [phase] s); [flag] followers.
+ *  CHAIN: [x] where it hangs (from the path's middle), [len] the chain's length, [period] its swing, [phase] its timing.
+ *  GUARDIAN: [flag] 1 for the final grab (EPIC ESCAPE, then the Celestial Gate).
+ */
+class GrabSpot(@JvmField val kind: Int, @JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float,
+               @JvmField val len: Float = 0f, @JvmField val period: Float = 0f, @JvmField val phase: Float = 0f, @JvmField val flag: Int = 0)
+
 /** Level 7: a star rune set into the path (the Sorcerer's Wrath): running over it lights it and strikes the Sorcerer. */
 class Rune(@JvmField val id: Int, @JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float) {
     @JvmField var lit = false
@@ -394,6 +420,8 @@ class World {
     val sanctuaries = ArrayList<Sanctuary>()
     val chests = ArrayList<Chest>()
     val secrets = ArrayList<Secret>()
+    /** Level 7: the grab attacks (shadow hands, vines, grabbers, chains, the Guardian's grabs) and the followers. */
+    val grabs = ArrayList<GrabSpot>()
     /** Level 5: the Runaway Relic's route, as rows (z) it runs from and to; 0 = none. */
     var relicZ0 = 0; var relicZ1 = 0
     /** Levels 5 and 6: depth of the lava sea (the cloud sea) below the course, relative to the path (it follows the climb). */
