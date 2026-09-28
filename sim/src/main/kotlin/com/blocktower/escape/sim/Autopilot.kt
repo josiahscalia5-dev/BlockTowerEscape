@@ -512,9 +512,7 @@ class Autopilot(
             if (b.amp <= 0f) continue
             val dz = b.z - p.z
             if (dz < 0.6f || dz > 4.5f || abs(p.y - b.y) > 1.5f) continue
-            val v0 = max(0f, p.vz); val vm = max(v0, Tune.RUN)
-            val ta = (vm - v0) / 16f; val da = (v0 + vm) * 0.5f * ta
-            val t0 = g.t + (if (dz <= da) dz / max(1f, (v0 + vm) * 0.5f) else ta + (dz - da) / vm)
+            val t0 = g.t + arrival(dz)
             fun clear(x: Float): Boolean {
                 var k = -2
                 while (k <= 4) {
@@ -604,10 +602,9 @@ class Autopilot(
         for (l in g.world.logs) {
             val dz = l.pz - p.z
             if (dz < 1.0f || dz > 3.4f + max(0f, p.vz - Tune.RUN) * 1.2f || abs(p.y - (l.py - l.len)) > 3f) continue
-            // arrival time from here, speeding up from the current pace to a full run (16 u/s² as in the game)
-            val v0 = max(0f, p.vz); val vm = max(v0, if (g.speedOn) Tune.RUN_FAST else Tune.RUN)
-            val ta = (vm - v0) / 16f; val da = (v0 + vm) * 0.5f * ta
-            val t0 = g.logT + (if (dz <= da) dz / max(1f, (v0 + vm) * 0.5f) else ta + (dz - da) / vm)
+            // still carried fast by a launch (out of a slide) toward a swinging mace: brake first, time it after
+            if (p.boostT > 0f && p.vz > Tune.RUN + 0.5f) return true
+            val t0 = g.logT + arrival(dz)
             val w = com.blocktower.escape.core.TAU / l.period
             // from a little before we arrive until we are through (about 0.6 s under the swing)
             var k = -3
@@ -619,6 +616,23 @@ class Autopilot(
             }
         }
         return false
+    }
+
+    /**
+     * How long until we have run [dz] further, running on at a full run: speeding up to it at 16 u/s² as the game
+     * does, or, still carried faster by a launch (a slide's exit, a star block), keeping that speed until the launch
+     * wears off and then easing down to a run at 14 u/s².
+     */
+    private fun arrival(dz: Float): Float {
+        val h = 1f / 60f
+        val vm = (if (g.speedOn) Tune.RUN_FAST else Tune.RUN) * max(0.85f, min(1f, g.swipe.cruise))
+        var v = max(0f, p.vz); var z = 0f; var t = 0f; var tb = max(0f, p.boostT)
+        while (z < dz && t < 5f) {
+            val target = if (tb > 0f && v > vm) v else vm
+            v = if (v < target) min(target, v + 16f * h) else max(target, v - 14f * h)
+            z += v * h; t += h; tb -= h
+        }
+        return t
     }
 
     /** Swipe up to keep running (or down to stop) when the pace is not what we want. */

@@ -288,6 +288,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         checkTriggers()
         if (state == GS.COMPLETE) updateComplete(dt, sdt)
         updateCamera(dt)
+        fx.holdBanners = showMission && (state == GS.INTRO || (state == GS.PLAY && playT < 4.15f))
         fx.update(sdt, onArrive)
         updateHudCounters(dt)
         if (pendingHint.isNotEmpty() && playT > (if (pendingHintKind >= 6) 0.4f else 4.2f) && fx.banners.isEmpty()) {
@@ -684,7 +685,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         var tvz = drive * maxV
         // a hard sideways move takes a little off the forward pace (he eases into the turn)
         if (p.grounded && tvz > 0f) tvz *= 1f - 0.15f * clamp01(abs(p.vx) / maxV)
-        if (p.boostT > 0f && p.vz > tvz) tvz = p.vz   // a star-block launch keeps its speed in the air
+        // a launch (star block, slide exit, loop exit) keeps its speed in the air, and on landing for as long as he is
+        // driven forward: brake (or let go) and he slows at once, so a hazard just past a slide's exit can be waited out
+        if (p.boostT > 0f && p.vz > tvz && (!p.grounded || drive > 0.5f)) tvz = p.vz
         val err = steerX - p.x
         val tvx = if (abs(err) < 0.01f) 0f else clamp(err * 7f, -maxV * 0.9f, maxV * 0.9f)
         // skid: sharp change of sideways direction while running

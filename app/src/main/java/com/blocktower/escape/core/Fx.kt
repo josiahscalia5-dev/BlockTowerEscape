@@ -62,6 +62,8 @@ class Fx {
     val popups = Array(24) { Popup() }
     val rings = Array(16) { ScreenRing() }
     val banners = ArrayList<Banner>()
+    /** Banners wait (not shown, their time not running) while this is set: the MISSION card is on screen. */
+    var holdBanners = false
     val toasts = ArrayList<Toast>()
     private var pi = 0
     val rng = Rng(777)
@@ -196,7 +198,7 @@ class Fx {
         }
         for (p in popups) if (p.active) { p.t += dt; if (p.t >= p.dur) p.active = false }
         for (r in rings) if (r.active) { r.t += dt; if (r.t >= r.dur) r.active = false }
-        if (banners.isNotEmpty()) { val b = banners[0]; b.t += dt; if (b.t >= b.dur) banners.removeAt(0) }
+        if (banners.isNotEmpty() && !holdBanners) { val b = banners[0]; b.t += dt; if (b.t >= b.dur) banners.removeAt(0) }
         // toasts wait while a banner is on screen, then play one after another
         if (toasts.isNotEmpty() && banners.isEmpty()) { val o = toasts[0]; o.t += dt; if (o.t >= o.dur) toasts.removeAt(0) }
     }

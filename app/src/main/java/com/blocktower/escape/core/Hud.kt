@@ -640,6 +640,8 @@ class Hud(val g: Game) {
     }
 
     private fun drawBanner(gr: Gfx) {
+        // (a banner waits for the MISSION card at the start to go: they would sit on top of each other)
+        if (g.fx.holdBanners) return
         val b = g.fx.banners.firstOrNull() ?: return
         val t = b.t
         val inU = clamp01(t / 0.3f)
