@@ -63,7 +63,9 @@ class RelicChase(val g: Game) {
         state = RS.APPEAR; t = 0f; onSlide = null
         s = max(p.z + LEAD, g.world.relicZ0.toFloat() + 0.5f)
         place()
-        g.fx.banner("CHASE & COLLECT!", "CATCH THE RUNAWAY RELIC FOR A BONUS", 0xFFFFE14A.toInt(), 2.1f)
+        // Level 7: the golden sprite breaks loose and runs for it, leaving a trail of golden light to follow
+        if (g.spec.enchanted) g.fx.banner("THE GOLDEN SPRITE ESCAPED!", "CATCH IT FOR A BONUS — FOLLOW ITS GOLDEN TRAIL", 0xFFFFE14A.toInt(), 2.3f)
+        else g.fx.banner("CHASE & COLLECT!", "CATCH THE RUNAWAY RELIC FOR A BONUS", 0xFFFFE14A.toInt(), 2.1f)
         g.platform.sound(Sfx.STAR, 1f, 1.2f); g.platform.sound(Sfx.WHOOSH, 0.7f, 1.4f)
         g.fx.burst(x, y + 0.6f, z, 30, PK.STAR, 0xFFFFE680.toInt(), 5f, 0.16f, 0.8f)
         g.hud.relicShow()
@@ -142,6 +144,17 @@ class RelicChase(val g: Game) {
                     q.life = g.fx.rng.f(0.4f, 0.8f); q.maxLife = q.life; q.size = g.fx.rng.f(0.05f, 0.11f)
                     q.color = if (g.fx.rng.f() < 0.5f) 0xFFFFE680.toInt() else 0xFFFFFFFF.toInt(); q.kind = PK.STAR
                 }
+                // Level 7: its golden footprints stay glowing on the path for a moment (the trail to follow)
+                if (g.spec.enchanted) {
+                    trailT -= dt
+                    if (trailT <= 0f && hop < 0.05f && onSlide == null) {
+                        trailT = 0.1f
+                        val q = g.fx.spawn()
+                        q.x = x + g.fx.rng.f(-0.08f, 0.08f); q.y = y - hop + 0.06f; q.z = z
+                        q.vx = 0f; q.vy = 0.15f; q.vz = 0f
+                        q.life = 1.6f; q.maxLife = 1.6f; q.size = 0.13f; q.color = 0xFFFFE070.toInt(); q.kind = PK.STAR
+                    }
+                }
                 checkCatch()
                 if (state == RS.RUN && s >= g.world.relicZ1) escape()
             }
@@ -172,7 +185,7 @@ class RelicChase(val g: Game) {
         g.fx.burst(x, y + 0.5f, z, 26, PK.SPARK, 0xFFFFFFFF.toInt(), 5f, 0.12f, 0.6f)
         g.fx.confetti(x, y + 1.2f, z, 30)
         g.addScore(bonusScore, p.x, p.y + 2.6f, p.z, "RELIC BONUS")
-        g.fx.banner("RELIC CAPTURED!", "+$bonusCoins COINS  •  +$bonusGems GEMS  •  +${bonusScore}", 0xFFFFE14A.toInt(), 1.9f)
+        g.fx.banner(if (g.spec.enchanted) "CHASE COMPLETE!" else "RELIC CAPTURED!", "+$bonusCoins COINS  •  +$bonusGems GEMS  •  +${bonusScore}", 0xFFFFE14A.toInt(), 1.9f)
         g.hud.relicCaught()
         val sx: Float; val sy: Float
         if (g.cam.project(x, y + 0.5f, z)) { sx = g.cam.sx; sy = g.cam.sy } else { sx = g.hud.cx(); sy = g.hud.cy() }
@@ -187,11 +200,12 @@ class RelicChase(val g: Game) {
         state = RS.ESCAPED; t = 0f
         g.platform.sound(Sfx.WHOOSH, 0.8f, 1.5f)
         g.fx.burst(x, y + 0.5f, z, 24, PK.STAR, 0xFFFFE680.toInt(), 5f, 0.14f, 0.7f)
-        g.fx.toast("THE RELIC GOT AWAY!", "NO PROBLEM — KEEP GOING", 0xFFFFD27A.toInt(), 2.2f)
+        g.fx.toast(if (g.spec.enchanted) "THE GOLDEN SPRITE GOT AWAY!" else "THE RELIC GOT AWAY!", "NO PROBLEM — KEEP GOING", 0xFFFFD27A.toInt(), 2.2f)
         g.hud.relicEscaped()
     }
 
     private val tmp = FloatArray(3)
+    private var trailT = 0f
 
     /** For the HUD: 1 when caught. */
     val count get() = if (caught) 1 else 0

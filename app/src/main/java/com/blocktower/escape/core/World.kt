@@ -10,6 +10,9 @@ class Coin(@JvmField var x: Float, @JvmField var y: Float, @JvmField var z: Floa
     @JvmField val ox = x
     @JvmField val oy = y
     @JvmField val oz = z
+    /** Level 7: a hidden coin (on the secret routes): it shows itself, with a sparkle, only when the boy is near. */
+    @JvmField var hidden = false
+    @JvmField var reveal = 0f
 }
 
 /** Floating power-up bubble (as in the Screen 4 design): touching it gives one use of a tool. */
@@ -283,6 +286,50 @@ class SpikeBox(@JvmField val x0: Float, @JvmField val y: Float, @JvmField val z:
 class Island(@JvmField val x: Float, @JvmField val z: Float, @JvmField val top: Float, @JvmField val w: Float, @JvmField val d: Float,
              @JvmField val depth: Float, @JvmField val falls: Int, @JvmField val palms: Int, @JvmField val seed: Int)
 
+/** Level 7: kinds of the Sorcerer's creatures and spells placed on the course (see [Sorcery]). */
+object SK {
+    /** A rolling stone creature: drops onto lane x (relative to the path; [SpellSpot.AIM]: the boy's lane) of row z and rolls down the path toward him. */
+    const val ROLLER = 0
+    /** A teleporting spirit haunting rows z .. z + len: it blinks onto a marked spot on the path ahead of the boy, again and again. */
+    const val SPIRIT = 1
+    /** A magical hand reaching out of the island's edge on side x (-1 left, 1 right) and slamming down on that outer lane of row z. */
+    const val HAND = 2
+}
+
+/**
+ * Level 7: one of the Sorcerer's creatures or spells waiting on the course ([kind] from [SK]). [len]: how many rows a
+ * spirit haunts; [period]: a hand's rhythm (seconds) or a roller's speed (units a second); [phase]: a hand's timing.
+ */
+class SpellSpot(@JvmField val kind: Int, @JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float,
+                @JvmField val len: Float, @JvmField val period: Float, @JvmField val phase: Float) {
+    companion object { const val AIM = 9f }
+}
+
+/** Level 7: a star rune set into the path (the Sorcerer's Wrath): running over it lights it and strikes the Sorcerer. */
+class Rune(@JvmField val id: Int, @JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float) {
+    @JvmField var lit = false
+    @JvmField var litT = 0f
+}
+
+/** Level 7: a treasure chest (the secret routes' prize): touching it opens it. */
+class Chest(@JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float, @JvmField val coins: Int, @JvmField val gems: Int) {
+    @JvmField var open = false
+    @JvmField var openT = 0f
+    @JvmField var sortKey = 0f
+}
+
+/**
+ * Level 7: a secret route. Its switch (a glowing rune tile beside the path, [switch]) or its hidden ledge (landing
+ * there finds it) at (x, y, z) within [r] reveals the route's blocks (those with shortcutId == [id]).
+ */
+class Secret(@JvmField val id: Int, @JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float, @JvmField val r: Float,
+             @JvmField val switch: Boolean, @JvmField val title: String) {
+    @JvmField var found = false
+}
+
+/** Level 7: a sanctuary: a ring of starlight on the path where the Sorcerer cannot strike (rows z0 .. z1). */
+class Sanctuary(@JvmField val x: Float, @JvmField val y: Float, @JvmField val z0: Float, @JvmField val z1: Float)
+
 /** Z-range with a section name and x origin (used for background parallax and camera framing). */
 class Section(val name: String, val z0: Int, val z1: Int, val originX: Float)
 
@@ -298,6 +345,18 @@ object Ev {
     const val RELIC = 21
     /** Level 7: one of the Sorcerer's minion waves begins (its id in text2) / ends, at a checkpoint (its id in text2). */
     const val MINIONS = 22; const val MINIONS_END = 23
+    /**
+     * Level 7: the Sorcerer's Wrath (the level's guardian encounter) begins / changes its attack (1 shockwaves,
+     * 2 hands and cursed blocks, 3 falling crystal shards; in text2) / ends at a checkpoint. WARNING: the Sorcerer
+     * awakens (the magical warning before it).
+     */
+    const val WRATH = 24; const val WRATH_MODE = 25; const val WRATH_END = 26; const val WARNING = 27
+    /** Level 7: the level's cinematic phase changes (its number in text2: the sky's light and the music follow it). */
+    const val PHASE = 28
+    /** Level 7: the Celestial Gate awakens as the boy reaches its plaza (the finale). */
+    const val GATE = 29
+    /** Blocks the Sorcerer curses (Level 7): they flicker purple and vanish for a moment, again and again. */
+    const val CURSE = 30
 }
 
 class Trigger(val z: Float, val xMin: Float, val xMax: Float, val event: Int, val text: String = "", val text2: String = "") {
@@ -329,6 +388,12 @@ class World {
     val chains = ArrayList<ChainLink>()
     val minionSpots = ArrayList<MinionSpot>()
     val waves = ArrayList<MinionWave>()
+    /** Level 7: the Sorcerer's creatures and spells, the Wrath's star runes and sanctuaries, and the secret routes' chests. */
+    val spells = ArrayList<SpellSpot>()
+    val runes = ArrayList<Rune>()
+    val sanctuaries = ArrayList<Sanctuary>()
+    val chests = ArrayList<Chest>()
+    val secrets = ArrayList<Secret>()
     /** Level 5: the Runaway Relic's route, as rows (z) it runs from and to; 0 = none. */
     var relicZ0 = 0; var relicZ1 = 0
     /** Levels 5 and 6: depth of the lava sea (the cloud sea) below the course, relative to the path (it follows the climb). */

@@ -409,7 +409,7 @@ class Hud(val g: Game) {
         gr.fillPath(ring, Linear(0f, y - R, 0f, y + R, intArrayOf(0xFF4AA6FF.toInt(), 0xFF1848C8.toInt())))
         inner.ops.clear(); inner.native = null; inner.circle(x, y, R * 0.86f)
         gr.fillPath(inner, Radial(x - R * 0.2f, y - R * 0.3f, R, intArrayOf(0xFF1A3A80.toInt(), 0xFF0A1740.toInt())))
-        val img = when (k) { TK.MAGNET -> g.art.magnet; TK.SHIELD -> g.art.shield; TK.SPEED -> g.art.lightning; else -> g.art.blockTool }
+        val img = g.art.toolIcon(k)
         val base = if (k == TK.BLOCK) 92f else 84f
         val ih = base * s * press * (1f + 0.3f * sin(tl.anim * PI.toFloat())) * (1f + 0.25f * sin(tl.gain * PI.toFloat()))
         val iw = ih * img.w / img.h
@@ -440,7 +440,7 @@ class Hud(val g: Game) {
         gr.fillPath(ring, Linear(0f, y - R, 0f, y + R, intArrayOf(0xFF5A6480.toInt(), 0xFF343C54.toInt())))
         inner.ops.clear(); inner.native = null; inner.circle(x, y, R * 0.86f)
         gr.fillPath(inner, Solid(0xFF161C30.toInt()))
-        val img = when (k) { TK.MAGNET -> g.art.magnet; TK.SHIELD -> g.art.shield; TK.SPEED -> g.art.lightning; else -> g.art.blockTool }
+        val img = g.art.toolIcon(k)
         val ih = 70f * s; val iw = ih * img.w / img.h
         gr.image(img, x - iw * 0.5f, y - ih * 0.5f - 4f * s, iw, ih, 0.22f)
         padlock(gr, x, y + 6f * s, 26f * s)
@@ -588,6 +588,12 @@ class Hud(val g: Game) {
             tp[0] = ex - 15f * s; tp[1] = ey - 2f * s; tp[2] = ex + 15f * s; tp[3] = ey - 2f * s; tp[4] = ex + 3f * s; tp[5] = ey - 20f * s
             gr.fillPoly(tp, 3, Col.withA(0xFF7A3CD0.toInt(), a))
             gr.fillCircle(ex - 6f * s, ey + 7f * s, 4f * s, Col.withA(0xFFFFB030.toInt(), a)); gr.fillCircle(ex + 6f * s, ey + 7f * s, 4f * s, Col.withA(0xFFFFB030.toInt(), a))
+        } else if (g.ev.meterKind == 4) {
+            // the Sorcerer: a dark hood with two blazing magenta eyes
+            tp[0] = ex - 16f * s; tp[1] = ey + 16f * s; tp[2] = ex + 16f * s; tp[3] = ey + 16f * s; tp[4] = ex; tp[5] = ey - 20f * s
+            gr.fillPoly(tp, 3, Col.withA(0xFF3A1A5A.toInt(), a))
+            gr.fillCircle(ex, ey + 4f * s, 10f * s, Col.withA(0xFF12081E.toInt(), a))
+            gr.fillCircle(ex - 5f * s, ey + 3f * s, 3.5f * s, Col.withA(0xFFFF5AC8.toInt(), a)); gr.fillCircle(ex + 5f * s, ey + 3f * s, 3.5f * s, Col.withA(0xFFFF5AC8.toInt(), a))
         } else if (g.ev.meterKind == 2) {
             gr.fillRoundRect(ex - 14f * s, ey - 2f * s, ex + 14f * s, ey + 14f * s, 5f * s, Col.withA(0xFFFF6A10.toInt(), a))
             gr.fillCircle(ex - 5f * s, ey - 4f * s, 6f * s, Col.withA(0xFFFFB040.toInt(), a)); gr.fillCircle(ex + 6f * s, ey - 7f * s, 4f * s, Col.withA(0xFFFFD070.toInt(), a))
@@ -646,7 +652,7 @@ class Hud(val g: Game) {
             val y = (1 - u) * (1 - u) * f.y0 + 2 * (1 - u) * u * my + u * u * f.y1
             val img = when (f.kind) {
                 FK.COIN -> g.art.coinIcon; FK.TARGET -> g.art.targetCube; FK.GEM -> g.art.gem; FK.HEART -> g.art.heartFull
-                else -> when (f.value) { TK.MAGNET -> g.art.magnet; TK.SHIELD -> g.art.shield; TK.SPEED -> g.art.lightning; else -> g.art.blockTool }
+                else -> g.art.toolIcon(f.value)
             }
             val size = (if (f.kind == FK.TARGET) 70f else 50f) * s * (1.2f - 0.4f * f.t)
             // the glow comes up as it flies (not a flash where it was picked up, over the boy)

@@ -100,19 +100,7 @@ class Autopilot(
         fallZ = 3.0f, steerZ = 310.2f, speedZ = 150f, captureZ = 330f, magnetZ = 290f, shieldZ = 322f,
         blockZ0 = 35.3f, blockZ1 = 36f, trapZ0 = 262f, trapZ1 = 316f,
         pathA = floatArrayOf(113.05f, 113.95f, -4f, -2f), pathB = floatArrayOf(130f, 138f, -2.6f, 2.6f),
-    ) else if (level == 7) Plan(
-        route = floatArrayOf(
-            -9f, 0f,
-            34.3f, -1f, 35.3f, 0f,                               // vanishing stones on the isles
-            97.3f, -1f, 98.3f, 0f, 99.3f, -1f, 100.3f, 0f,       // vanishing stones on the crystal stairs
-            110.2f, -2.2f, 111.3f, -3.0f, 126.2f, 0f,            // the fork: the crystal bridge on the left
-            315.3f, -1f, 319.6f, 0f,                             // round the spikes in the pursuit
-            388.3f, -1f, 389.3f, 0f, 390.3f, -1f, 391.3f, 0f,   // vanishing stones in the maze
-            431.3f, -1f, 432.3f, 0f),                            // stepping stones on the final ascent
-        fallZ = 3.0f, steerZ = 126.4f, speedZ = 142f, captureZ = 9999f, magnetZ = 205f, shieldZ = 306f,
-        blockZ0 = 53.3f, blockZ1 = 54f, trapZ0 = 204f, trapZ1 = 257f,
-        pathA = floatArrayOf(112f, 125f, -4f, -2f), pathB = floatArrayOf(126f, 131f, -2.6f, 2.6f),
-    ) else Plan(
+    ) else if (level == 7) level7Plan() else Plan(
         route = floatArrayOf(
             -9f, 0f,
             26.3f, 1f, 28.6f, 0f,                  // round the spikes in the middle lane
@@ -126,6 +114,33 @@ class Autopilot(
         blockZ0 = 30.2f, blockZ1 = 31.6f, trapZ0 = 19f, trapZ1 = 31f,
         pathA = floatArrayOf(46.5f, 56f, -4f, -1.8f), pathB = floatArrayOf(57.5f, 60.5f, -2.6f, 2.6f),
     )
+    /** Where a section of the course starts (row), by name. */
+    private fun sec(name: String) = g.world.sections.firstOrNull { it.name == name }?.z0?.toFloat() ?: 9999f
+
+    /**
+     * Level 7, section by section. "secret=1": also take both secret routes (the rune that raises the blue stair to the
+     * treasure island on the crystal stairs, and the hidden ledge under the gauntlet's narrow bridge), opening both chests.
+     */
+    private fun level7Plan(): Plan {
+        val st = sec("stairs"); val ga = sec("gauntlet"); val pu = sec("pursuit"); val mz = sec("maze"); val asc = sec("ascent")
+        val am = sec("ambush"); val re = sec("relic")
+        val secret = opts["secret"] == "1"
+        val r = ArrayList<Float>()
+        fun at(z: Float, x: Float) { r.add(z); r.add(x) }
+        at(-9f, 0f)
+        at(34.3f, -1f); at(35.3f, 0f)                                                      // vanishing stones on the isles
+        at(st + 17.3f, -1f); at(st + 18.3f, 0f); at(st + 19.3f, -1f); at(st + 20.3f, 0f)   // vanishing stones on the crystal stairs
+        if (secret) { at(st + 21.3f, -2f); at(st + 21.8f, -3f); at(st + 26.1f, -4f); at(st + 27.9f, -3f); at(st + 29.1f, -2.2f) }   // the secret stair
+        at(st + 30.2f, -2.2f); at(st + 31.3f, -3.0f); at(st + 46.2f, 0f)                   // the fork: the crystal bridge on the left
+        if (secret) { at(ga + 26.2f, 1f); at(ga + 27.8f, 2f); at(ga + 31.1f, 3f); at(ga + 32.8f, 2f); at(ga + 35.2f, 1f); at(ga + 36.2f, 0f) }  // the hidden ledge
+        at(pu + 12.3f, -1f); at(pu + 16.6f, 0f)                                            // round the spikes in the pursuit
+        at(mz + 21.3f, -1f); at(mz + 22.3f, 0f); at(mz + 23.3f, -1f); at(mz + 24.3f, 0f)   // vanishing stones in the maze
+        at(asc + 16.3f, -1f); at(asc + 17.3f, 0f)                                          // stepping stones on the final ascent
+        return Plan(route = r.toFloatArray(), fallZ = 3.0f, steerZ = st + 46.4f, speedZ = if (opts["relic"] == "miss") 9999f else re + 3f,
+            captureZ = 9999f, magnetZ = ga + 1f, shieldZ = pu + 3f, blockZ0 = am + 7.3f, blockZ1 = am + 8f, trapZ0 = ga, trapZ1 = ga + 53f,
+            pathA = floatArrayOf(st + 32f, st + 45f, -4f, -2f), pathB = floatArrayOf(st + 46f, st + 51f, -2.6f, 2.6f))
+    }
+
     private fun routeX(z: Float): Float {
         val route = plan.route
         var x = 0f
@@ -215,6 +230,7 @@ class Autopilot(
                 lastAnyWave = g.minions.anyWave
             }
             if (g.ev.finalOn) seen.add("final escape")
+            if (g.spec.enchanted) watchSorcery()
             // round the loop: the stride keeps going, the turn follows the track smoothly, feet stay on it
             if (p.state == PS.LOOP) {
                 if (!inLoop) { inLoop = true; loopRot0 = p.loopRot; lastLoopRot = p.loopRot; loopPhase0 = p.runPhase; loopFrames = 0; loopCoins0 = g.coinsCollected; loopTurn = 0f }
@@ -419,6 +435,12 @@ class Autopilot(
                 wantRun = false; keepPace(); return
             }
         } else swoopWaitNoted = false
+        // --- Level 7: a shockwave rolling at us (jump as it arrives); a rolling stone with no lane to step into (jump it)
+        if (g.spec.enchanted && p.grounded && jumpHoldF == 0) {
+            val si = shockIn()
+            if (si in 0.08f..0.24f) { pressJump(); shockJumps++; note("jumping a shockwave") }
+            else if (rollerJumpIn in 0.05f..0.22f) { pressJump(); note("jumping a rolling stone") }
+        }
         // --- a laser gate just ahead: jump its beam (timed so he is above it as he passes)
         val la = laserAhead()
         val lv = max(2f, len2(p.vx, p.vz))
@@ -445,6 +467,8 @@ class Autopilot(
         // --- Level 7: a magic bolt about to land where we will be: steer to a free lane (or hold back)
         if (boltX == -99f) { wantRun = false; keepPace(); return }
         if (!boltX.isNaN()) tx = boltX
+        // (never steer back into a lane something is about to strike: stay where we are until it has passed)
+        else if (!laneSafe(tx)) tx = g.steerX
         val ground = p.ground
         val onMover = ground != null && ground.type == BT.MOVING
         if (onMover) tx = g.steerX
@@ -474,7 +498,7 @@ class Autopilot(
             // wait back from the edge (with a run-up) until the platform will be under us when we land
             val standing = len2(p.vx, p.vz) < 1f
             val tLand = if (standing) 0.95f else 0.55f
-            val px = landing.baseX + landing.amp * sin(landing.phase + (g.t + tLand) * landing.speed)
+            val px = landing.baseX + landing.amp * sin(landing.phase + (g.hazT + tLand * g.hazK) * landing.speed)
             if (abs(px - p.x) > landing.sx * 0.5f - 0.15f) {
                 if (edge < 1.5f) { wantRun = false; keepPace() }
                 return
@@ -523,6 +547,29 @@ class Autopilot(
     private var slideFrames = 0; private var slideCoins0 = 0; private var slideCoins = 0; private var slideMaxTh = 0f
     private var slideOffSurface = 0f
 
+    // ---- Level 7: the Sorcerer's creatures and his Wrath, the secret routes
+    private var lastWrath = 0; private var minHazK = 1f; private var lastPhase = 1
+    private val spiritHops = HashSet<Int>(); private var handSlams = 0; private var shocksSeen = 0; private var shardsSeen = 0; private var rollersSeen = 0
+    private val shockSeenSet = HashSet<Any>(); private val shardSeenT = HashMap<Any, Float>(); private val rollerSeen = HashSet<Any>()
+    private val handWasOut = HashSet<Any>()
+    private fun watchSorcery() {
+        val so = g.sorcery
+        if (so.wrath != lastWrath) {
+            note("Sorcerer's Wrath: ${arrayOf("NONE", "RISE", "ATTACK", "STUN", "DONE")[so.wrath]} (runes ${so.runesLit}/${g.world.runes.size}, hearts ${g.hearts})")
+            lastWrath = so.wrath; seen.add("wrath:${so.wrath}")
+        }
+        if (so.phase != lastPhase) { note("phase ${so.phase}"); lastPhase = so.phase; seen.add("phase:${so.phase}") }
+        minHazK = min(minHazK, g.hazK)
+        for (sh in so.shocks) if (sh.on) { if (shockSeenSet.add(sh.hashCode() * 1000 + (sh.z * 10).toInt() / 1000)) {} }
+        for (sh in so.shocks) if (sh.on && sh.t < 0.02f) shocksSeen++
+        for (sh in so.shards) if (sh.on && !sh.harmless && sh.t < 0.02f && !sh.landed) shardsSeen++
+        for (r in so.rollers) if (r.state >= 1 && rollerSeen.add(r)) rollersSeen++
+        for (sp in so.spirits) if (sp.state == 1) spiritHops.add((sp.z * 10).toInt())
+        for (h in so.hands) { if (h.danger && abs(h.z - p.z) < 12f && handWasOut.add(h)) handSlams++; if (!h.danger) handWasOut.remove(h) }
+        for (se in g.world.secrets) if (se.found && seen.add("secret:${se.id}")) note("SECRET ROUTE FOUND: ${se.title}")
+        for (c in g.world.chests) if (c.open && seen.add("chest:${c.z}")) note("treasure chest opened (coins ${g.coins}, gems ${g.gems})")
+    }
+
     // ---- Level 7: the Sorcerer's minions
     private var swoopWaitNoted = false; private var swoopWaits = 0; private var swoopJumps = 0
     private var boltDodges = 0; private var boltDodgeZ = -99f
@@ -534,9 +581,9 @@ class Autopilot(
             val sp = m.spot ?: continue
             val dz = sp.z + 0.5f - p.z
             if (dz < 0.9f || dz > 3.4f || abs(p.y - sp.y) > 1.5f) continue
-            val t0 = g.t + arrival(dz)
+            val t0 = g.hazT + arrival(dz) * g.hazK
             var k = -3
-            while (k <= 6) { if (swoopHits(sp, t0 + k * 0.1f, p.x)) return dz; k++ }
+            while (k <= 6) { if (swoopHits(sp, t0 + k * 0.1f * g.hazK, p.x)) return dz; k++ }
         }
         return null
     }
@@ -554,23 +601,82 @@ class Autopilot(
     private fun clamp01(v: Float) = max(0f, min(1f, v))
 
     private val boltList = ArrayList<FloatArray>()
-    /** A lane away from a bolt that will land where we are heading (NaN: none needed; -99: no lane, hold back). */
+    private val dangerList = ArrayList<FloatArray>()
+    private val spellList = ArrayList<FloatArray>()
+    /** A roller will reach us with no lane free to step into: jump it as it arrives (seconds until it does, or -1). */
+    private var rollerJumpIn = -1f
+
+    /**
+     * A lane away from what is about to strike where we are heading (NaN: none needed; -99: no lane, hold back): the
+     * lantern ships' bolts, and in the Sorcerer's realm his falling shards, the spirit's glowing mark and his rolling
+     * stones. Each danger is a spot (x, z) and the seconds [from, until] it is dangerous; we are in trouble if we will
+     * be within a row of it, in its lane, while it is.
+     */
     private fun boltDodge(): Float {
+        dangerList.clear(); rollerJumpIn = -1f
         g.minions.boltTargets(boltList)
-        for (b in boltList) {
-            val tx = b[0]; val tz = b[1]; val left = b[2]
-            val zAt = p.z + max(0f, p.vz) * left
-            if (abs(zAt - tz) > 1.3f || tz < p.z - 0.6f) continue
-            if (abs(g.steerX - tx) > 0.95f) continue
-            // a lane beside it, with floor, reachable in time
-            val row = floor(tz).toInt()
-            val cands = floatArrayOf(tx - 1f, tx + 1f).filter { x -> g.world.row(row)?.any { it.collides() && abs(it.x - x) < 0.5f && abs(it.y1 - g.world.levelAt(row)) < 0.4f } == true }
+        for (b in boltList) dangerList.add(floatArrayOf(b[0], b[1], b[2] - 0.35f, b[2] + 0.15f, 0f))
+        if (g.spec.enchanted) {
+            g.sorcery.dangers(spellList)
+            for (d in spellList) dangerList.add(floatArrayOf(d[0], d[1], d[2], d[3], 1f))
+            for (r in g.sorcery.rollers) if (r.state == 1 || r.state == 2) {
+                val dz = r.z - p.z
+                if (dz < -0.3f || dz > 15f) continue
+                val v = r.spot.period * g.hazK
+                val tm = dz / max(0.6f, max(0f, p.vz) + v)
+                dangerList.add(floatArrayOf(r.x, p.z + max(0f, p.vz) * tm, tm - 0.4f, tm + 0.4f, 2f))
+            }
+        }
+        for (d in dangerList) {
+            if (!hits(d, g.steerX)) continue
+            // a lane beside it, with floor from here to there, free of every danger
+            val row = floor(d[1]).toInt()
+            val px = g.world.pathXAt(row)
+            val cands = floatArrayOf(px - 2f, px - 1f, px, px + 1f, px + 2f).filter { x ->
+                abs(x - d[0]) > 0.9f && dangerList.none { hits(it, x) } && laneHasFloor(x, floor(p.z).toInt(), row)
+            }
             val lane = cands.minByOrNull { abs(it - p.x) }
-            if (boltDodgeZ != tz) { boltDodgeZ = tz; boltDodges++; note("dodging a magic bolt landing at x=${"%.1f".format(tx)}") }
+            if (abs(boltDodgeZ - d[1]) > 2.5f) {
+                boltDodgeZ = d[1]; boltDodges++
+                note("dodging ${when (d[4].toInt()) { 0 -> "a magic bolt"; 1 -> "a shard / the spirit"; else -> "a rolling stone" }} at x=${"%.1f".format(d[0])}")
+            }
+            if (lane == null && d[4] == 2f) { rollerJumpIn = max(0f, d[2] + 0.4f); return Float.NaN }
             return lane ?: -99f
         }
         return Float.NaN
     }
+
+    /** Whether danger [d] catches us in lane [lane] as we pass its spot. */
+    private fun hits(d: FloatArray, lane: Float): Boolean {
+        if (abs(lane - d[0]) > 0.9f || d[1] < p.z - 0.6f) return false
+        val t0 = arrival(max(0f, d[1] - p.z - 0.75f)); val t1 = arrival(max(0f, d[1] - p.z + 0.75f))
+        return t1 > d[2] && t0 < d[3]
+    }
+    /** Lane [x] is clear of everything about to strike (from the last [boltDodge]). */
+    private fun laneSafe(x: Float) = dangerList.none { hits(it, x) }
+
+    /** Floor under lane [x] in every row from [r0] to [r1] (near the path's level). */
+    private fun laneHasFloor(x: Float, r0: Int, r1: Int): Boolean {
+        for (r in r0..r1) {
+            val lvl = g.world.levelAt(r)
+            if (g.world.row(r)?.any { it.collides() && it.type != BT.TRAP && x > it.x0 - 0.05f && x < it.x1 + 0.05f && abs(it.y1 - lvl) < 0.6f } != true) return false
+        }
+        return true
+    }
+
+    /** Seconds until a shockwave rolling at us reaches us (or -1). */
+    private fun shockIn(): Float {
+        var best = -1f
+        for (sh in g.sorcery.shocks) {
+            if (!sh.on) continue
+            val dz = sh.z - p.z
+            if (dz < -0.1f || abs(sh.x - p.x) > 2f) continue
+            val tt = dz / max(0.5f, max(0f, p.vz) + com.blocktower.escape.core.Sorcery.SHOCK_SPEED * g.hazK)
+            if (best < 0f || tt < best) best = tt
+        }
+        return best
+    }
+    private var shockJumps = 0
 
     /** Distance to the next laser gate across our lane (or -1). */
     private fun laserAhead(): Float {
@@ -610,11 +716,11 @@ class Autopilot(
         for (b in sliders) {
             val dz = b.z - p.z
             if (dz < 0.6f || dz > 4.5f || abs(p.y - b.y) > 1.5f) continue
-            val t0 = g.t + arrival(dz)
+            val t0 = g.hazT + arrival(dz) * g.hazK
             fun clear(x: Float): Boolean {
                 var k = -2
                 while (k <= 4) {
-                    val bx = b.x0 + b.amp * sin(b.phase + (t0 + k * 0.1f) * b.speed)
+                    val bx = b.x0 + b.amp * sin(b.phase + (t0 + k * 0.1f * g.hazK) * b.speed)
                     if (abs(bx - x) < b.half + Tune.RADIUS + 0.12f) return false
                     k++
                 }
@@ -625,7 +731,7 @@ class Autopilot(
             val here = g.steerX
             if (clear(here) && abs(p.x - here) < 0.3f) { dodgeBox = null; dodgeX = Float.NaN; continue }
             // a lane it will have left by then, reachable in time (a lane change takes about a third of a second)
-            val arrive = t0 - g.t
+            val arrive = arrival(dz)
             val px = g.world.pathXAt(kotlin.math.floor(b.z).toInt())
             val lane = floatArrayOf(px - 1f, px, px + 1f).filter { clear(it) && (abs(it - p.x) < 0.3f || 0.3f + 0.25f * abs(it - p.x) < arrive - 0.1f) }.minByOrNull { abs(it - p.x) }
             if (lane != null) { dodgeX = lane; dodgeBox = b.ref; return 1 }
@@ -702,12 +808,12 @@ class Autopilot(
             if (dz < 1.0f || dz > 3.4f + max(0f, p.vz - Tune.RUN) * 1.2f || abs(p.y - (l.py - l.len)) > 3f) continue
             // still carried fast by a launch (out of a slide) toward a swinging mace: brake first, time it after
             if (p.boostT > 0f && p.vz > Tune.RUN + 0.5f) return true
-            val t0 = g.logT + arrival(dz)
+            val t0 = g.logT + arrival(dz) * g.hazK
             val w = com.blocktower.escape.core.TAU / l.period
             // from a little before we arrive until we are through (about 0.6 s under the swing)
             var k = -3
             while (k <= 7) {
-                val a = l.amp * sin(w * (t0 + k * 0.1f) + l.phase)
+                val a = l.amp * sin(w * (t0 + k * 0.1f * g.hazK) + l.phase)
                 val cx = l.px + sin(a) * l.len; val cy = l.py - kotlin.math.cos(a) * l.len
                 if (abs(p.x - cx) < l.radius + 0.7f && cy - l.radius < p.y + Tune.HEIGHT + 0.25f) return true
                 k++
@@ -885,6 +991,7 @@ class Autopilot(
     private var maxDvz = 0f
     private var maxDx = 0f; private var maxDvx = 0f
     private var penetrations = 0
+    private var spellHits = 0
     private var hurts = 0; private var trapHurts = 0; private var logHits = 0; private var minionHits = 0; private var boltHits = 0
     private var wavesStarted = 0; private var wavesEnded = 0; private var lastAnyWave = false
     private var lastHurt = 0f
@@ -917,6 +1024,7 @@ class Autopilot(
             if (g.lastHurt == "mace") logHits++
             if (g.lastHurt == "minion") minionHits++
             if (g.lastHurt == "bolt") boltHits++
+            if (g.lastHurt in setOf("roller", "spirit", "hand", "shockwave", "shard")) spellHits++
             note("hit (hurt flash) at z=${"%.1f".format(p.z)}: ${g.lastHurt}")
         }
         lastHurt = p.hurtFlash
@@ -1005,7 +1113,7 @@ class Autopilot(
             "countdown + GO" to (seen.contains("ps:NORMAL") || true),
             "blue blocks collected (${g.spec.targetNeed}/${g.spec.targetNeed})" to (g.target >= g.spec.targetNeed),
             "fall -> safety net -> recovery" to (seen.contains("ps:RESCUE_FALL") && seen.contains("ps:RESCUE_RIDE")),
-            "tool SPEED used" to seen.contains("tool:SPEED"),
+            "tool ${g.toolName(TK.SPEED)} used" to seen.contains("tool:" + g.toolName(TK.SPEED)),
             "tool MAGNET used" to seen.contains("tool:MAGNET"),
             "tool BLOCK used" to seen.contains("tool:BLOCK"),
             "tool SHIELD used" to seen.contains("tool:SHIELD"),
@@ -1026,7 +1134,7 @@ class Autopilot(
         ).filter { (name, _) ->
             when (name) {
                 "fall -> safety net -> recovery" -> !clear && plan.fallZ < 9999f
-                "tool SPEED used" -> usesTool[TK.SPEED]
+                "tool SPEED used", "tool HOURGLASS used" -> usesTool[TK.SPEED]
                 "tool MAGNET used" -> usesTool[TK.MAGNET]
                 "tool BLOCK used" -> usesTool[TK.BLOCK]
                 "tool SHIELD used" -> usesTool[TK.SHIELD]
@@ -1061,6 +1169,15 @@ class Autopilot(
             val waves = g.world.waves.size
             result("minion waves: every wave came and vanished at its checkpoint", wavesStarted >= waves && wavesEnded >= waves,
                 "$wavesStarted of $waves waves started, $wavesEnded ended at their checkpoints; minion hits $minionHits, bolt hits $boltHits, stomps ${g.minions.stomps}")
+            val so = g.sorcery
+            result("the Sorcerer's Wrath: survived, star runes lit", seen.contains("wrath:${com.blocktower.escape.core.WS.DONE}") && so.runesLit == g.world.runes.size,
+                "runes lit ${so.runesLit}/${g.world.runes.size}; shockwaves $shocksSeen (jumped $shockJumps), hand slams $handSlams, shards $shardsSeen; hits from his spells $spellHits")
+            result("chase elements: rolling stones and the spirit came", rollersSeen >= g.sorcery.rollers.size && spiritHops.size >= 2,
+                "$rollersSeen of ${g.sorcery.rollers.size} rolling stones dropped in, the spirit blinked onto ${spiritHops.size} spots; dodged $boltDodges bolts / shards / spirits / stones")
+            result("cinematic phases 1..9 in order", (2..9).all { seen.contains("phase:$it") }, "phases reached: ${(1..9).filter { it == 1 || seen.contains("phase:$it") }.joinToString()}")
+            if (seen.contains("tool:HOURGLASS")) result("hourglass slows the Sorcerer's magic", minHazK < 0.5f, "hazard clock down to ${"%.2f".format(minHazK)} of its pace")
+            if (opts["secret"] == "1") result("secret routes: both found, both chests opened", g.world.secrets.all { it.found } && g.world.chests.all { it.open },
+                "secrets ${g.world.secrets.count { it.found }}/${g.world.secrets.size}, chests ${g.world.chests.count { it.open }}/${g.world.chests.size}")
         } else if (plan.trapZ0 < 9999f) {
             result("7 moving around obstacles", trapHurts == 0, "hits in the hazard section: $trapHurts")
         }

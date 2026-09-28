@@ -24,6 +24,8 @@ object Sfx {
 }
 
 object TK { const val MAGNET = 0; const val SHIELD = 1; const val SPEED = 2; const val BLOCK = 3 }
+/** Level 7's hourglass (the third tool there): the rate the hazard clock runs at while it is on. */
+const val HOURGLASS_K = 0.4f
 
 class Tool(val kind: Int, var count: Int, val duration: Float, val cooldownDur: Float) {
     var active = 0f
@@ -81,6 +83,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     val rig = PlayerRig(this)
     /** Level 5's Runaway Relic (CHASE & COLLECT). */
     val relic = RelicChase(this)
+    /** Level 7: the Sorcerer's creatures and his Wrath; the secret routes, chests and the world answering the boy. */
+    val sorcery = Sorcery(this)
+    val wonders = Wonders(this)
     /** Level 7: the Sorcerer's minions. */
     val minions = MinionSystem(this)
     /** Levels 5 and 6: height of the lava sea (the cloud sea), far below the course (it follows the climb). */
@@ -94,6 +99,12 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     var playT = 99f
     var paused = false
     var t = 0f                 // game clock (animation)
+    /**
+     * The hazard clock: what moving blocks, spikes, beams, spiked blocks, maces and (Level 7) the Sorcerer's creatures
+     * run on. It keeps pace with [t] except while Level 7's hourglass is on, which slows it to [HOURGLASS_K].
+     */
+    var hazT = 0f
+    var hazK = 1f
     var time = spec.startTime // countdown
     var hearts = spec.startHearts
     val maxHearts = spec.maxHearts
@@ -166,6 +177,10 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     val onArrive: (Flyer) -> Unit = { f -> arrive(f) }
     private val cand = ArrayList<Block>(64)
     private var magnetPullT = 0f
+    /** 1 -> 0 after the shield blocks a hit (the bubble flashes and rings out). */
+    var shieldHit = 0f
+    /** The magnet's tethers: where each pulled blue block was (x, y, z) and how long ago (s), for the beam drawn to the boy. */
+    val magnetLinks = ArrayList<FloatArray>()
 
     init { restartLevel(first = true) }
 
@@ -181,11 +196,11 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         coinsCollected = 0; mysteryOpened = 0; falls = 0; checkpoint = 0
         for (k in 0..3) tools[k].count = spec.toolCounts[k]
         for (tl in tools) { tl.active = 0f; tl.cooldown = 0f; tl.anim = 0f; tl.gain = 0f; tl.readyFlash = 0f }
-        fx.clear(); ev.reset(); relic.reset(); minions.reset(); seaY = -100f
+        fx.clear(); ev.reset(); relic.reset(); minions.reset(); sorcery.reset(); wonders.reset(); seaY = -100f; hazK = 1f
         gemsCollected = 0
         results = null; failReason = ""
-        shake = 0f; rumble = 0f; flashWhite = 0f; flashRed = 0f; hint = ""; hintT = 0f; pendingHint = ""
-        camInit = false; camYaw = 0f; camCyK = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f; minionCam = 0f
+        shake = 0f; rumble = 0f; flashWhite = 0f; flashRed = 0f; hint = ""; hintT = 0f; pendingHint = ""; shieldHit = 0f; magnetLinks.clear()
+        camInit = false; camYaw = 0f; camCyK = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f; minionCam = 0f; wrathCam = 0f; gateCam = 0f
         combo = 0; lastTargetT = -9f
         kickY = 0f; kickV = 0f; camLead = 0f; camRoll = 0f; camFov = 1f
         swipe.reset(); joy.release(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f; movedYet = false
@@ -212,6 +227,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         ev.resetAfter(cp.z, cp.y)
         relic.resetAfter(cp.z)
         minions.resetAfter(cp.z)
+        sorcery.resetAfter(cp.z)
+        wonders.resetAfter(cp.z)
+        hazK = 1f
         player.reset(cp.x, cp.y, cp.z)
         hearts = maxHearts; hud.bumpHearts()
         continues++
@@ -220,7 +238,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         fx.clear(); results = null; failReason = ""
         shake = 0f; flashRed = 0f; flashWhite = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
         state = GS.INTRO; stateT = 1.39f; introCountFrom = 1.39f; introSwoop = false; paused = false
-        camInit = false; camYaw = 0f; camCyK = 0f; minionCam = 0f
+        camInit = false; camYaw = 0f; camCyK = 0f; minionCam = 0f; wrathCam = 0f; gateCam = 0f
         swipe.stop(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f
         markSpawnContacts()
     }
@@ -260,6 +278,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         hud.update(dt)
         if (paused) return
         t += dt
+        hazK = approach(hazK, if (hourglassOn) HOURGLASS_K else 1f, dt * 4f)
+        hazT += dt * hazK
         stateT += dt
         playT += dt
         if (slowHold > 0f) slowHold -= dt else slowTarget = 1f
@@ -286,8 +306,10 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         updateLasers(sdt)
         updateSpikeBoxes(sdt)
         ev.update(sdt)
-        relic.update(sdt)
-        minions.update(sdt)
+        // (Level 7's hourglass slows the Sorcerer's creatures, his minions and the golden sprite too)
+        relic.update(if (spec.enchanted) sdt * hazK else sdt)
+        minions.update(sdt * hazK)
+        if (spec.enchanted) { sorcery.update(sdt, hazK); wonders.update(sdt) }
         updatePlayer(sdt)
         updateCoins(sdt)
         checkTriggers()
@@ -303,6 +325,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         shake = max(0f, shake - dt * 1.8f)
         flashWhite = max(0f, flashWhite - dt * 2.8f)
         flashRed = max(0f, flashRed - dt * 2f)
+        shieldHit = max(0f, shieldHit - dt * 2.2f)
+        if (magnetLinks.isNotEmpty()) { for (l in magnetLinks) l[3] += dt; magnetLinks.removeAll { it[3] > 0.45f } }
         if (hintT > 0f) hintT -= dt
         input.jumpPressed = false
         for (i in 0..3) input.toolTap[i] = false
@@ -404,7 +428,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         }
     }
 
-    fun toolName(k: Int) = when (k) { TK.MAGNET -> "MAGNET"; TK.SHIELD -> "SHIELD"; TK.SPEED -> "SPEED"; else -> "BLOCK" }
+    fun toolName(k: Int) = when (k) { TK.MAGNET -> "MAGNET"; TK.SHIELD -> "SHIELD"; TK.SPEED -> if (spec.enchanted) "HOURGLASS" else "SPEED"; else -> "BLOCK" }
 
     fun activateTool(k: Int) {
         if (state != GS.PLAY) return
@@ -442,7 +466,18 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
                 if (cam.project(p.x, p.y + 0.8f, p.z)) fx.ring(cam.sx, cam.sy, 0xFFFF6A6A.toInt(), 20f * hud.s, 260f * hud.s, 0.5f, 10f * hud.s) }
             TK.SHIELD -> { platform.sound(Sfx.SHIELD); fx.popupWorld("SHIELD!", p.x, p.y + 2.4f, p.z, 0xFF7FDBFF.toInt(), 44f)
                 fx.burst(p.x, p.y + 0.8f, p.z, 26, PK.SPARK, 0xFF60D0FF.toInt(), 5f, 0.16f, 0.6f) }
-            TK.SPEED -> { platform.sound(Sfx.SPEED); fx.popupWorld("SPEED!", p.x, p.y + 2.4f, p.z, 0xFFFFE14A.toInt(), 44f)
+            TK.SPEED -> if (spec.enchanted) {
+                // Level 7's hourglass: the Sorcerer's magic, his creatures and every moving hazard slow right down
+                platform.sound(Sfx.SPEED, 0.8f, 0.6f); platform.sound(Sfx.STAR, 0.7f, 0.7f)
+                fx.popupWorld("HOURGLASS!", p.x, p.y + 2.4f, p.z, 0xFFFFE14A.toInt(), 44f)
+                fx.popupWorld("TIME SLOWS", p.x, p.y + 1.7f, p.z, 0xFFBFE8FF.toInt(), 30f, 1.3f)
+                fx.burst(p.x, p.y + 0.8f, p.z, 34, PK.STAR, 0xFFFFE680.toInt(), 6f, 0.14f, 0.8f)
+                if (cam.project(p.x, p.y + 0.8f, p.z)) {
+                    fx.ring(cam.sx, cam.sy, 0xFFFFE680.toInt(), 30f * hud.s, 520f * hud.s, 0.9f, 14f * hud.s)
+                    fx.ring(cam.sx, cam.sy, 0xFF9FE8FF.toInt(), 20f * hud.s, 380f * hud.s, 0.7f, 8f * hud.s)
+                }
+                flashWhite = max(flashWhite, 0.12f)
+            } else { platform.sound(Sfx.SPEED); fx.popupWorld("SPEED!", p.x, p.y + 2.4f, p.z, 0xFFFFE14A.toInt(), 44f)
                 fx.burst(p.x, p.y + 0.8f, p.z, 30, PK.SPARK, 0xFFFFE040.toInt(), 6f, 0.14f, 0.5f)
                 flashWhite = max(flashWhite, 0.18f) }
         }
@@ -451,7 +486,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
 
     val magnetOn get() = tools[TK.MAGNET].isActive
     val shieldOn get() = tools[TK.SHIELD].isActive
-    val speedOn get() = tools[TK.SPEED].isActive
+    val speedOn get() = tools[TK.SPEED].isActive && !spec.enchanted
+    /** Level 7: the hourglass (in the lightning tool's place) is slowing the hazard clock. */
+    val hourglassOn get() = tools[TK.SPEED].isActive && spec.enchanted
 
     /**
      * Builds a temporary safe platform: under the player when falling over a gap, otherwise
@@ -522,7 +559,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
                 when (b.type) {
                     BT.MOVING -> {
                         b.lastX = b.x
-                        b.x = b.baseX + b.amp * sin(b.phase + t * b.speed)
+                        b.x = b.baseX + b.amp * sin(b.phase + hazT * b.speed)
                         b.dxFrame = b.x - b.lastX
                     }
                     BT.DISAPPEAR -> when (b.state) {
@@ -547,7 +584,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
                         3 -> { b.alpha = min(1f, b.alpha + dt * 2.5f); if (b.alpha >= 1f) b.state = 0 }
                     }
                     BT.TRAP -> if (b.speed == 0f) b.spike = 1f else {
-                        val c = (t + b.phase) % 2.6f
+                        val c = (hazT + b.phase) % 2.6f
                         val prev = b.spike
                         b.spike = when {
                             c < 1.4f -> 0f
@@ -1139,7 +1176,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (world.lasers.isEmpty()) return
         val p = player
         for (l in world.lasers) {
-            val c = ((t + l.phase) % l.period + l.period) % l.period
+            val c = ((hazT + l.phase) % l.period + l.period) % l.period
             val onAt = l.period - l.onFor
             val firing = c >= onAt
             val before = l.beam
@@ -1163,7 +1200,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (world.spikeBoxes.isEmpty()) return
         val p = player
         for (b in world.spikeBoxes) {
-            b.x = b.x0 + b.amp * sin(b.phase + t * b.speed)
+            b.x = b.x0 + b.amp * sin(b.phase + hazT * b.speed)
             if (p.state != PS.NORMAL || state != GS.PLAY || p.invuln > 0f) continue
             val h = b.size * 0.5f + 0.14f
             if (abs(p.x - b.x) < h + Tune.RADIUS && abs(p.z - b.z) < h + Tune.RADIUS && p.y < b.y + b.size + 0.12f && p.y + Tune.HEIGHT > b.y) {
@@ -1184,7 +1221,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     /** Swings the spiked maces; one that sweeps through the boy knocks him back (the shield blocks it). */
     private fun updateLogs(dt: Float) {
         if (world.logs.isEmpty()) return
-        logT += dt
+        logT += dt * hazK
         val p = player
         for ((i, l) in world.logs.withIndex()) {
             val w = TAU / l.period
@@ -1335,6 +1372,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             kickV -= hard * 0.09f
             if (hard > 14f) shake = max(shake, 0.18f)
         }
+        if (spec.enchanted) wonders.onLand(b)
         when (b.type) {
             BT.SAVE -> {
                 p.vy = 17.5f; p.grounded = false; p.jumping = false; b.squash = 1f; b.flash = 1f
@@ -1503,8 +1541,10 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
                 gather(p.z - 3.5f, p.z + 3.5f)
                 for (b in cand) {
                     if (b.type != BT.TARGET) continue
-                    if (len3(b.x - px, b.y + 0.5f - p.y, b.z + 0.5f - pz) < 3.4f) {
+                    if (len3(b.x - px, b.y + 0.5f - p.y, b.z + 0.5f - pz) < (if (spec.enchanted) 4.2f else 3.4f)) {
                         collectTarget(b, true)
+                        magnetLinks.add(floatArrayOf(b.x, b.y + 0.5f, b.z + 0.5f, 0f))
+                        if (spec.enchanted) fx.popupWorld("PULLED!", b.x, b.y + 1.6f, b.z + 0.5f, 0xFFFF8A8A.toInt(), 30f, 0.7f)
                         for (i in 0 until 10) {
                             val q = fx.spawn()
                             q.x = b.x + fx.rng.f(-0.3f, 0.3f); q.y = b.y + 0.8f; q.z = b.z + 0.5f
@@ -1643,6 +1683,11 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     fun breakShield() {
         tools[TK.SHIELD].active = 0f; tools[TK.SHIELD].cooldown = tools[TK.SHIELD].cooldownDur
         val p = player
+        // the impact: the bubble flashes and rings out, a heartbeat of slow motion, a kick of the camera
+        shieldHit = 1f
+        slowFor(0.45f, 0.18f); kick(1.4f); shake = max(shake, 0.3f); flashWhite = max(flashWhite, 0.15f)
+        platform.haptic(true)
+        fx.burst(p.x, p.y + 0.9f, p.z, 24, PK.STAR, 0xFFE0F6FF.toInt(), 5f, 0.12f, 0.6f)
         fx.burst(p.x, p.y + 0.8f, p.z, 30, PK.SPARK, 0xFF9FE8FF.toInt(), 6f, 0.16f, 0.6f)
         for (i in 0 until 16) {
             val q = fx.spawn(); val a = fx.rng.f(0f, TAU)
@@ -1779,6 +1824,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             p.invuln = 1.5f; p.landT = 0f; p.landAmt = 0.6f
             ev.onRecovered(x, y, z)
             minions.onRecovered()
+            sorcery.onRecovered()
             fx.burst(p.x, p.y + 0.3f, p.z, 20, PK.STAR, 0xFFB8F2FF.toInt(), 4f, 0.14f, 0.6f)
             fx.popupWorld("BACK ON TRACK!", p.x, p.y + 2.3f, p.z, Col.WHITE, 42f)
             gather(p.z - 1f, p.z + 1f)
@@ -1817,6 +1863,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         addScore(250, cp.x, cp.y + 2.5f, cp.z)
         player.celebrateT = 0f
         shake = max(shake, 0.15f)
+        // the distant Celestial Gate answers each checkpoint with a flare of light
+        if (spec.enchanted) sorcery.gateFlare = 1f
     }
 
     // ------------------------------------------------------------------ triggers & the gate
@@ -1860,6 +1908,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             Ev.RELIC -> relic.start()
             Ev.MINIONS -> minions.startWave(tr.text2.toIntOrNull() ?: 0)
             Ev.MINIONS_END -> minions.endWave(tr.text2.toIntOrNull() ?: 0)
+            Ev.PHASE, Ev.WARNING, Ev.WRATH, Ev.WRATH_MODE, Ev.WRATH_END, Ev.GATE -> sorcery.fire(tr)
             else -> ev.fire(tr.event)
         }
     }
@@ -1977,10 +2026,15 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
 
     /** 0..1: the camera's pull-back while the minions chase (eased in and out). */
     private var minionCam = 0f
+    /** 0..1: Level 7's camera during the Sorcerer's Wrath (back and up, the sky in view), and at the Celestial Gate's awakening. */
+    private var wrathCam = 0f
+    private var gateCam = 0f
 
     private fun updateCamera(dt: Float) {
         val p = player
         minionCam = approach(minionCam, if (minions.pursuit && state == GS.PLAY) 1f else 0f, dt * 0.8f)
+        wrathCam = approach(wrathCam, if (sorcery.active && state == GS.PLAY) 1f else 0f, dt * 0.7f)
+        gateCam = approach(gateCam, if (sorcery.gateT >= 0f && state == GS.PLAY) 1f else 0f, dt * 0.9f)
         var dist = baseDist; var height = baseHeight; var pitch = basePitch; var fov = 1f; var roll = 0f; var yaw = 0f
         if (state == GS.INTRO && introSwoop) {
             val u = smooth(stateT / 2.8f)
@@ -1995,6 +2049,9 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (spec.plate && ev.chase == Chase.REVEAL) { dist += 1.3f; height += 0.9f; yaw -= 0.1f * smooth(ev.phaseT / 0.5f); fov = 0.95f }
         // Level 7: while the minions chase him the camera draws back and up a little, so they show at the screen's sides
         if (minionCam > 0.001f) { dist += 0.6f * minionCam; height += 0.35f * minionCam; fov = lerp(fov, 0.94f, minionCam); roll += sin(t * 1.25f) * 0.008f * minionCam }
+        // the Wrath: back and a little up (the Sorcerer looms over the course); the gate's awakening: up, slow, wide
+        if (wrathCam > 0.001f) { dist += 0.5f * wrathCam; height += 0.3f * wrathCam; fov = lerp(fov, 0.95f, wrathCam); roll += sin(t * 0.9f) * 0.006f * wrathCam }
+        if (gateCam > 0.001f) { dist += 1.1f * gateCam; height += 0.8f * gateCam; pitch -= 0.04f * gateCam; fov = lerp(fov, 0.92f, gateCam) }
         if (ev.lavaOn && !ev.lavaStop) { dist += 0.5f; height += 0.5f; pitch += 0.03f }
         if (ev.finalOn && state == GS.PLAY) {
             // the final escape: a lower, closer, wider camera that sways with the collapse
@@ -2201,6 +2258,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (ev.chase == Chase.RUN || ev.finalOn) i = 1f
         if (minions.anyWave) i = max(i, 0.8f)
         if (minions.pursuit) i = 1f
+        if (sorcery.active) i = 1f
+        if (sorcery.warned && sorcery.wrath == WS.NONE) i = max(i, 0.7f)
         if (ev.lavaOn && !ev.lavaStop) i = max(i, 0.9f)
         return i
     }

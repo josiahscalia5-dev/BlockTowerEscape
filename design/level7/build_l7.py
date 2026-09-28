@@ -11,6 +11,7 @@ Nothing is painted by hand: every piece comes from the reference's own pixels.
   m_*.png       the Sorcerer's minions: little witch-hat imps, the round cat-eared orb imp and the lantern-ship rider
                 (IS-Net segmentation)
   balloon.png   the purple and gold hot-air balloon
+  hourglass.png the design's third tool button's hourglass (Level 7's tool that slows the Sorcerer's magic)
   falls.png     a strip of the reference's waterfall, made to tile vertically (the game scrolls it)
   bg_plate.jpg  (and bg_plate_hd.jpg, twice the design's size, for big screens) the sky: violet sky, pink clouds, the
                 floating islands with their towers and waterfalls, and the far path of blocks up to the castle. The
@@ -21,7 +22,7 @@ Nothing is painted by hand: every piece comes from the reference's own pixels.
 Cut-outs are upscaled with Real-ESRGAN (colour and alpha separately) so they stay sharp on phones.
 
 Tools and models: see design/menu/README.md (lama.py, seg.py, sprite.py, upscale.py; models in design/menu/models).
-  python3 design/level7/build_l7.py [gate sorcerer minions balloon falls plate]
+  python3 design/level7/build_l7.py [gate sorcerer minions balloon falls hourglass plate]
       writes app/src/main/assets/l7/ and previews to sim-out/l7art/
 """
 import os
@@ -59,41 +60,6 @@ CASTLE_LEFT = [(506, 428), (500, 398), (470, 388), (452, 380), (452, 300), (460,
                (565, 124), (570, 140), (577, 158), (583, 132), (590, 92), (597, 132), (602, 158), (614, 158), (627, 148),
                (636, 138)]
 CASTLE = CASTLE_LEFT + [(2 * AXIS - x, y) for (x, y) in reversed(CASTLE_LEFT)]
-# the reference's HUD panels over the castle's right wing: mirrored from the left wing from here on
-MIRROR_X = 742
-
-# the hooded Sorcerer: hood, shoulders, the clawed hand reaching toward the path (his robe fades into mist below)
-SORCERER = [(226, 330), (238, 300), (262, 280), (290, 272), (312, 280), (336, 300), (352, 324), (360, 352), (382, 356),
-            (404, 372), (420, 364), (440, 376), (470, 396), (500, 410), (514, 432), (518, 462), (510, 492), (492, 520),
-            (470, 530), (440, 520), (420, 500), (396, 486), (372, 500), (346, 530), (320, 560), (290, 580), (250, 590),
-            (220, 575), (200, 540), (192, 500), (196, 450), (206, 400), (214, 360)]
-
-# the Sorcerer's minions (traced outlines, refined by GrabCut): too small and too glowing for IS-Net to isolate
-MINIONS = {
-    # witch-hat imp with the golden hat band and orange eyes, a glowing torch in each hand
-    'm_hat.png': [(377, 511), (382, 525), (383, 538), (387, 548), (392, 553), (393, 560), (405, 571), (404, 577), (393, 578),
-                  (385, 583), (380, 593), (368, 598), (365, 603), (361, 601), (353, 595), (340, 588), (337, 578), (327, 575),
-                  (320, 561), (330, 555), (335, 542), (340, 538), (347, 543), (358, 537), (368, 523), (373, 513)],
-    # the round, cat-eared orb imp with the golden staff
-    'm_orb.png': [(340, 630), (351, 638), (363, 648), (366, 658), (364, 670), (369, 685), (366, 692), (358, 700), (346, 713),
-                  (338, 720), (331, 713), (319, 700), (306, 690), (296, 683), (299, 678), (313, 677), (309, 663), (309, 652),
-                  (306, 637), (313, 633), (323, 640), (329, 633)],
-    # the orb imp riding its lantern ship with the gold cannon
-    'm_ship.png': [(96, 404), (100, 418), (118, 412), (132, 422), (144, 438), (148, 456), (146, 472), (140, 484), (154, 496),
-                   (160, 512), (144, 520), (126, 530), (106, 536), (90, 528), (80, 512), (76, 500), (74, 478), (72, 464),
-                   (74, 446), (68, 430), (72, 422), (82, 410)],
-    # (not a minion) the purple gem floating over the path, for the gems to pick up along the course
-    'gem.png': [(555, 625), (560, 620), (577, 620), (582, 625), (591, 637), (571, 660), (550, 636)],
-    # witch-hat imp with glowing purple eyes
-    'm_hat2.png': [(30, 410), (40, 433), (50, 447), (57, 455), (55, 467), (67, 470), (67, 477), (53, 478), (48, 490), (42, 500),
-                   (23, 500), (18, 487), (10, 478), (3, 470), (7, 463), (7, 448), (20, 442), (25, 425), (28, 412)],
-}
-BALLOON = [(207, 562), (232, 570), (242, 587), (245, 607), (238, 627), (225, 642), (218, 652), (216, 660), (200, 660),
-           (196, 652), (195, 642), (175, 625), (165, 605), (165, 587), (175, 570), (190, 564)]
-
-# the near course: blocks, spiked balls, coins, gems, the boy and the relic (the game draws all of these)
-COURSE = [(0, 1250), (0, 1180), (120, 1150), (240, 1090), (300, 1000), (320, 860), (330, 760), (340, 690), (400, 640),
-          (470, 612), (540, 602), (620, 612), (700, 640), (800, 690), (870, 740), (941, 760), (941, 1672), (0, 1672)]
 # the reference's HUD panels over the castle's right wing: mirrored from the left wing from here on
 MIRROR_X = 742
 
@@ -453,6 +419,39 @@ def build_plate(gate_fg, sorc, minions, balloon):
     print('bg_plate.jpg', big.size)
 
 
+def build_hourglass():
+    """The design's third tool, the hourglass (it slows the Sorcerer's magic), cut from its tool button: everything that
+    is not the button's deep blue is the glyph; the badge's "2" covers the right end of the base, so the right half of
+    the lower bulb and the base is the mirror of the left (the hourglass is symmetric about its axis)."""
+    x0, y0, x1, y1 = 835, 708, 897, 788
+    axis = 32                                      # the glyph's axis, in the crop
+    c = A[y0:y1, x0:x1].astype(np.float32)
+    R, G, B = c[..., 0], c[..., 1], c[..., 2]
+    fg = ~((B > R + 50) & (B > G + 15) & (B < 235))
+    fg[:7] = False                                 # the button's rim above the cap
+    fg[:22, :6] = False; fg[:22, 58:] = False
+    col = c.copy()
+    for y in range(44, y1 - y0):
+        for x in range(axis + 1, x1 - x0):
+            xm = 2 * axis - x
+            k = np.clip((x - axis - 1) / 3.0, 0, 1)   # blended across the axis
+            fg[y, x] = (fg[y, xm] if xm >= 0 else False) if k > 0.5 else fg[y, x]
+            if xm >= 0:
+                col[y, x] = c[y, x] * (1 - k) + c[y, xm] * k
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(fg.astype(np.uint8), 8)
+    keep = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    fg = sprite.fill_holes(lab == keep, 200)
+    a = cv2.GaussianBlur(fg.astype(np.float32), (0, 0), 0.6)
+    a = np.clip((a - 0.5) * 1.8 + 0.5, 0, 1)
+    col = sprite.defringe(col, a, 2)
+    im = Image.fromarray(np.dstack([np.clip(col, 0, 255).astype(np.uint8), (a * 255 + .5).astype(np.uint8)]), 'RGBA')
+    im = im.crop(im.getbbox())
+    big = upscale_rgba(im, 2.5)
+    big.save(os.path.join(OUT, 'hourglass.png'), optimize=True)
+    save_prev('hourglass_prev.png', sprite.preview(big, scale=1.0))
+    print('hourglass.png', big.size)
+
+
 if __name__ == '__main__':
     what = sys.argv[1:] or ['gate', 'sorcerer', 'minions', 'balloon', 'falls', 'plate']
     plate = 'plate' in what
@@ -462,5 +461,7 @@ if __name__ == '__main__':
     bal = build_balloon() if ('balloon' in what or plate) else None
     if 'falls' in what:
         build_falls()
+    if 'hourglass' in what:
+        build_hourglass()
     if plate:
         build_plate(gate_fg, sorc, mins, bal)

@@ -21,7 +21,9 @@ class WorldRenderer(val g: Game) {
         const val GUARD = 5; const val ROCK = 8; const val RIDE = 9; const val BUBBLE = 10; const val DECO = 11; const val LOG = 12
         const val PILLAR = 13; const val LOOPSEG = 14; const val RELIC = 15
         const val SLIDESEG = 16; const val ISLAND = 17; const val LASER = 18; const val SPIKEBOX = 19
-        const val MINION = 20; const val BOLT = 21; const val GEM = 22; const val CHAIN = 23 }
+        const val MINION = 20; const val BOLT = 21; const val GEM = 22; const val CHAIN = 23
+        const val ROLLER = 24; const val SPIRIT = 25; const val HAND = 26; const val SHOCK = 27; const val SHARD = 28
+        const val CHEST = 29; const val RUNE = 30; const val SANCT = 31; const val SWITCH = 32 }
 
     private var n = 0
     private var kinds = IntArray(2048)
@@ -85,6 +87,15 @@ class WorldRenderer(val g: Game) {
                 K.BOLT -> drawBolt(gr, r as Bolt)
                 K.GEM -> drawGemPickup(gr, r as GemPickup)
                 K.CHAIN -> drawChain(gr, r as ChainLink)
+                K.ROLLER -> drawRoller(gr, r as Roller)
+                K.SPIRIT -> drawSpirit(gr, r as Spirit)
+                K.HAND -> drawHand(gr, r as Hand)
+                K.SHOCK -> drawShock(gr, r as Shock)
+                K.SHARD -> drawShard(gr, r as Shard)
+                K.CHEST -> drawChest(gr, r as Chest)
+                K.RUNE -> drawRune(gr, r as Rune)
+                K.SANCT -> drawSanctuary(gr, r as Sanctuary)
+                K.SWITCH -> drawSecretSwitch(gr, r as Secret)
             }
         }
         for (i in 0 until n) refs[i] = null
@@ -244,6 +255,55 @@ class WorldRenderer(val g: Game) {
             val dd = cam.depthOf(mx, my, mz)
             if (dd < 0.6f || dd > maxDepth) continue
             push(K.CHAIN, c, cam.dist2(mx, my, mz))
+        }
+        if (g.spec.enchanted) collectSorcery()
+    }
+
+    /** Level 7: the Sorcerer's creatures and spells, the star runes and sanctuaries, the chests and the secret switches. */
+    private fun collectSorcery() {
+        val so = g.sorcery
+        for (r in so.rollers) {
+            if (r.state == 0 || r.show <= 0.01f) continue
+            val dd = cam.depthOf(r.x, r.y + 0.45f, r.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            push(K.ROLLER, r, cam.dist2(r.x, r.y + 0.45f, r.z))
+        }
+        for (sp in so.spirits) {
+            if (sp.state == 0 || sp.state == 5) continue
+            val dd = cam.depthOf(sp.x, sp.y + 1f, sp.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            push(K.SPIRIT, sp, cam.dist2(sp.x, sp.y + 0.9f, sp.z))
+        }
+        for (h in so.hands) {
+            if (h.reach <= 0.01f && h.warn <= 0.01f) continue
+            val dd = cam.depthOf(h.x, h.y, h.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            push(K.HAND, h, cam.dist2((h.x + h.ex) * 0.5f, h.y + 0.6f, h.z) - 0.3f)
+        }
+        for (sh in so.shocks) if (sh.on) push(K.SHOCK, sh, cam.dist2(sh.x, sh.y + 0.3f, sh.z) - 0.4f)
+        for (sh in so.shards) if (sh.on) push(K.SHARD, sh, cam.dist2(sh.x, sh.y + 0.5f, sh.z) - 0.2f)
+        for (c in g.world.chests) {
+            val dd = cam.depthOf(c.x, c.y + 0.4f, c.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            push(K.CHEST, c, cam.dist2(c.x, c.y + 0.4f, c.z))
+        }
+        for (r in g.world.runes) {
+            val dd = cam.depthOf(r.x, r.y, r.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            // a decal on its block's top (drawn over the block), and its beam of light once lit
+            push(K.RUNE, r, cam.dist2(r.x, r.y - 0.5f, r.z) - 0.35f)
+        }
+        for (sa in g.world.sanctuaries) {
+            val zc = (sa.z0 + sa.z1) * 0.5f
+            val dd = cam.depthOf(sa.x, sa.y, zc)
+            if (dd < -2f || dd > maxDepth) continue
+            push(K.SANCT, sa, cam.dist2(sa.x, sa.y + 1.2f, zc) - 1f)
+        }
+        for (se in g.world.secrets) {
+            if (!se.switch) continue
+            val dd = cam.depthOf(se.x, se.y, se.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            push(K.SWITCH, se, cam.dist2(se.x, se.y - 0.5f, se.z) - 0.35f)
         }
     }
     private val tv = FloatArray(12)
@@ -526,7 +586,7 @@ class WorldRenderer(val g: Game) {
         }
     }
 
-    private fun toolImg(k: Int) = when (k) { TK.MAGNET -> art.magnet; TK.SHIELD -> art.shield; TK.SPEED -> art.lightning; else -> art.blockTool }
+    private fun toolImg(k: Int) = art.toolIcon(k)
 
     /** Gold coil spring standing on a spring pad (thick hollow rings, as in the design); squashes when used. */
     private fun drawSpring(gr: Gfx, b: Block, top: Float) {
@@ -619,7 +679,9 @@ class WorldRenderer(val g: Game) {
         val wid = hgt * art.coin.w / art.coin.h
         val spin = cos(g.t * 3.2f + c.oz * 0.9f)
         val sxs = max(0.18f, abs(spin))
-        val a = (1f - smooth((cam.depth - (maxDepth - 10f)) / 10f)) * smooth((cam.depth - 2.2f) / 1.6f)
+        var a = (1f - smooth((cam.depth - (maxDepth - 10f)) / 10f)) * smooth((cam.depth - 2.2f) / 1.6f)
+        // a hidden coin (Level 7's secret routes) shows itself only when the boy is near
+        if (c.hidden) a *= c.reveal
         if (a <= 0.01f) return
         gr.setAdditive(true)
         gr.glow(cam.sx, cam.sy, hgt * 1.25f, Col.withA(0xFFFFC830.toInt(), 0.75f * a))
@@ -707,6 +769,58 @@ class WorldRenderer(val g: Game) {
             gr.setAdditive(false)
             gr.strokeCircle(midX, midY, r, 5f * g.hud.s, Col.withA(0xFFB8ECFF.toInt(), 0.85f * a))
             gr.arc(midX, midY, r * 0.86f, 200f + t * 40f, 70f, 4f * g.hud.s, Col.withA(Col.WHITE, 0.7f * a))
+        }
+        if (g.shieldHit > 0.01f) {
+            // the bubble bursting as it takes the hit: a ring flying out and a white flash
+            val u = 1f - g.shieldHit
+            val r = hPx * 0.62f * (1f + u * 0.9f)
+            gr.setAdditive(true)
+            gr.glow(midX, midY, r * 1.2f, Col.withA(0xFFE0F6FF.toInt(), 0.55f * g.shieldHit))
+            gr.setAdditive(false)
+            gr.strokeCircle(midX, midY, r, 7f * g.hud.s * g.shieldHit, Col.withA(0xFFB8ECFF.toInt(), g.shieldHit))
+            for (k in 0 until 6) {
+                val an = k * TAU / 6f + 0.4f
+                gr.line(midX + cos(an) * r * 0.7f, midY + sin(an) * r * 0.7f, midX + cos(an) * r * 1.15f, midY + sin(an) * r * 1.15f, 4f * g.hud.s, Col.withA(Col.WHITE, g.shieldHit))
+            }
+        }
+        if (g.magnetOn) {
+            // tethers of magnetic light from everything it is pulling in
+            gr.setAdditive(true)
+            for (c in g.world.coins) {
+                if (!c.pulled || c.collected || abs(c.z - p.z) > 7f) continue
+                if (!cam.project(c.x, c.y, c.z)) continue
+                gr.line(midX, midY, cam.sx, cam.sy, 3f * g.hud.s, Col.withA(if (((c.oz * 3f).toInt() and 1) == 0) 0xFFFF6A6A.toInt() else 0xFF8FD0FF.toInt(), 0.55f))
+            }
+            for (gp in g.world.gemPicks) {
+                if (!gp.pulled || gp.collected || abs(gp.z - p.z) > 7f) continue
+                if (cam.project(gp.x, gp.y, gp.z)) gr.line(midX, midY, cam.sx, cam.sy, 3f * g.hud.s, Col.withA(0xFFE08AFF.toInt(), 0.55f))
+            }
+            gr.setAdditive(false)
+        }
+        for (l in g.magnetLinks) {
+            // a blue block pulled in: a beam from where it was
+            if (!cam.project(l[0], l[1], l[2])) continue
+            val a = 1f - l[3] / 0.45f
+            gr.setAdditive(true)
+            gr.line(midX, midY, cam.sx, cam.sy, 12f * g.hud.s * a, Col.withA(0xFF5EA8FF.toInt(), 0.5f * a))
+            gr.line(midX, midY, cam.sx, cam.sy, 4f * g.hud.s * a, Col.withA(0xFFDDEEFF.toInt(), 0.9f * a))
+            gr.setAdditive(false)
+        }
+        if (g.hourglassOn) {
+            // a golden clock face turning slowly round him while time is slowed
+            val tl = g.tools[TK.SPEED]
+            val a = if (tl.active < 1.5f && ((t * 8f).toInt() and 1) == 0) 0.4f else 1f
+            val r = hPx * 0.72f
+            gr.setAdditive(true)
+            gr.glow(midX, midY, r, Col.withA(0xFFFFE0A0.toInt(), 0.18f * a))
+            gr.setAdditive(false)
+            for (k in 0 until 12) {
+                val an = k * TAU / 12f + t * 0.4f
+                val r0 = r * (if (k % 3 == 0) 0.84f else 0.9f)
+                gr.line(midX + cos(an) * r0, midY + sin(an) * r0 * 0.9f, midX + cos(an) * r, midY + sin(an) * r * 0.9f, 3f * g.hud.s, Col.withA(0xFFFFE070.toInt(), 0.8f * a))
+            }
+            val hand = t * 0.8f
+            gr.line(midX, midY, midX + cos(hand) * r * 0.6f, midY + sin(hand) * r * 0.55f, 3f * g.hud.s, Col.withA(0xFFFFF4C0.toInt(), 0.5f * a))
         }
         if (g.magnetOn) {
             for (k in 0..2) {
@@ -935,7 +1049,23 @@ class WorldRenderer(val g: Game) {
         else gr.glow(ax, ay, gw * (0.55f + 0.1f * near), Col.withA(0xFFFF9A40.toInt(), fade * (0.18f + 0.18f * near + 0.1f * pulse(t, 2f))))
         gr.setAdditive(false)
         gr.image(img, cx - gw * 0.5f, ty, gw, gH, fade)
-        if (g.spec.enchanted) { celestialPortal(gr, ax, ay, gw, fade, near, open, po.charge, w); sealedBarrier(gr, ax, ay, archR * gw, gw, fade, open, dz); return }
+        if (g.spec.enchanted) {
+            // the Celestial Gate awakens as the boy reaches its plaza (and flares when a checkpoint lights)
+            val so = g.sorcery
+            val awake = if (so.gateT >= 0f) smooth(so.gateT / 1.2f) else 0f
+            celestialPortal(gr, ax, ay, gw, fade, near, open, max(po.charge, 0.55f * awake), w)
+            val fl = max(so.gateFlare, awake * (1f - smooth((so.gateT - 1.2f) / 2f)))
+            if (fl > 0.01f) {
+                val big = lerp(0.35f, 1f, clamp01(gr.width * 1.2f / max(1f, gw)))
+                val r = archR * gw
+                gr.setAdditive(true)
+                gr.glow(ax, ay, r * (2.2f + 2.5f * fl), Col.withA(0xFFFFE8A0.toInt(), 0.55f * fl * big * fade))
+                val bw = r * (0.25f + 0.2f * fl)
+                gr.fillRectGradient(ax - bw, -20f, ax + bw, ay, Col.withA(0xFFFFF4D0.toInt(), 0.25f * fl * big * fade), Col.withA(0xFFFFE070.toInt(), 0.6f * fl * big * fade))
+                gr.setAdditive(false)
+            }
+            sealedBarrier(gr, ax, ay, archR * gw, gw, fade, open, dz); return
+        }
         // the portal inside the arch: swirls, brightens as you approach, blazes when activated
         val charge = po.charge
         val r = archR * gw * (1f + 0.05f * sin(t * 3f))
@@ -1777,6 +1907,32 @@ class WorldRenderer(val g: Game) {
                 gr.fillRectGradient(w * 0.88f, 0f, w, h, 0x00FF2010, Col.withA(0xFFFF2010.toInt(), a * 0.6f), false)
             }
         }
+        // Level 7: the Sorcerer's Wrath pulses magenta at the screen's edges (brighter as he charges a spell)
+        val so = g.sorcery
+        if (g.spec.enchanted && so.active && g.state == GS.PLAY) {
+            val a = (0.1f + 0.1f * pulse(t, 2.2f) + 0.22f * so.charge) * (1f - 0.6f * so.flinch)
+            gr.fillRectGradient(0f, 0f, w, h * 0.16f, Col.withA(0xFFD02080.toInt(), a), 0x00D02080)
+            gr.fillRectGradient(0f, 0f, w * 0.1f, h, Col.withA(0xFFD02080.toInt(), a * 0.7f), 0x00D02080, false)
+            gr.fillRectGradient(w * 0.9f, 0f, w, h, 0x00D02080, Col.withA(0xFFD02080.toInt(), a * 0.7f), false)
+        }
+        // Level 7's hourglass: time slows: a pale gold-and-blue tint at the edges and grains of golden sand drifting down
+        if (g.hourglassOn) {
+            val k = clamp01((1f - g.hazK) / (1f - HOURGLASS_K))
+            gr.fillRectGradient(0f, 0f, w * 0.14f, h, Col.withA(0xFF9FE8FF.toInt(), 0.22f * k), 0x009FE8FF, false)
+            gr.fillRectGradient(w * 0.86f, 0f, w, h, 0x009FE8FF, Col.withA(0xFF9FE8FF.toInt(), 0.22f * k), false)
+            gr.fillRectGradient(0f, h * 0.86f, w, h, 0x00FFE070, Col.withA(0xFFFFE070.toInt(), 0.14f * k))
+            for (i in 0 until 14) {
+                val ph = fract(t * 0.12f + i * 0.071f)
+                val x = (if (i % 2 == 0) fract(i * 0.37f) * 0.12f else 0.88f + fract(i * 0.53f) * 0.12f) * w
+                star4(gr, x, ph * h, (4f + 3f * fract(i * 0.29f)) * s, Col.withA(0xFFFFE8A0.toInt(), 0.7f * k * sin(ph * Math.PI.toFloat())))
+            }
+        }
+        // the shield blocking a hit: a pale blue flash round the screen
+        if (g.shieldHit > 0.01f) {
+            val a = 0.35f * g.shieldHit
+            gr.fillRectGradient(0f, 0f, w, h * 0.2f, Col.withA(0xFF9FE8FF.toInt(), a), 0x009FE8FF)
+            gr.fillRectGradient(0f, h * 0.8f, w, h, 0x009FE8FF, Col.withA(0xFF9FE8FF.toInt(), a))
+        }
         // Level 7: a purple glow at the edges while the minions close in
         if (g.minions.pursuit && g.state == GS.PLAY) {
             val k = g.minions.meter
@@ -2260,6 +2416,19 @@ class WorldRenderer(val g: Game) {
     private fun drawSkyLayer(gr: Gfx) {
         val s = jbS; val L = jbLeft; val T = jbTop; val t = g.t
         val mn = g.minions
+        val so = g.sorcery
+        // the story in the sky's light: his magic darkens it (the warning, the Wrath), the gate's light warms it at the end
+        if (so.gloom > 0.01f) {
+            gr.fillRect(0f, 0f, gr.width.toFloat(), gr.height.toFloat(), Col.withA(0xFF1A0630.toInt(), 0.36f * so.gloom))
+            gr.setAdditive(true)
+            gr.fillRectGradient(0f, 0f, gr.width.toFloat(), gr.height * 0.6f, Col.withA(0xFF8020A0.toInt(), 0.16f * so.gloom * (0.7f + 0.3f * pulse(t, 1.3f))), 0x00801AA0)
+            gr.setAdditive(false)
+        }
+        if (so.gold > 0.01f) {
+            gr.setAdditive(true)
+            gr.fillRectGradient(0f, 0f, gr.width.toFloat(), gr.height * 0.55f, Col.withA(0xFFFFD890.toInt(), 0.2f * so.gold), 0x00FFD890)
+            gr.setAdditive(false)
+        }
         // the balloon, drifting slowly
         art.balloon?.let { img ->
             val dx = sin(t * 0.13f) * 18f + sin(t * 0.41f) * 3f; val dy = sin(t * 0.7f) * 5f
@@ -2272,23 +2441,28 @@ class WorldRenderer(val g: Game) {
             art.sorcerer?.let { img ->
                 val bob = sin(t * 1.1f) * 5f
                 val rise = -away * 60f
-                val sc = 1f + 0.015f * sin(t * 0.9f) - 0.15f * away
-                val bx = L + (186f + 172f * (1f - sc)) * s; val by = T + (262f + bob + rise + 169f * (1f - sc)) * s
+                // in his Wrath he swells over the course, nearer and bigger; a star rune's strike makes him reel
+                val rg = so.rage
+                val sc = 1f + 0.015f * sin(t * 0.9f) - 0.15f * away + 0.24f * rg
+                val jolt = sin(t * 55f) * 7f * so.flinch
+                val bx = L + (186f + 172f * (1f - sc) + 34f * rg + jolt) * s; val by = T + (262f + bob + rise + 169f * (1f - sc) + 26f * rg - 20f * so.flinch) * s
                 val w = 344f * s * sc; val h = 338f * s * sc
-                val cast = mn.cast
+                val cast = max(mn.cast, so.charge)
                 gr.setAdditive(true)
-                gr.glow(L + 330f * s, T + (420f + bob + rise) * s, 230f * s, Col.withA(0xFF9040E0.toInt(), show * (0.22f + 0.1f * pulse(t, 1.5f) + 0.35f * cast)))
+                gr.glow(L + (330f + 34f * rg) * s, T + (420f + bob + rise + 26f * rg) * s, (230f + 90f * rg) * s, Col.withA(Col.mix(0xFF9040E0.toInt(), 0xFFD02080.toInt(), rg), show * (0.22f + 0.1f * pulse(t, 1.5f) + 0.35f * cast + 0.15f * rg)))
                 gr.setAdditive(false)
                 gr.image(img, bx, by, w, h, show)
+                if (so.flinch > 0.01f) { gr.setAdditive(true); gr.glow(bx + w * 0.45f, by + h * 0.45f, w * 0.6f, Col.withA(0xFFFFF4C0.toInt(), 0.6f * so.flinch)); gr.setAdditive(false) }
                 // his eyes, and the purple lightning crackling round his claw (a burst of it when he casts)
                 gr.setAdditive(true)
-                val ea = show * (0.55f + 0.25f * pulse(t, 2.3f) + 0.6f * cast)
+                val ea = show * (0.55f + 0.25f * pulse(t, 2.3f) + 0.6f * cast + 0.3f * rg) * (1f - 0.7f * so.flinch)
+                val eyeC = Col.mix(0xFFE8A0FF.toInt(), 0xFFFF5AA0.toInt(), rg)
                 val ex0 = bx + (274f - 186f) * s * sc; val ey0 = by + (395f - 262f) * s * sc
                 val ex1 = bx + (315f - 186f) * s * sc; val ey1 = by + (400f - 262f) * s * sc
-                gr.glow(ex0, ey0, 16f * s, Col.withA(0xFFE8A0FF.toInt(), ea)); gr.glow(ex1, ey1, 15f * s, Col.withA(0xFFE8A0FF.toInt(), ea))
+                gr.glow(ex0, ey0, 16f * s * (1f + 0.5f * rg), Col.withA(eyeC, ea)); gr.glow(ex1, ey1, 15f * s * (1f + 0.5f * rg), Col.withA(eyeC, ea))
                 val hx = bx + (455f - 186f) * s * sc; val hy = by + (455f - 262f) * s * sc
                 gr.glow(hx, hy, 70f * s, Col.withA(0xFFB060FF.toInt(), show * (0.18f + 0.5f * cast)))
-                val zap = cast > 0.05f || fract(t * 0.45f) < 0.07f
+                val zap = cast > 0.05f || fract(t * 0.45f) < 0.07f || (rg > 0.5f && fract(t * 1.3f) < 0.18f)
                 if (zap) for (k in 0 until (if (cast > 0.05f) 4 else 2)) lightning(gr, hx, hy, hx + (sin(t * 3f + k * 2.1f) * 90f + 40f) * s, hy + (60f + 50f * k) * s, 8f * s, show * (0.5f + 0.5f * cast), k + (t * 20f).toInt())
                 gr.setAdditive(false)
             }
@@ -2429,6 +2603,383 @@ class WorldRenderer(val g: Game) {
         val r = (if (b.landed) 0.9f + b.t * 4f else 0.32f) * sc
         gr.glow(cam.sx, cam.sy, r * 2.2f, Col.withA(0xFFA040FF.toInt(), 0.6f * a * (if (b.landed) 1f - b.t / 0.2f else 1f)))
         gr.glow(cam.sx, cam.sy, r, Col.withA(0xFFF8E8FF.toInt(), a * (if (b.landed) 1f - b.t / 0.2f else 1f)))
+        gr.setAdditive(false)
+    }
+
+    // ------------------------------------------------------------------ Level 7: the Sorcerer's creatures and spells
+    private val vp = VPath()
+
+    /** A ring on the ground round (x, z) at height y, into [poly]; the number of points, or 0 when it is off-screen. */
+    private fun groundRing(x: Float, y: Float, z: Float, rx: Float, rz: Float, n: Int = 18, spin: Float = 0f): Int {
+        var m = 0
+        for (i in 0 until n) {
+            val a = spin + i / n.toFloat() * TAU
+            if (!cam.project(x + cos(a) * rx, y, z + sin(a) * rz)) return 0
+            poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
+        }
+        return m
+    }
+
+    /**
+     * A rolling stone creature: a ball of moonstone with glowing rune marks turning over as it rolls at the boy, and two
+     * angry violet eyes glowing through the stone at its front.
+     */
+    private fun drawRoller(gr: Gfx, r: Roller) {
+        val R = Sorcery.ROLL_R
+        if (r.state == 2 || r.state == 3) drawShadow(gr, r.x, r.z, r.y, r.show, R * 1.0f, R * 0.75f)
+        if (!cam.project(r.x, r.y + R, r.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val a = r.show * nearFade(cam.depth)
+        if (a <= 0.01f) return
+        val rad = R * sc * (if (r.state == 3) 1f + (1f - r.show) * 0.5f else 1f)
+        val cx = cam.sx; val cy = cam.sy
+        val t = g.t
+        gr.setAdditive(true)
+        gr.glow(cx, cy, rad * 1.8f, Col.withA(0xFFB060FF.toInt(), a * 0.3f))
+        gr.setAdditive(false)
+        gr.fillCircle(cx, cy, rad * 1.05f, Col.withA(0xFF221A30.toInt(), a))
+        vp.ops.clear(); vp.native = null; vp.circle(cx, cy, rad)
+        gr.fillPath(vp, Radial(cx - rad * 0.35f, cy - rad * 0.45f, rad * 1.6f,
+            intArrayOf(0xFFEAE0F6.toInt(), 0xFFAE9EC4.toInt(), 0xFF655879.toInt(), 0xFF2E2640.toInt()), floatArrayOf(0f, 0.3f, 0.72f, 1f)), a)
+        // the rune marks on its stone, turning over toward the camera as it rolls
+        gr.setAdditive(true)
+        for (k in 0 until 6) {
+            val th = r.rot + k * TAU / 6f
+            val front = sin(th)
+            if (front <= 0.05f) continue
+            val mx = cx + (if (k % 2 == 0) -0.42f else 0.4f) * rad * (0.6f + 0.4f * front)
+            val my = cy - cos(th) * rad * 0.88f
+            star4(gr, mx, my, rad * 0.16f * front, Col.withA(0xFFE0A8FF.toInt(), a * front))
+        }
+        gr.setAdditive(false)
+        // the cracks of its face: two brows and the glowing eyes
+        val ey = cy + rad * 0.02f
+        gr.line(cx - rad * 0.52f, ey - rad * 0.28f, cx - rad * 0.12f, ey - rad * 0.14f, rad * 0.12f, Col.withA(0xFF1C1428.toInt(), a))
+        gr.line(cx + rad * 0.52f, ey - rad * 0.28f, cx + rad * 0.12f, ey - rad * 0.14f, rad * 0.12f, Col.withA(0xFF1C1428.toInt(), a))
+        gr.setAdditive(true)
+        val blaze = 0.7f + 0.3f * pulse(t, 9f)
+        gr.glow(cx - rad * 0.3f, ey, rad * 0.32f, Col.withA(0xFFFF70E0.toInt(), a * blaze))
+        gr.glow(cx + rad * 0.3f, ey, rad * 0.32f, Col.withA(0xFFFF70E0.toInt(), a * blaze))
+        gr.setAdditive(false)
+        gr.fillCircle(cx - rad * 0.3f, ey, rad * 0.1f, Col.withA(0xFFFFE8FF.toInt(), a))
+        gr.fillCircle(cx + rad * 0.3f, ey, rad * 0.1f, Col.withA(0xFFFFE8FF.toInt(), a))
+        // a rim light from the violet sky
+        gr.arc(cx, cy, rad * 0.94f, 200f, 110f, rad * 0.08f, Col.withA(0xFFF4E8FF.toInt(), a * 0.6f))
+    }
+
+    /**
+     * The teleporting spirit: its mark glows on the path first (a violet ring with turning runes), then it forms there,
+     * a pale ghost with a wispy tail and glowing eyes, and a streak of light shows where it blinked from.
+     */
+    private fun drawSpirit(gr: Gfx, sp: Spirit) {
+        val t = g.t
+        if (sp.state in 1..4) {
+            val mk = when (sp.state) { 1 -> 0.35f + 0.65f * clamp01(sp.t / Sorcery.SPIRIT_MARK); 4 -> 1f - clamp01(sp.t / Sorcery.SPIRIT_OUT); else -> 1f }
+            val m = groundRing(sp.x, sp.y + 0.03f, sp.z, 0.52f, 0.52f, 20, t * 1.5f)
+            if (m > 0) {
+                val flick = 0.75f + 0.25f * pulse(t, 12f)
+                gr.fillPoly(poly, m, Col.withA(0xFF7A40D0.toInt(), 0.28f * mk * flick))
+                gr.strokePoly(poly, m, 3.5f * g.hud.s, Col.withA(0xFFC8F0FF.toInt(), 0.9f * mk))
+                gr.setAdditive(true)
+                for (k in 0 until 5) {
+                    val an = t * 2f + k * TAU / 5f
+                    if (cam.project(sp.x + cos(an) * 0.36f, sp.y + 0.04f, sp.z + sin(an) * 0.36f)) star4(gr, cam.sx, cam.sy, 0.07f * cam.scaleAt(cam.depth), Col.withA(0xFFB8F4FF.toInt(), mk))
+                }
+                gr.setAdditive(false)
+            }
+        }
+        if (sp.state < 2 || sp.show <= 0.01f) return
+        if (!cam.project(sp.x, sp.y + 1.05f, sp.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val a = sp.show * nearFade(cam.depth)
+        if (a <= 0.01f) return
+        val cx = cam.sx + sin(t * 3f) * 0.04f * sc; val cy = cam.sy + sin(t * 2.3f) * 0.05f * sc
+        val hr = 0.3f * sc
+        // the blink: a streak of light from where it was
+        if (sp.state == 2 && cam.project(sp.fx, sp.fy + 1.05f, sp.fz)) {
+            gr.setAdditive(true)
+            gr.line(cam.sx, cam.sy, cx, cy, hr * 0.5f, Col.withA(0xFF9FE8FF.toInt(), 0.6f * (1f - sp.show)))
+            gr.setAdditive(false)
+        }
+        gr.setAdditive(true)
+        gr.glow(cx, cy + hr * 0.6f, hr * 3f, Col.withA(0xFF8FD8FF.toInt(), 0.35f * a))
+        gr.setAdditive(false)
+        // body: a rounded head flowing into a tail that curls and waves
+        vp.ops.clear(); vp.native = null
+        val wave = sin(t * 5f) * hr * 0.35f
+        vp.moveTo(cx - hr, cy)
+        vp.cubicTo(cx - hr, cy - hr * 1.35f, cx + hr, cy - hr * 1.35f, cx + hr, cy)
+        vp.cubicTo(cx + hr * 0.95f, cy + hr * 1.2f, cx + hr * 0.4f + wave, cy + hr * 2.2f, cx + wave * 1.6f, cy + hr * 3.1f)
+        vp.cubicTo(cx - hr * 0.1f + wave, cy + hr * 2.2f, cx - hr * 0.9f, cy + hr * 1.3f, cx - hr, cy)
+        vp.close()
+        gr.fillPath(vp, Linear(cx, cy - hr, cx, cy + hr * 3.1f, intArrayOf(0xF0F2FAFF.toInt(), 0xC8B8D8FF.toInt(), 0x008A70FF)), a)
+        // little arms trailing wisps
+        gr.line(cx - hr * 0.9f, cy + hr * 0.4f, cx - hr * 1.5f, cy + hr * (0.2f + 0.2f * sin(t * 6f)), hr * 0.28f, Col.withA(0xFFDDE8FF.toInt(), a * 0.8f))
+        gr.line(cx + hr * 0.9f, cy + hr * 0.4f, cx + hr * 1.5f, cy + hr * (0.2f - 0.2f * sin(t * 6f)), hr * 0.28f, Col.withA(0xFFDDE8FF.toInt(), a * 0.8f))
+        // hollow eyes with a cold glow
+        gr.fillCircle(cx - hr * 0.36f, cy - hr * 0.15f, hr * 0.2f, Col.withA(0xFF261A48.toInt(), a))
+        gr.fillCircle(cx + hr * 0.36f, cy - hr * 0.15f, hr * 0.2f, Col.withA(0xFF261A48.toInt(), a))
+        gr.setAdditive(true)
+        gr.glow(cx - hr * 0.36f, cy - hr * 0.15f, hr * 0.28f, Col.withA(0xFF60E8FF.toInt(), a * (0.7f + 0.3f * pulse(t, 7f))))
+        gr.glow(cx + hr * 0.36f, cy - hr * 0.15f, hr * 0.28f, Col.withA(0xFF60E8FF.toInt(), a * (0.7f + 0.3f * pulse(t, 7f))))
+        gr.setAdditive(false)
+    }
+
+    /**
+     * A magical hand: a dark violet arm reaching out of the island's edge and a clawed hand slamming down on the outer
+     * lane; its glow at the edge (and the lane it will slam, outlined) is the warning.
+     */
+    private fun drawHand(gr: Gfx, h: Hand) {
+        val t = g.t
+        val side = h.spot.x
+        if (h.warn > 0.01f) {
+            if (cam.project(h.ex, h.y - 0.1f, h.z)) {
+                val sc = cam.scaleAt(cam.depth)
+                gr.setAdditive(true)
+                gr.glow(cam.sx, cam.sy, 0.9f * sc * (0.6f + 0.4f * h.warn), Col.withA(0xFFB050FF.toInt(), 0.55f * h.warn * (0.7f + 0.3f * pulse(t, 14f))))
+                gr.setAdditive(false)
+            }
+            val m = groundRing(h.x, h.y + 0.03f, h.z, 0.46f, 0.5f, 4, TAU / 8f)
+            if (m > 0) gr.strokePoly(poly, m, 3f * g.hud.s, Col.withA(0xFFE070FF.toInt(), 0.8f * h.warn * (if (((t * 10f).toInt() and 1) == 0) 1f else 0.5f)))
+        }
+        val u = h.reach
+        if (u <= 0.01f) return
+        // the wrist travels in an arc from under the island's edge up and over onto the lane
+        val wx = lerp(h.ex, h.x + side * 0.18f, u)
+        val wy = lerp(h.y - 0.5f, h.y + 0.12f, u) + 1.1f * 4f * u * (1f - u)
+        if (!cam.project(h.ex, h.y - 0.9f, h.z)) return
+        val bx = cam.sx; val by = cam.sy
+        if (!cam.project(wx, wy, h.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val a = nearFade(cam.depth)
+        if (a <= 0.01f) return
+        val hx = cam.sx; val hy = cam.sy
+        val arm = 0.26f * sc
+        gr.setAdditive(true)
+        gr.glow(hx, hy, 0.9f * sc, Col.withA(0xFFA040F0.toInt(), 0.4f * a))
+        gr.setAdditive(false)
+        // the arm
+        gr.line(bx, by, hx, hy, arm * 1.25f, Col.withA(0xFF9050E0.toInt(), 0.5f * a))
+        gr.line(bx, by, hx, hy, arm, Col.withA(0xFF22123A.toInt(), a))
+        // the hand: a palm and four clawed fingers spread toward the path's middle (down onto the lane when slammed)
+        val dir = -side
+        val down = smooth(u)
+        val palm = 0.3f * sc
+        gr.fillCircle(hx, hy, palm, Col.withA(0xFF2A1646.toInt(), a))
+        for (k in 0 until 4) {
+            val spread = (k - 1.5f) * 0.32f
+            val ang = lerp(-1.2f, 0.25f, down) + spread
+            val fx0 = hx + dir * cos(ang) * palm * 0.6f; val fy0 = hy + sin(ang) * palm * 0.6f
+            val fx1 = hx + dir * cos(ang) * palm * 2.1f; val fy1 = hy + sin(ang) * palm * 2.1f + palm * 0.4f * down
+            gr.line(fx0, fy0, fx1, fy1, palm * 0.34f, Col.withA(0xFF2A1646.toInt(), a))
+            gr.setAdditive(true)
+            gr.glow(fx1, fy1, palm * 0.3f, Col.withA(0xFFE080FF.toInt(), a * 0.8f))
+            gr.setAdditive(false)
+        }
+        // the thumb
+        gr.line(hx, hy, hx - dir * palm * 0.9f, hy - palm * 1.1f * (1f - down), palm * 0.36f, Col.withA(0xFF2A1646.toInt(), a))
+        gr.strokeCircle(hx, hy, palm, max(1f, palm * 0.12f), Col.withA(0xFFB070FF.toInt(), a * 0.7f))
+        // the slam: a ring of violet light on the lane
+        if (h.danger) {
+            val m = groundRing(h.x, h.y + 0.03f, h.z, 0.55f, 0.6f, 16)
+            if (m > 0) { gr.setAdditive(true); gr.fillPoly(poly, m, Col.withA(0xFFB040F0.toInt(), 0.35f * a)); gr.setAdditive(false) }
+        }
+    }
+
+    /** A shockwave: a crest of magenta light across the path, rolling down it toward the boy, with a fading wake. */
+    private fun drawShock(gr: Gfx, sh: Shock) {
+        val t = g.t
+        for (layer in 0..1) {
+            val z = sh.z + layer * 0.55f
+            val hgt = (if (layer == 0) 0.55f else 0.3f) * (0.9f + 0.1f * sin(t * 30f))
+            var m = 0
+            val n = 9
+            for (i in 0..n) {
+                val x = sh.x - 1.75f + 3.5f * i / n
+                if (!cam.project(x, sh.y + 0.02f, z)) return
+                poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
+            }
+            for (i in n downTo 0) {
+                val x = sh.x - 1.75f + 3.5f * i / n
+                val bump = 0.12f * sin(i * 1.7f + t * 18f)
+                if (!cam.project(x, sh.y + hgt + bump, z)) return
+                poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
+            }
+            val a = sh.show * (if (layer == 0) 1f else 0.45f) * nearFade(cam.depth + 1f)
+            val topY = poly[(n + 1) * 2 + 1]; val botY = poly[1]
+            gr.setAdditive(true)
+            gr.fillPolyGradient(poly, m, 0f, topY, 0f, botY, Col.withA(0xFFFF60D0.toInt(), 0.15f * a), Col.withA(0xFFFFA0F0.toInt(), 0.75f * a))
+            gr.setAdditive(false)
+            if (layer == 0) {
+                // the bright crest
+                for (i in n + 1 until 2 * n + 1) gr.line(poly[i * 2], poly[i * 2 + 1], poly[(i + 1) * 2], poly[(i + 1) * 2 + 1], 3.5f * g.hud.s, Col.withA(0xFFFFF0FF.toInt(), 0.9f * a))
+            }
+        }
+    }
+
+    /** A crystal shard falling onto its marked spot (the ring on the path), then stuck in the ground, fading. */
+    private fun drawShard(gr: Gfx, sh: Shard) {
+        val t = g.t
+        if (!sh.landed) {
+            val u = clamp01(sh.t / Sorcery.SHARD_FALL)
+            val m = groundRing(sh.x, sh.ground + 0.03f, sh.z, 0.62f, 0.62f, 18)
+            if (m > 0) {
+                val col = if (sh.harmless) 0xFFB8A0E8.toInt() else 0xFF8FE0FF.toInt()
+                gr.fillPoly(poly, m, Col.withA(0xFF6040C0.toInt(), (0.12f + 0.28f * u) * (0.7f + 0.3f * pulse(t, 12f))))
+                gr.strokePoly(poly, m, 3.5f * g.hud.s, Col.withA(col, 0.4f + 0.5f * u))
+            }
+            // a thread of light from the sky marks it
+            if (cam.project(sh.x, sh.ground, sh.z)) {
+                val gx = cam.sx; val gy = cam.sy
+                if (cam.project(sh.x, sh.y, sh.z)) {
+                    gr.setAdditive(true)
+                    gr.line(gx, gy, cam.sx, cam.sy, 2.5f * g.hud.s, Col.withA(0xFFB8E8FF.toInt(), 0.25f + 0.3f * u))
+                    gr.setAdditive(false)
+                }
+            }
+        }
+        if (!cam.project(sh.x, sh.y + 0.45f, sh.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val fade = if (sh.landed) 1f - clamp01(sh.t / 0.7f) else 1f
+        val a = fade * nearFade(cam.depth)
+        if (a <= 0.01f) return
+        val cx = cam.sx; val cy = cam.sy
+        val hw = 0.2f * sc; val hh = 0.55f * sc
+        val tilt = if (sh.landed) 0.25f else 0f
+        poly[0] = cx + tilt * hh; poly[1] = cy - hh
+        poly[2] = cx + hw; poly[3] = cy - hh * 0.1f
+        poly[4] = cx - tilt * hh * 0.3f; poly[5] = cy + hh
+        poly[6] = cx - hw; poly[7] = cy - hh * 0.1f
+        gr.setAdditive(true)
+        gr.glow(cx, cy, hh * 1.3f, Col.withA(0xFF9FD8FF.toInt(), 0.45f * a))
+        gr.setAdditive(false)
+        gr.fillPolyGradient(poly, 4, cx - hw, cy - hh, cx + hw, cy + hh, Col.withA(0xFFF0FCFF.toInt(), a), Col.withA(0xFF8A70E8.toInt(), a))
+        gr.line(poly[0], poly[1], poly[4], poly[5], max(1f, hw * 0.18f), Col.withA(Col.WHITE, 0.7f * a))
+    }
+
+    /** A treasure chest: wood with golden bands and a lock; its lid thrown open (golden light pouring out) once touched. */
+    private fun drawChest(gr: Gfx, c: Chest) {
+        val t = g.t
+        drawShadow(gr, c.x, c.z, c.y, 0.9f, 0.46f, 0.32f)
+        if (!cam.project(c.x, c.y, c.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val a = nearFade(cam.depth)
+        if (a <= 0.01f) return
+        val cx = cam.sx; val by = cam.sy
+        val w = 0.82f * sc; val bh = 0.46f * sc; val lh = 0.26f * sc
+        val top = by - bh
+        val open = if (c.open) easeOutBack(clamp01(c.openT / 0.35f)) else 0f
+        gr.setAdditive(true)
+        gr.glow(cx, top, w * (0.9f + 0.9f * open), Col.withA(0xFFFFD060.toInt(), a * (0.25f + 0.1f * pulse(t, 3f) + 0.5f * open * (1f - clamp01((c.openT - 1.5f) / 2f)))))
+        gr.setAdditive(false)
+        // the lid, open: tipped back behind the box
+        if (open > 0.01f) {
+            val lt = top - lh * (1f - open) - lh * 1.4f * open
+            gr.fillRoundRect(cx - w * 0.5f, lt, cx + w * 0.5f, top, w * 0.12f, Col.withA(0xFF6A3A18.toInt(), a))
+            gr.fillRect(cx - w * 0.5f, top - lh * 0.25f, cx + w * 0.5f, top, Col.withA(0xFFFFE8A0.toInt(), a))
+        }
+        // the box
+        gr.fillRoundRect(cx - w * 0.5f, top, cx + w * 0.5f, by, w * 0.06f, Col.withA(0xFF8A4E22.toInt(), a))
+        gr.fillRectGradient(cx - w * 0.5f, top, cx + w * 0.5f, by, Col.withA(0xFFB06A30.toInt(), a * 0.6f), Col.withA(0xFF4A2410.toInt(), a * 0.6f))
+        for (k in 0..1) { val bx = cx + (if (k == 0) -0.3f else 0.3f) * w; gr.fillRect(bx - w * 0.06f, top, bx + w * 0.06f, by, Col.withA(0xFFF0C040.toInt(), a)) }
+        gr.strokeRoundRect(cx - w * 0.5f, top, cx + w * 0.5f, by, w * 0.06f, max(1f, w * 0.03f), Col.withA(0xFFFFD860.toInt(), a))
+        // the closed lid, rounded, and the lock
+        if (open <= 0.01f) {
+            gr.fillRoundRect(cx - w * 0.52f, top - lh, cx + w * 0.52f, top + lh * 0.15f, w * 0.2f, Col.withA(0xFF7A4420.toInt(), a))
+            for (k in 0..1) { val bx = cx + (if (k == 0) -0.3f else 0.3f) * w; gr.fillRect(bx - w * 0.06f, top - lh, bx + w * 0.06f, top + lh * 0.15f, Col.withA(0xFFF0C040.toInt(), a)) }
+            gr.fillRoundRect(cx - w * 0.09f, top - lh * 0.2f, cx + w * 0.09f, top + bh * 0.3f, w * 0.03f, Col.withA(0xFFFFD040.toInt(), a))
+            val ph = fract(t * 0.6f + c.z * 0.1f)
+            if (ph < 0.2f) star4(gr, cx + w * 0.3f, top - lh * 0.6f, w * 0.18f * sin(ph / 0.2f * Math.PI.toFloat()), Col.withA(Col.WHITE, a))
+        } else {
+            // coins glinting inside
+            for (k in 0 until 4) star4(gr, cx + (k - 1.5f) * w * 0.2f, top - lh * 0.1f + sin(t * 4f + k) * 2f, w * 0.07f, Col.withA(0xFFFFF0A0.toInt(), a))
+        }
+    }
+
+    /** A five-pointed star on the ground at (x, y, z), into [poly]; the number of points, or 0 when off-screen. */
+    private fun groundStar(x: Float, y: Float, z: Float, r0: Float, r1: Float, spin: Float): Int {
+        var m = 0
+        for (i in 0 until 10) {
+            val an = spin + i * TAU / 10f
+            val rr = if (i % 2 == 0) r0 else r1
+            if (!cam.project(x + cos(an) * rr, y, z + sin(an) * rr)) return 0
+            poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
+        }
+        return m
+    }
+
+    /** A star rune set into the path (the Wrath): violet and pulsing until lit; golden, with a pillar of light striking the sky, once lit. */
+    private fun drawRune(gr: Gfx, r: Rune) {
+        val t = g.t
+        val lit = r.lit
+        val col = if (lit) 0xFFFFE070.toInt() else 0xFFC890FF.toInt()
+        val pul = if (lit) 1f else 0.6f + 0.4f * pulse(t, 5f)
+        val rm = groundRing(r.x, r.y + 0.02f, r.z, 0.47f, 0.47f, 20)
+        if (rm > 0) gr.strokePoly(poly, rm, 3f * g.hud.s, Col.withA(col, 0.9f * pul))
+        val m = groundStar(r.x, r.y + 0.02f, r.z, 0.4f, 0.17f, -Math.PI.toFloat() / 2f)
+        if (m == 0) return
+        gr.setAdditive(true)
+        gr.fillPoly(poly, m, Col.withA(col, (if (lit) 0.7f else 0.45f) * pul))
+        gr.setAdditive(false)
+        gr.strokePoly(poly, m, 2f * g.hud.s, Col.withA(Col.WHITE, 0.7f * pul))
+        if (!cam.project(r.x, r.y + 0.05f, r.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val gx = cam.sx; val gy = cam.sy
+        gr.setAdditive(true)
+        gr.glow(gx, gy, 0.8f * sc, Col.withA(col, 0.35f * pul))
+        if (lit && r.litT < 3f) {
+            // the pillar of starlight that strikes the Sorcerer
+            val k = 1f - clamp01((r.litT - 1.2f) / 1.8f)
+            val bw = 0.28f * sc * (1f + 0.15f * sin(t * 20f))
+            gr.fillRectGradient(gx - bw, -20f, gx + bw, gy, Col.withA(0xFFFFF4C0.toInt(), 0.2f * k), Col.withA(0xFFFFE070.toInt(), 0.75f * k))
+            gr.fillRectGradient(gx - bw * 0.35f, -20f, gx + bw * 0.35f, gy, Col.withA(Col.WHITE, 0.3f * k), Col.withA(Col.WHITE, 0.95f * k))
+        }
+        gr.setAdditive(false)
+    }
+
+    /** A ring of starlight (a sanctuary from the Sorcerer's spells): a golden ring on the plaza with motes of light rising. */
+    private fun drawSanctuary(gr: Gfx, sa: Sanctuary) {
+        val t = g.t
+        val so = g.sorcery
+        val k = if (so.wrath == WS.DONE) 0.35f else if (so.wrath == WS.NONE && !so.warned) 0.5f else 1f
+        val zc = (sa.z0 + sa.z1) * 0.5f
+        val rz = (sa.z1 - sa.z0) * 0.5f
+        val m = groundRing(sa.x, sa.y + 0.04f, zc, 2.35f, rz, 32)
+        if (m > 0) {
+            gr.setAdditive(true)
+            gr.fillPoly(poly, m, Col.withA(0xFFFFD880.toInt(), 0.1f * k))
+            gr.setAdditive(false)
+            gr.strokePoly(poly, m, 3f * g.hud.s, Col.withA(0xFFFFE8A0.toInt(), (0.45f + 0.2f * pulse(t, 2f)) * k))
+        }
+        gr.setAdditive(true)
+        for (i in 0 until 8) {
+            val ph = fract(t * 0.3f + i * 0.125f)
+            val an = i * 2.4f
+            if (!cam.project(sa.x + cos(an) * 2f, sa.y + 0.2f + ph * 2.6f, zc + sin(an) * rz * 0.8f)) continue
+            star4(gr, cam.sx, cam.sy, 0.08f * cam.scaleAt(cam.depth) * sin(ph * Math.PI.toFloat()), Col.withA(0xFFFFF0B0.toInt(), 0.8f * k))
+        }
+        gr.setAdditive(false)
+    }
+
+    /** A secret route's switch: a cyan rune on a slab beside the path, pulsing with little sparks rising off it until found. */
+    private fun drawSecretSwitch(gr: Gfx, se: Secret) {
+        val t = g.t
+        val col = if (se.found) 0xFFFFE070.toInt() else 0xFF7FE8FF.toInt()
+        val pul = if (se.found) 0.5f else 0.55f + 0.45f * pulse(t, 4f)
+        val m = groundStar(se.x, se.y + 0.02f, se.z, 0.36f, 0.15f, t * 0.4f)
+        if (m == 0) return
+        gr.setAdditive(true)
+        gr.fillPoly(poly, m, Col.withA(col, 0.55f * pul))
+        gr.setAdditive(false)
+        gr.strokePoly(poly, m, 2f * g.hud.s, Col.withA(Col.WHITE, 0.6f * pul))
+        if (se.found || !cam.project(se.x, se.y + 0.05f, se.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        gr.setAdditive(true)
+        gr.glow(cam.sx, cam.sy, 0.7f * sc, Col.withA(col, 0.4f * pul))
+        for (i in 0 until 3) {
+            val ph = fract(t * 0.7f + i / 3f)
+            star4(gr, cam.sx + sin(i * 2.1f + t) * 0.25f * sc, cam.sy - ph * 1.1f * sc, 0.06f * sc * (1f - ph), Col.withA(0xFFDFFBFF.toInt(), 1f - ph))
+        }
         gr.setAdditive(false)
     }
 

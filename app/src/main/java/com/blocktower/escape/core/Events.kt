@@ -230,6 +230,12 @@ class Events(val g: Game) {
                 meterKind = 1; meterLabel = "COLLAPSE"; meter = 1f - clamp01((p.z - finalCollapse.z - 1f) / 9f); 1f
             }
             lavaOn && !lavaStop && g.state == GS.PLAY -> { meterKind = 2; meterLabel = "LAVA"; meter = 1f - clamp01((p.y - lavaY - 0.8f) / 6f); 1f }
+            // Level 7: the Sorcerer's Wrath: his power, pushed back by every star rune lit
+            g.spec.enchanted && g.sorcery.active && g.state == GS.PLAY -> {
+                val so = g.sorcery
+                meterKind = 4; meterLabel = "SORCERER'S WRATH  •  RUNES ${so.runesLit}/${g.world.runes.size}"
+                meter = 0.3f + 0.62f * (1f - so.runesLit / max(1f, g.world.runes.size.toFloat())) * (0.88f + 0.12f * so.charge); 1f
+            }
             // Level 7: the Sorcerer's minions flying after the boy
             g.minions.pursuit && g.state == GS.PLAY -> { meterKind = 3; meterLabel = "MINIONS"; meter = g.minions.meter; 1f }
             else -> 0f

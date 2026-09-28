@@ -173,7 +173,8 @@ class MinionSystem(val g: Game) {
 
     /** Puts a minion where its kind and rhythm say it is now. */
     private fun place(m: Minion) {
-        val t = g.t
+        // (patrols and swoops keep the hazard clock: the hourglass slows them)
+        val t = g.hazT
         val sp = m.spot
         when (m.kind) {
             MK.PATROL -> if (sp != null) {

@@ -34,6 +34,8 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
     val magnet = p.loadImage("img/magnet.png")
     val shield = p.loadImage("img/shield.png")
     val lightning = p.loadImage("img/lightning.png")
+    /** Level 7's third tool, the hourglass (cut from the design's tool button), in the lightning's place. */
+    val hourglass = if (enchanted) p.loadImage("l7/hourglass.png") else lightning
     val targetCube = p.loadImage("img/target_cube.png")
     val blockTool = p.loadImage("img/block_tool.png")
 
@@ -76,6 +78,8 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
     val minionShip = if (enchanted) p.loadImage("l7/m_ship.png") else null
     val balloon = if (enchanted) p.loadImage("l7/balloon.png") else null
     val gemBig = if (enchanted) p.loadImage("l7/gem.png") else null
+    /** A tool's icon (Level 7's third tool is the hourglass). */
+    fun toolIcon(k: Int) = when (k) { TK.MAGNET -> magnet; TK.SHIELD -> shield; TK.SPEED -> hourglass; else -> blockTool }
     /** The design's wooden RUN • JUMP • COLLECT • ESCAPE plank along the bottom of the screen (the Home screen's). */
     val plank = if (enchanted) p.loadImage("home/tagline.png") else null
     /** Tall stone texture (the brick courses repeated) for the pillars and islands under the course. */
