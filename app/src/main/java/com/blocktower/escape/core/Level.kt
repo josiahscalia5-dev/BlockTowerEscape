@@ -18,7 +18,7 @@ package com.blocktower.escape.core
  * blue = the objective.
  *
  * Row string legend (lane x starts at x0, default centred):
- *  R G Y P O  normal coloured blocks      K brick        B blue TARGET block
+ *  R G Y P O M  normal coloured blocks (M magenta)   K brick   B blue TARGET block
  *  c cracked    d disappearing   f lava-cracked (falling)   b spring pad   s colour-shifting
  *  t timed spike trap   ^ spike block (always armed)   * boost (star)   S save block
  *  p speed pad (Level 5)
@@ -75,6 +75,7 @@ internal open class CourseWriter(val w: World, seed: Int = 23) {
                 'Y' -> blk(x, l, z, BC.YELLOW)
                 'P' -> blk(x, l, z, BC.PURPLE)
                 'O' -> blk(x, l, z, BC.ORANGE)
+                'M' -> blk(x, l, z, BC.MAGENTA)
                 'K' -> blk(x, l, z, BC.BRICK, BT.BRICK)
                 'B' -> blk(x, l, z, BC.BLUE, BT.TARGET)
                 'c' -> blk(x, l, z, BC.YELLOW, BT.CRACKED)

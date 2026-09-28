@@ -20,6 +20,7 @@ class Menus(private val app: App) {
     }
     private val guardian by lazy { app.pf.loadImage("l5v/guardian.png") }
     private val golem by lazy { app.pf.loadImage("l6/guardian.png") }
+    private val sorcerer by lazy { app.pf.loadImage("l7/sorcerer.png") }
     private val runaway by lazy { app.pf.loadImage("l5v/relic.png") }
     private var claimFlash = 0f
     private var lastClaimed = -1
@@ -160,7 +161,7 @@ class Menus(private val app: App) {
                 relicIcon(gr, rel.level, icx, icy, 92f * s)
                 relicName(gr, rel.name, icx, y0 + 165f * s, cw - 12f * s)
                 // the Runaway Relic (Levels 5 and 6) sits beside the level's relic once caught
-                if ((rel.level == 5 && pr.runawayRelic) || (rel.level == 6 && pr.runawayRelic6)) {
+                if ((rel.level == 5 && pr.runawayRelic) || (rel.level == 6 && pr.runawayRelic6) || (rel.level == 7 && pr.runawayRelic7)) {
                     val rh = 58f * s; val rw = rh * runaway.w / runaway.h
                     gr.setAdditive(true); gr.glow(x0 + cw - 22f * s, y0 + 36f * s, 40f * s, Col.withA(0xFFFFE070.toInt(), 0.5f)); gr.setAdditive(false)
                     gr.image(runaway, x0 + cw - 22f * s - rw * 0.5f, y0 + 36f * s - rh * 0.5f, rw, rh)
@@ -210,11 +211,16 @@ class Menus(private val app: App) {
     /** Relic pictures, made from the art each level is known for. */
     private fun relicIcon(gr: Gfx, level: Int, x: Float, y: Float, size: Float) {
         val art = app.baseArt
-        val img = when (level) { 1 -> art.star; 2 -> art.magnet; 3 -> art.shield; 4 -> art.guardFace; 5 -> guardian; else -> golem }
+        val img = when (level) { 1 -> art.star; 2 -> art.magnet; 3 -> art.shield; 4 -> art.guardFace; 5 -> guardian; 6 -> golem; else -> sorcerer }
         if (level >= 5) {
-            // the Guardian's face: lava (Level 5) or the temple's stone golem with its glowing eyes (Level 6)
+            // the Guardian's face: lava (Level 5), the temple's stone golem with its glowing eyes (Level 6), or the
+            // hooded Sorcerer's (Level 7)
             val u0: Float; val v0: Float; val u1: Float; val v1: Float
-            if (level == 5) { u0 = 178f; v0 = 118f; u1 = 358f; v1 = 290f } else { u0 = 205f; v0 = 40f; u1 = 420f; v1 = 250f }
+            when (level) {
+                5 -> { u0 = 178f; v0 = 118f; u1 = 358f; v1 = 290f }
+                6 -> { u0 = 205f; v0 = 40f; u1 = 420f; v1 = 250f }
+                else -> { u0 = 80f; v0 = 40f; u1 = 390f; v1 = 380f }
+            }
             val hh = size; val ww = hh * (u1 - u0) / (v1 - v0)
             val q = floatArrayOf(x - ww / 2, y - hh / 2, x + ww / 2, y - hh / 2, x + ww / 2, y + hh / 2, x - ww / 2, y + hh / 2)
             gr.imageQuad(img, u0, v0, u1, v1, q, 1f)

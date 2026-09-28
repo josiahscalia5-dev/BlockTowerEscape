@@ -37,10 +37,12 @@ object MapPlate {
         Node(181f, 510f, 270f, 577f, 0.445f, 225f, 541f, 563f, 225f, 517f, 205f, 514f, 277f, 546f, 1),
         // level 6: the dark block up the path from level 5
         Node(258f, 432f, 330f, 492f, 0.36f, 294f, 460f, 479f, 294f, 437f, 306f, 436f, 336f, 462f, 1),
+        // level 7: the dark block with the flag, up and to the left of level 6
+        Node(222f, 387f, 284f, 433f, 0.31f, 253f, 409f, 424f, 253f, 391f, 262f, 390f, 216f, 411f, -1),
     )
     /** The next block after the last level on the path (more levels soon), and the far blocks with padlocks. */
-    val soon = floatArrayOf(222f, 387f, 284f, 433f)
-    val farLocks = floatArrayOf(336f, 394f, 380f, 372f)
+    val soon = floatArrayOf(308f, 377f, 368f, 428f)
+    val farLocks = floatArrayOf(380f, 372f)
     /** Height of the boy (back view) standing on the level-1 block. */
     const val BOY_H = 170f
 }
@@ -82,7 +84,7 @@ class LevelMap(private val app: App) {
     private var compact = false
     private var backCX = 0f; private var backCY = 0f; private var backR = 0f
     private var walletK = 1f; private var walletL = 0f; private var walletT = 0f
-    private var signW = 0f; private var signTop = 0f
+    private var signW = 0f; private var signTop = 0f; private var signCX = 0f
 
     private fun mx(x: Float) = x0 + (MapPlate.CORE_L + x) * k
     private fun my(y: Float) = y0 + y * k
@@ -103,9 +105,11 @@ class LevelMap(private val app: App) {
 
         // ---- the title sign under the header
         val signAspect = signImg.h.toFloat() / signImg.w
-        signTop = headerBottom + 2f * u
+        signTop = headerBottom + 2f * u; signCX = m.cx
         val wMax = min(sw * 0.8f, 420f * u)
         val wMin = min(wMax, m.dp(170f))
+        // only when nothing else fits (a near-square screen, now that the path climbs to Level 7): a smaller sign
+        val wTiny = min(wMin, m.dp(104f))
 
         // ---- where the artwork goes: the path from level 5 to level 1's label between the sign and the safe bottom.
         // Preferred scale: the approved artwork fills the width (phones). Otherwise zoom out (showing the side
@@ -118,17 +122,19 @@ class LevelMap(private val app: App) {
         var chosen = -1f
         var yLo = 0f; var yHi = 0f
         compact = false
-        search@ for (pass in 0..1) {
-            val topNeed = if (pass == 0) n5.t else n5.numY - 16f
+        search@ for (pass in 0..2) {
+            // 0: the whole path under the sign; 1: the same with a smaller sign; 2: the sign may cover the top block's top face
+            val topNeed = if (pass < 2) n5.t else n5.numY - 16f
+            val wLow = if (pass == 1) wTiny else wMin
             k = kWant
             while (true) {
                 val lo0 = m.h - MapPlate.H * k
                 var w = wMax
-                while (w >= wMin - 0.5f) {
+                while (w >= wLow - 0.5f) {
                     val signBottom = signTop + w * signAspect * 0.92f
                     yLo = max(lo0, signBottom + 4f * u - topNeed * k)
                     yHi = min(0f, m.b - bottomNeed * k)
-                    if (yLo <= yHi) { chosen = w; compact = pass == 1; break@search }
+                    if (yLo <= yHi) { chosen = w; compact = pass == 2; break@search }
                     w -= sw * 0.02f
                 }
                 if (k <= kCover) break
@@ -142,8 +148,22 @@ class LevelMap(private val app: App) {
             val ideal = (signBottom + m.b) * 0.5f - (n5.t + bottomNeed) * 0.5f * k
             y0 = clamp(ideal, yLo, yHi)
         } else {
-            k = kCover; compact = true
-            y0 = clamp(m.b - bottomNeed * k, m.h - MapPlate.H * k, 0f)
+            // a near-square screen (the map must be scaled to its width, and the path to Level 7 is too tall for a sign
+            // under the header): the sign goes up into the header row, between Back and the wallet, and the whole
+            // path fits under the header
+            k = kCover
+            val lo0 = m.h - MapPlate.H * k
+            val gapL = backCX + backR + 6f * u; val gapR = walletL - 6f * u
+            val hRow = headerBottom - m.t
+            val wRow = min(gapR - gapL, hRow / (signAspect * 0.92f))
+            val lo = max(lo0, headerBottom + 4f * u - n5.t * k); val hi = min(0f, m.b - bottomNeed * k)
+            if (wRow >= m.dp(90f) && lo <= hi) {
+                signW = wRow; signCX = (gapL + gapR) * 0.5f; signTop = m.t + (hRow - wRow * signAspect * 0.92f) * 0.5f
+                y0 = clamp((headerBottom + m.b) * 0.5f - (n5.t + bottomNeed) * 0.5f * k, lo, hi)
+            } else {
+                compact = true
+                y0 = clamp(m.b - bottomNeed * k, lo0, 0f)
+            }
         }
         x0 = m.cx - (MapPlate.CORE_L + MapPlate.CORE_W * 0.5f) * k
     }
@@ -359,16 +379,16 @@ class LevelMap(private val app: App) {
         }
         // the title sign: SELECT LEVEL and the stars collected
         val sh = signW * signImg.h / signImg.w
-        gr.image(signImg, m.cx - signW / 2, signTop, signW, sh)
+        gr.image(signImg, signCX - signW / 2, signTop, signW, sh)
         val title = "SELECT LEVEL"
         val ts = Kit.fit(gr, title, sh * 0.27f, Font.TITLE, signW * 0.74f)
-        Kit.text(gr, title, m.cx, signTop + sh * 0.33f, ts, 0xFFFFD84A.toInt(), Font.TITLE, Align.CENTER, 0xFF5A2408.toInt(), ts * 0.12f)
+        Kit.text(gr, title, signCX, signTop + sh * 0.33f, ts, 0xFFFFD84A.toInt(), Font.TITLE, Align.CENTER, 0xFF5A2408.toInt(), ts * 0.12f)
         val cnt = "${pr.totalStars} / ${Levels.count * 3}"
         val cs = sh * 0.19f
         val cw = gr.textWidth(cnt, cs, Font.TITLE)
         val sr = cs * 0.62f
         val total = sr * 2f + cs * 0.4f + cw
-        val sx = m.cx - total / 2
+        val sx = signCX - total / 2
         val cy = signTop + sh * 0.765f
         app.ui.star(gr, sx + sr, cy, sr, true)
         Kit.text(gr, cnt, sx + sr * 2f + cs * 0.4f, cy, cs, Col.WHITE, Font.TITLE, Align.LEFT, Kit.NAVY, cs * 0.12f, false)
@@ -446,7 +466,7 @@ class LevelMap(private val app: App) {
         val out = arrayListOf(
             "back" to floatArrayOf(backCX - backR, backCY - backR, backCX + backR, backCY + backR),
             "wallet" to floatArrayOf(walletL, walletT, walletL + 466f * walletK, walletT + 78f * walletK),
-            "sign" to floatArrayOf(app.safe.cx - signW / 2, signTop, app.safe.cx + signW / 2, signTop + signH),
+            "sign" to floatArrayOf(signCX - signW / 2, signTop, signCX + signW / 2, signTop + signH),
         )
         for (n in 1..Levels.count) {
             val nd = MapPlate.nodes[n - 1]

@@ -40,7 +40,49 @@ object DK {
     const val BANNER = 4
     /** Chain railing along a bridge: posts at z and z + w, a sagging chain between them. */
     const val RAIL = 5
+    /** Level 7: a moonstone turret with a pointed witch-hat roof and a pennant (the design's fantasy towers); w = width. */
+    const val SPIRE = 6
+    /** Level 7: a cluster of glowing magic crystals; w = size. */
+    const val CRYSTAL = 7
 }
+
+/** Level 7: a gem floating over the path (the design's purple gems): picked up like a coin, +1 gem. */
+class GemPickup(@JvmField var x: Float, @JvmField var y: Float, @JvmField var z: Float) {
+    @JvmField var collected = false
+    @JvmField var pulled = false
+    @JvmField var phase = 0f
+    @JvmField val oz = z
+}
+
+/** Level 7: an iron chain slung between two points (islands, spiked balls, the minions' platforms), sagging by [sag]. */
+class ChainLink(@JvmField val x0: Float, @JvmField val y0: Float, @JvmField val z0: Float,
+                @JvmField val x1: Float, @JvmField val y1: Float, @JvmField val z1: Float, @JvmField val sag: Float = 0.6f)
+
+/** Kinds of the Sorcerer's minions (Level 7). */
+object MK {
+    /** A witch-hat imp that drops onto the path and patrols across it: steer round it, time it, or stomp on it. */
+    const val PATROL = 0
+    /** A round orb imp that swoops across the path at a row, in a steady rhythm, at knee-to-chest height: jump it or wait. */
+    const val SWOOP = 1
+    /** The lantern-ship imp: flies beside the path and drops magic bolts onto it ahead of the boy (marked where they land). */
+    const val BOMBER = 2
+    /** A purple-eyed imp that flies after the boy: it closes in when he slows down and lunges at him when it is close. */
+    const val CHASER = 3
+}
+
+/**
+ * Where a minion of wave [wave] waits (Level 7): a patroller or a swooper at row z, x (its lane), walking-surface
+ * height [y]; [amp] how far it moves across the path, [speed] its pace, [phase] where it is in its rhythm.
+ */
+class MinionSpot(@JvmField val wave: Int, @JvmField val kind: Int, @JvmField val x: Float, @JvmField val y: Float, @JvmField val z: Float,
+                 @JvmField val amp: Float, @JvmField val speed: Float, @JvmField val phase: Float)
+
+/**
+ * One of the Sorcerer's minion waves (Level 7): starts at an [Ev.MINIONS] trigger, ends at its [Ev.MINIONS_END]
+ * (a checkpoint), where every minion still about vanishes. [chasers] and [bombers] fly in when it starts; its patrollers
+ * and swoopers wait on the course ([MinionSpot]).
+ */
+class MinionWave(val id: Int, val chasers: Int, val bombers: Int, val title: String, val sub: String)
 
 /**
  * A piece of scenery (purely visual): kind [DK], base at (x, y, z), [w] world units wide (or long, for rails).
@@ -254,6 +296,8 @@ object Ev {
     const val WIND = 19; const val WIND_STOP = 20
     /** Level 5: the Runaway Relic appears and runs off along the course (CHASE & COLLECT). */
     const val RELIC = 21
+    /** Level 7: one of the Sorcerer's minion waves begins (its id in text2) / ends, at a checkpoint (its id in text2). */
+    const val MINIONS = 22; const val MINIONS_END = 23
 }
 
 class Trigger(val z: Float, val xMin: Float, val xMax: Float, val event: Int, val text: String = "", val text2: String = "") {
@@ -280,6 +324,11 @@ class World {
     val lasers = ArrayList<Laser>()
     val spikeBoxes = ArrayList<SpikeBox>()
     val islands = ArrayList<Island>()
+    /** Level 7: gems over the path, chains between islands and hazards, and the Sorcerer's minion waves. */
+    val gemPicks = ArrayList<GemPickup>()
+    val chains = ArrayList<ChainLink>()
+    val minionSpots = ArrayList<MinionSpot>()
+    val waves = ArrayList<MinionWave>()
     /** Level 5: the Runaway Relic's route, as rows (z) it runs from and to; 0 = none. */
     var relicZ0 = 0; var relicZ1 = 0
     /** Levels 5 and 6: depth of the lava sea (the cloud sea) below the course, relative to the path (it follows the climb). */

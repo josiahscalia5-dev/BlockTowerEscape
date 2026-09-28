@@ -6,6 +6,8 @@ import com.blocktower.escape.core.Chase
 import com.blocktower.escape.core.GS
 import com.blocktower.escape.core.Game
 import com.blocktower.escape.core.Key
+import com.blocktower.escape.core.MK
+import com.blocktower.escape.core.MS
 import com.blocktower.escape.core.PS
 import com.blocktower.escape.core.TK
 import com.blocktower.escape.core.Tune
@@ -98,6 +100,18 @@ class Autopilot(
         fallZ = 3.0f, steerZ = 310.2f, speedZ = 150f, captureZ = 330f, magnetZ = 290f, shieldZ = 322f,
         blockZ0 = 35.3f, blockZ1 = 36f, trapZ0 = 262f, trapZ1 = 316f,
         pathA = floatArrayOf(113.05f, 113.95f, -4f, -2f), pathB = floatArrayOf(130f, 138f, -2.6f, 2.6f),
+    ) else if (level == 7) Plan(
+        route = floatArrayOf(
+            -9f, 0f,
+            34.3f, -1f, 35.3f, 0f,                               // vanishing stones on the isles
+            97.3f, -1f, 98.3f, 0f, 99.3f, -1f, 100.3f, 0f,       // vanishing stones on the crystal stairs
+            110.2f, -2.2f, 111.3f, -3.0f, 126.2f, 0f,            // the fork: the crystal bridge on the left
+            315.3f, -1f, 319.6f, 0f,                             // round the spikes in the pursuit
+            388.3f, -1f, 389.3f, 0f, 390.3f, -1f, 391.3f, 0f,   // vanishing stones in the maze
+            431.3f, -1f, 432.3f, 0f),                            // stepping stones on the final ascent
+        fallZ = 3.0f, steerZ = 126.4f, speedZ = 142f, captureZ = 9999f, magnetZ = 205f, shieldZ = 306f,
+        blockZ0 = 53.3f, blockZ1 = 54f, trapZ0 = 204f, trapZ1 = 257f,
+        pathA = floatArrayOf(112f, 125f, -4f, -2f), pathB = floatArrayOf(126f, 131f, -2.6f, 2.6f),
     ) else Plan(
         route = floatArrayOf(
             -9f, 0f,
@@ -196,6 +210,10 @@ class Autopilot(
                 note("player ${psName(p.state)}"); lastPs = p.state; seen.add("ps:" + psName(p.state))
             }
             if (g.ev.lavaOn) seen.add("lava")
+            if (g.minions.anyWave != lastAnyWave) {
+                if (g.minions.anyWave) { wavesStarted++; note("minion wave begins (hearts ${g.hearts})") } else { wavesEnded++; note("minion wave over (hearts ${g.hearts})") }
+                lastAnyWave = g.minions.anyWave
+            }
             if (g.ev.finalOn) seen.add("final escape")
             // round the loop: the stride keeps going, the turn follows the track smoothly, feet stay on it
             if (p.state == PS.LOOP) {
@@ -379,6 +397,11 @@ class Autopilot(
         if (!shieldUsed && z > plan.shieldZ && p.grounded) { tapTool(TK.SHIELD); shieldUsed = true }
 
         wantRun = true
+        // --- Level 7: a magic bolt about to land where we will be: steer to a free lane first (even while waiting)
+        val boltX = boltDodge()
+        if (!boltX.isNaN() && boltX != -99f && !joyMode && thumbFree && frame - lastSteerFrame > 14 && abs(boltX - g.steerX) > 0.15f) {
+            steerSwipe(max(-2.5f, min(2.5f, boltX - g.steerX))); return
+        }
         // --- a swinging log will be in the way when we get there: wait for it to swing clear
         if (opts["trace"] != null && z in 176f..181f && frame % 3 == 0) { val l = g.world.logs.minByOrNull { abs(it.pz - z) }!!; println("TRACE f=$frame z=${"%.2f".format(z)} vz=${"%.2f".format(p.vz)} x=${"%.2f".format(p.x)} ball=(${"%.2f".format(l.cx)},${"%.2f".format(l.cy)}) way=${logInWay()} cruise=${g.swipe.cruise} dash=${p.dashT}") }
         if (logInWay()) {
@@ -386,6 +409,16 @@ class Autopilot(
             wantRun = false; keepPace(); return
         }
         logWaitNoted = false
+        // --- Level 7: an orb imp swooping across a row ahead: wait for its pass (while imps chase us, jump it instead)
+        val sw = swooperAhead()
+        if (sw != null) {
+            if (g.minions.pursuit) {
+                if (sw in 1.15f..1.8f && p.grounded && jumpHoldF == 0) { pressJump(); swoopJumps++; note("jumping a swooping imp") }
+            } else {
+                if (!swoopWaitNoted) { note("waiting for the swooping imp"); swoopWaitNoted = true; swoopWaits++ }
+                wantRun = false; keepPace(); return
+            }
+        } else swoopWaitNoted = false
         // --- a laser gate just ahead: jump its beam (timed so he is above it as he passes)
         val la = laserAhead()
         val lv = max(2f, len2(p.vx, p.vz))
@@ -398,7 +431,7 @@ class Autopilot(
             2 -> {
                 if (!boxWaitNoted) { note("waiting for the sliding spiked block"); boxWaitNoted = true; boxWaits++ }
                 // stop well short of it (not creeping closer while it sweeps): too close, step back a little
-                val near = g.world.spikeBoxes.filter { it.amp > 0f && it.z - p.z in 0.6f..4.5f }.minOfOrNull { it.z - p.z } ?: 9f
+                val near = sliders.filter { it.z - p.z in 0.6f..4.5f }.minOfOrNull { it.z - p.z } ?: 9f
                 wantRun = near > 2.4f && len2(p.vx, p.vz) < 2f
                 if (near < 1.9f && thumbFree && g.swipe.cruise <= 0f && frame % 30 == 0) swipe(baseX(), baseY() - 60f * s, 0f, 170f * s, 8, 14)
                 keepPace(); return
@@ -409,11 +442,14 @@ class Autopilot(
         // --- steering: a sideways swipe whenever the lane we want is off to the side
         var tx = routeX(z)
         if (!dodgeX.isNaN()) tx = dodgeX
+        // --- Level 7: a magic bolt about to land where we will be: steer to a free lane (or hold back)
+        if (boltX == -99f) { wantRun = false; keepPace(); return }
+        if (!boltX.isNaN()) tx = boltX
         val ground = p.ground
         val onMover = ground != null && ground.type == BT.MOVING
         if (onMover) tx = g.steerX
         if (joyMode) steerTarget = tx
-        else if (thumbFree && frame - lastSteerFrame > 14 && abs(tx - g.steerX) > 0.15f) { steerSwipe(max(-2.5f, min(2.5f, tx - g.steerX))); return }
+        else if (thumbFree && frame - lastSteerFrame > (if (g.ev.windOn) 8 else 14) && abs(tx - g.steerX) > (if (g.ev.windOn) 0.08f else 0.15f)) { steerSwipe(max(-2.5f, min(2.5f, tx - g.steerX))); return }
 
         if (!p.grounded) { keepPace(); return }
         // --- look ahead: gaps, steps, hazards
@@ -487,6 +523,55 @@ class Autopilot(
     private var slideFrames = 0; private var slideCoins0 = 0; private var slideCoins = 0; private var slideMaxTh = 0f
     private var slideOffSurface = 0f
 
+    // ---- Level 7: the Sorcerer's minions
+    private var swoopWaitNoted = false; private var swoopWaits = 0; private var swoopJumps = 0
+    private var boltDodges = 0; private var boltDodgeZ = -99f
+
+    /** Distance to a swooping imp's row ahead whose pass we would run into (or null). */
+    private fun swooperAhead(): Float? {
+        for (m in g.minions.all) {
+            if (m.kind != MK.SWOOP || m.state != MS.ACTIVE) continue
+            val sp = m.spot ?: continue
+            val dz = sp.z + 0.5f - p.z
+            if (dz < 0.9f || dz > 3.4f || abs(p.y - sp.y) > 1.5f) continue
+            val t0 = g.t + arrival(dz)
+            var k = -3
+            while (k <= 6) { if (swoopHits(sp, t0 + k * 0.1f, p.x)) return dz; k++ }
+        }
+        return null
+    }
+    private fun swoopHits(sp: com.blocktower.escape.core.MinionSpot, t: Float, x: Float): Boolean {
+        val period = sp.speed
+        val c = ((t + sp.phase) % period + period) % period
+        val restAt = period - com.blocktower.escape.core.MinionSystem.PASS
+        if (c < restAt - 0.1f) return false
+        val u = clamp01((c - restAt) / com.blocktower.escape.core.MinionSystem.PASS)
+        val pass = (floor((t + sp.phase) / period).toInt() and 1) == 0
+        val dir = if (pass) 1f else -1f
+        val mx = sp.x - dir * (sp.amp + 0.6f) + dir * 2f * (sp.amp + 0.6f) * u
+        return abs(mx - x) < 0.34f + Tune.RADIUS + 0.3f
+    }
+    private fun clamp01(v: Float) = max(0f, min(1f, v))
+
+    private val boltList = ArrayList<FloatArray>()
+    /** A lane away from a bolt that will land where we are heading (NaN: none needed; -99: no lane, hold back). */
+    private fun boltDodge(): Float {
+        g.minions.boltTargets(boltList)
+        for (b in boltList) {
+            val tx = b[0]; val tz = b[1]; val left = b[2]
+            val zAt = p.z + max(0f, p.vz) * left
+            if (abs(zAt - tz) > 1.3f || tz < p.z - 0.6f) continue
+            if (abs(g.steerX - tx) > 0.95f) continue
+            // a lane beside it, with floor, reachable in time
+            val row = floor(tz).toInt()
+            val cands = floatArrayOf(tx - 1f, tx + 1f).filter { x -> g.world.row(row)?.any { it.collides() && abs(it.x - x) < 0.5f && abs(it.y1 - g.world.levelAt(row)) < 0.4f } == true }
+            val lane = cands.minByOrNull { abs(it - p.x) }
+            if (boltDodgeZ != tz) { boltDodgeZ = tz; boltDodges++; note("dodging a magic bolt landing at x=${"%.1f".format(tx)}") }
+            return lane ?: -99f
+        }
+        return Float.NaN
+    }
+
     /** Distance to the next laser gate across our lane (or -1). */
     private fun laserAhead(): Float {
         var best = -1f
@@ -498,18 +583,31 @@ class Autopilot(
         return best
     }
 
-    /** A lane to pass a sliding spiked block in (NaN: none needed). */
+    /** A lane to pass a sliding spiked block (or a patrolling imp) in (NaN: none needed). */
     private var dodgeX = Float.NaN
-    private var dodgeBox: com.blocktower.escape.core.SpikeBox? = null
+    private var dodgeBox: Any? = null
+    /** Things that slide back and forth across the path: sliding spiked blocks and (Level 7) patrolling imps. */
+    private class Slider(val ref: Any, val x0: Float, val amp: Float, val speed: Float, val phase: Float, val z: Float, val y: Float, val half: Float)
+    private val sliders = ArrayList<Slider>()
+    private fun gatherSliders() {
+        sliders.clear()
+        for (b in g.world.spikeBoxes) if (b.amp > 0f) sliders.add(Slider(b, b.x0, b.amp, b.speed, b.phase, b.z, b.y, b.size * 0.5f + 0.14f))
+        for (m in g.minions.all) {
+            val sp = m.spot ?: continue
+            if (m.kind != MK.PATROL || (m.state != MS.ACTIVE && m.state != MS.APPEAR)) continue
+            sliders.add(Slider(m, sp.x, sp.amp, sp.speed, sp.phase, sp.z + 0.5f, sp.y, 0.36f))
+        }
+    }
 
     /**
      * Sliding spiked blocks ahead: 0 = our lane is clear when we pass, 1 = steer to [dodgeX] (a lane it has left),
      * 2 = no lane is clear in time: wait.
      */
     private fun spikeBoxPlan(): Int {
-        dodgeBox?.let { if (p.z > it.z + 0.7f) { dodgeBox = null; dodgeX = Float.NaN } }
-        for (b in g.world.spikeBoxes) {
-            if (b.amp <= 0f) continue
+        gatherSliders()
+        val cur = sliders.firstOrNull { it.ref === dodgeBox }
+        if (dodgeBox != null && (cur == null || p.z > cur.z + 0.7f)) { dodgeBox = null; dodgeX = Float.NaN }
+        for (b in sliders) {
             val dz = b.z - p.z
             if (dz < 0.6f || dz > 4.5f || abs(p.y - b.y) > 1.5f) continue
             val t0 = g.t + arrival(dz)
@@ -517,20 +615,20 @@ class Autopilot(
                 var k = -2
                 while (k <= 4) {
                     val bx = b.x0 + b.amp * sin(b.phase + (t0 + k * 0.1f) * b.speed)
-                    if (abs(bx - x) < b.size * 0.5f + 0.14f + Tune.RADIUS + 0.12f) return false
+                    if (abs(bx - x) < b.half + Tune.RADIUS + 0.12f) return false
                     k++
                 }
                 return true
             }
             // committed to a lane in front of it: keep it while it stays clear
-            if (dodgeBox === b && !dodgeX.isNaN() && clear(dodgeX)) return 1
+            if (dodgeBox === b.ref && !dodgeX.isNaN() && clear(dodgeX)) return 1
             val here = g.steerX
             if (clear(here) && abs(p.x - here) < 0.3f) { dodgeBox = null; dodgeX = Float.NaN; continue }
             // a lane it will have left by then, reachable in time (a lane change takes about a third of a second)
             val arrive = t0 - g.t
             val px = g.world.pathXAt(kotlin.math.floor(b.z).toInt())
             val lane = floatArrayOf(px - 1f, px, px + 1f).filter { clear(it) && (abs(it - p.x) < 0.3f || 0.3f + 0.25f * abs(it - p.x) < arrive - 0.1f) }.minByOrNull { abs(it - p.x) }
-            if (lane != null) { dodgeX = lane; dodgeBox = b; return 1 }
+            if (lane != null) { dodgeX = lane; dodgeBox = b.ref; return 1 }
             // nothing clear in time: wait out of its reach until a lane is
             dodgeX = Float.NaN; dodgeBox = null
             if (dz < 0.6f) return 0
@@ -625,12 +723,14 @@ class Autopilot(
      */
     private fun arrival(dz: Float): Float {
         val h = 1f / 60f
-        val vm = (if (g.speedOn) Tune.RUN_FAST else Tune.RUN) * max(0.85f, min(1f, g.swipe.cruise))
-        var v = max(0f, p.vz); var z = 0f; var t = 0f; var tb = max(0f, p.boostT)
+        val vRun = (if (g.speedOn) Tune.RUN_FAST else Tune.RUN) * max(0.85f, min(1f, g.swipe.cruise))
+        var v = max(0f, p.vz); var z = 0f; var t = 0f; var tb = max(0f, p.boostT); var td = max(0f, p.dashT)
         while (z < dz && t < 5f) {
+            // a speed pad's burst carries him at a dash while it lasts
+            val vm = if (td > 0f) Tune.RUN_DASH else vRun
             val target = if (tb > 0f && v > vm) v else vm
             v = if (v < target) min(target, v + 16f * h) else max(target, v - 14f * h)
-            z += v * h; t += h; tb -= h
+            z += v * h; t += h; tb -= h; td -= h
         }
         return t
     }
@@ -785,7 +885,8 @@ class Autopilot(
     private var maxDvz = 0f
     private var maxDx = 0f; private var maxDvx = 0f
     private var penetrations = 0
-    private var hurts = 0; private var trapHurts = 0; private var logHits = 0
+    private var hurts = 0; private var trapHurts = 0; private var logHits = 0; private var minionHits = 0; private var boltHits = 0
+    private var wavesStarted = 0; private var wavesEnded = 0; private var lastAnyWave = false
     private var lastHurt = 0f
     private var jumpsWhileMoving = 0; private var jumpsLanded = 0
     private var airFrom = -1; private var airVz = 0f
@@ -814,6 +915,8 @@ class Autopilot(
         if (p.hurtFlash > lastHurt + 0.5f && normal) {
             hurts++; if (p.z in plan.trapZ0..plan.trapZ1) trapHurts++
             if (g.lastHurt == "mace") logHits++
+            if (g.lastHurt == "minion") minionHits++
+            if (g.lastHurt == "bolt") boltHits++
             note("hit (hurt flash) at z=${"%.1f".format(p.z)}: ${g.lastHurt}")
         }
         lastHurt = p.hurtFlash
@@ -952,6 +1055,12 @@ class Autopilot(
         } else if (level == 6) {
             result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the fast slide on the left: $forkRight, back on the main path after it: $forkRejoined")
             result("7 moving around obstacles", logHits == 0 && trapHurts == 0, "waited for maces $logWaits times and sliding spiked blocks $boxWaits times, jumped $laserJumps laser beams; mace hits: $logHits, hits in the hazard gardens: $trapHurts")
+        } else if (level == 7) {
+            result("6 steering across block paths (fork)", forkRight && forkRejoined, "took the crystal bridge on the left: $forkRight, back on the main path after it: $forkRejoined")
+            result("7 moving around obstacles", logHits == 0 && trapHurts == 0, "waited for maces $logWaits times, sliding blocks and imps $boxWaits times, swooping imps $swoopWaits times (jumped $swoopJumps), dodged $boltDodges bolts, jumped $laserJumps beams; mace hits: $logHits, hits in the gauntlet: $trapHurts")
+            val waves = g.world.waves.size
+            result("minion waves: every wave came and vanished at its checkpoint", wavesStarted >= waves && wavesEnded >= waves,
+                "$wavesStarted of $waves waves started, $wavesEnded ended at their checkpoints; minion hits $minionHits, bolt hits $boltHits, stomps ${g.minions.stomps}")
         } else if (plan.trapZ0 < 9999f) {
             result("7 moving around obstacles", trapHurts == 0, "hits in the hazard section: $trapHurts")
         }

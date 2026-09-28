@@ -9,10 +9,12 @@ object BC {
     const val FORT = 13; const val BASALT = 14; const val WOOD = 15
     /** Level 6: the sky temple's sun-bleached stone (the floating islands, the temple steps). */
     const val SAND = 16
-    const val COUNT = 17
+    /** Level 7: the enchanted realm's moonstone (lavender-grey stone of the islands, towers and the gate's stairs). */
+    const val MOON = 17
+    const val COUNT = 18
 
     /** Colours drawn with the brick tone map (courses of stones or planks) instead of the cracked-stone ones. */
-    fun bricky(c: Int) = c == BRICK || c == FORT || c == WOOD || c == SAND
+    fun bricky(c: Int) = c == BRICK || c == FORT || c == WOOD || c == SAND || c == MOON
 
     /** 5-stop colour ramps: shadow, base, bright, highlight, white-hot. */
     val ramps: Array<IntArray> = arrayOf(
@@ -33,6 +35,7 @@ object BC {
         intArrayOf(0xFF161012.toInt(), 0xFF2E2426.toInt(), 0xFF4A3A38.toInt(), 0xFF766058.toInt(), 0xFFB8988A.toInt()),  // basalt (Level 5)
         intArrayOf(0xFF3A1E0C.toInt(), 0xFF6A3C1A.toInt(), 0xFF96602C.toInt(), 0xFFC4904E.toInt(), 0xFFEED0A0.toInt()),  // bridge planks (Level 5)
         intArrayOf(0xFF4A3A48.toInt(), 0xFF866E76.toInt(), 0xFFB09A98.toInt(), 0xFFD6C2B2.toInt(), 0xFFF4E8DA.toInt()),  // temple stone (Level 6)
+        intArrayOf(0xFF3A3050.toInt(), 0xFF6E6488.toInt(), 0xFF9C90B4.toInt(), 0xFFC8BCDA.toInt(), 0xFFF0E8FA.toInt()),  // moonstone (Level 7)
     )
 
     /** Representative colours (for particles, far LOD and silhouettes). */

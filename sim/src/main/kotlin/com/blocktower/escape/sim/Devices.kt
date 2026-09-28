@@ -18,7 +18,7 @@ import javax.imageio.ImageIO
  * bar at the bottom, drawn as translucent red bands). Writes one comparison sheet per screen to devices/.
  *
  *   devices out=sim-out            all screens
- *   devices out=sim-out only=home  one screen (home, daily, missions, vault, settings, map, card, level1..level6,
+ *   devices out=sim-out only=home  one screen (home, daily, missions, vault, settings, map, card, level1..level7,
  *                                  pause, gameover, results, results1)
  */
 class Devices(val assets: File, val out: File, val opts: Map<String, String>) {

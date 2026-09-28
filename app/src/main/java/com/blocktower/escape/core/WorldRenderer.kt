@@ -20,7 +20,8 @@ class WorldRenderer(val g: Game) {
     private object K { const val BLOCK = 0; const val COIN = 1; const val PLAYER = 2; const val BEACON = 3
         const val GUARD = 5; const val ROCK = 8; const val RIDE = 9; const val BUBBLE = 10; const val DECO = 11; const val LOG = 12
         const val PILLAR = 13; const val LOOPSEG = 14; const val RELIC = 15
-        const val SLIDESEG = 16; const val ISLAND = 17; const val LASER = 18; const val SPIKEBOX = 19 }
+        const val SLIDESEG = 16; const val ISLAND = 17; const val LASER = 18; const val SPIKEBOX = 19
+        const val MINION = 20; const val BOLT = 21; const val GEM = 22; const val CHAIN = 23 }
 
     private var n = 0
     private var kinds = IntArray(2048)
@@ -34,7 +35,8 @@ class WorldRenderer(val g: Game) {
     private val poly = FloatArray(64)
     private val hullIdx = IntArray(9)
     private var gfx: Gfx? = null
-    private val skyHaze = 0xFFA8D0FA.toInt()
+    /** The colour far things fade toward: the sky's blue (Level 7: the violet-pink of its dusk). */
+    private val skyHaze = if (g.spec.enchanted) 0xFFD6BEEE.toInt() else 0xFFA8D0FA.toInt()
     private val maxDepth = 56f
 
     private fun push(kind: Int, ref: Any, d2: Float) {
@@ -50,11 +52,12 @@ class WorldRenderer(val g: Game) {
         gfx = gr
         drawBackground(gr)
         if (g.spec.volcano && g.seaY > -99f) drawLava(gr, g.seaY, true)
-        if (g.spec.temple && g.seaY > -99f) drawLava(gr, g.seaY, true, art.clouds)
+        if (g.spec.skyIsles && g.seaY > -99f) drawLava(gr, g.seaY, true, art.clouds)
         if (g.spec.temple) drawHeli(gr)
         if (g.ev.lavaY > -50f) drawLava(gr, g.ev.lavaY, false)
         playerBox()
         drawGate(gr)
+        if (g.spec.enchanted) drawSkyLayer(gr)
         collect()
         java.util.Arrays.sort(keys, 0, n)
         for (i in n - 1 downTo 0) {
@@ -78,6 +81,10 @@ class WorldRenderer(val g: Game) {
                 K.ISLAND -> drawIsland(gr, r as Island)
                 K.LASER -> drawLaser(gr, r as Laser)
                 K.SPIKEBOX -> drawSpikeBox(gr, r as SpikeBox)
+                K.MINION -> drawMinion(gr, r as Minion)
+                K.BOLT -> drawBolt(gr, r as Bolt)
+                K.GEM -> drawGemPickup(gr, r as GemPickup)
+                K.CHAIN -> drawChain(gr, r as ChainLink)
             }
         }
         for (i in 0 until n) refs[i] = null
@@ -217,6 +224,26 @@ class WorldRenderer(val g: Game) {
             val dd = cam.depthOf(b.x, b.y + b.size * 0.5f, b.z)
             if (dd < 0.4f || dd > maxDepth) continue
             push(K.SPIKEBOX, b, cam.dist2(b.x, b.y + b.size * 0.5f, b.z))
+        }
+        // ---- Level 7: the Sorcerer's minions and their bolts, gems over the path, chains
+        for (m in g.minions.all) {
+            if (m.state == MS.HIDDEN || m.show <= 0.01f) continue
+            val dd = cam.depthOf(m.x, m.y + 0.5f, m.z)
+            if (dd < 0.4f || dd > maxDepth) continue
+            push(K.MINION, m, cam.dist2(m.x, m.y + 0.5f, m.z))
+        }
+        for (b in g.minions.bolts) if (b.on) push(K.BOLT, b, cam.dist2(b.x, b.y, b.z) - 0.2f)
+        for (gp in g.world.gemPicks) {
+            if (gp.collected) continue
+            val dd = cam.depthOf(gp.x, gp.y, gp.z)
+            if (dd < 0.5f || dd > maxDepth) continue
+            push(K.GEM, gp, cam.dist2(gp.x, gp.y, gp.z))
+        }
+        for (c in g.world.chains) {
+            val mx = (c.x0 + c.x1) * 0.5f; val my = (c.y0 + c.y1) * 0.5f; val mz = (c.z0 + c.z1) * 0.5f
+            val dd = cam.depthOf(mx, my, mz)
+            if (dd < 0.6f || dd > maxDepth) continue
+            push(K.CHAIN, c, cam.dist2(mx, my, mz))
         }
     }
     private val tv = FloatArray(12)
@@ -833,11 +860,11 @@ class WorldRenderer(val g: Game) {
 
     // ------------------------------------------------------------------ the Ancient Gate
     /** Gate billboard size in world units and where its threshold sits in the picture (0 top, 1 bottom). */
-    private val gateW get() = when { g.spec.volcano -> 16f; g.spec.temple -> 14f; else -> 13.4f }
-    private val gateThreshold get() = when { g.spec.volcano -> 0.667f; g.spec.temple -> 0.8f; else -> 0.647f }
-    private val archU get() = when { g.spec.volcano -> 0.523f; g.spec.temple -> 0.4955f; else -> 0.516f }
-    private val archV get() = when { g.spec.volcano -> 0.545f; g.spec.temple -> 0.58f; else -> 0.4f }
-    private val archR get() = when { g.spec.volcano -> 0.088f; g.spec.temple -> 0.075f; else -> 0.085f }
+    private val gateW get() = when { g.spec.volcano -> 16f; g.spec.temple -> 14f; g.spec.enchanted -> 15f; else -> 13.4f }
+    private val gateThreshold get() = when { g.spec.volcano -> 0.667f; g.spec.temple -> 0.8f; g.spec.enchanted -> 0.879f; else -> 0.647f }
+    private val archU get() = when { g.spec.volcano -> 0.523f; g.spec.temple -> 0.4955f; g.spec.enchanted -> 0.5f; else -> 0.516f }
+    private val archV get() = when { g.spec.volcano -> 0.545f; g.spec.temple -> 0.58f; g.spec.enchanted -> 0.682f; else -> 0.4f }
+    private val archR get() = when { g.spec.volcano -> 0.088f; g.spec.temple -> 0.075f; g.spec.enchanted -> 0.175f; else -> 0.085f }
     private val gq = FloatArray(8)
 
     /**
@@ -869,6 +896,11 @@ class WorldRenderer(val g: Game) {
             // exactly where the sky temple stands in the Level 6 design, riding on the plate
             lw = 220f * jbS * k; lcx = jbLeft + (544f + 110f) * jbS; ltop = jbTop + 96f * jbS
         }
+        if (g.spec.enchanted) {
+            // exactly where the Celestial Gate stands in the Level 7 design (its cut-out spans x 446..834, from y 84),
+            // riding on the plate, growing a little as the boy gets nearer
+            lw = 388f * jbS * k; lcx = jbLeft + 640f * jbS; ltop = jbTop + (320f - 236f * k) * jbS
+        }
         // the real gate at the end of the path
         val gh = gateW * aspect
         val top = po.y + gh * gateThreshold
@@ -893,9 +925,17 @@ class WorldRenderer(val g: Game) {
         // small ring in a big building: its light stays round the portal)
         gr.setAdditive(true)
         if (g.spec.temple) gr.glow(ax, ay, gw * (0.16f + 0.04f * near), Col.withA(0xFFC070FF.toInt(), fade * (0.14f + 0.1f * near + 0.08f * pulse(t, 2f))))
+        else if (g.spec.enchanted) {
+            // the castle's violet halo and the star portal's golden light behind it (softer once the castle is bigger
+            // than the screen, so its light never washes the picture out)
+            val big = lerp(0.3f, 1f, clamp01(gr.width * 1.2f / max(1f, gw)))
+            gr.glow(ax, ay - gH * 0.1f, gw * (0.5f + 0.05f * near), Col.withA(0xFFB070FF.toInt(), big * fade * (0.2f + 0.1f * near + 0.06f * pulse(t, 2f))))
+            gr.glow(ax, ay, gw * (0.24f + 0.04f * near), Col.withA(0xFFFFE0A0.toInt(), big * fade * (0.16f + 0.12f * near + 0.3f * po.charge)))
+        }
         else gr.glow(ax, ay, gw * (0.55f + 0.1f * near), Col.withA(0xFFFF9A40.toInt(), fade * (0.18f + 0.18f * near + 0.1f * pulse(t, 2f))))
         gr.setAdditive(false)
         gr.image(img, cx - gw * 0.5f, ty, gw, gH, fade)
+        if (g.spec.enchanted) { celestialPortal(gr, ax, ay, gw, fade, near, open, po.charge, w); sealedBarrier(gr, ax, ay, archR * gw, gw, fade, open, dz); return }
         // the portal inside the arch: swirls, brightens as you approach, blazes when activated
         val charge = po.charge
         val r = archR * gw * (1f + 0.05f * sin(t * 3f))
@@ -931,13 +971,93 @@ class WorldRenderer(val g: Game) {
             val sy = ay + r * 1.2f - ph * r * 3.2f
             star4(gr, sx, sy, gw * 0.012f * (1f - ph) * (1f + near), Col.withA(0xFFFFF0C0.toInt(), fade * (1f - ph)))
         }
-        // sealed: a magic barrier while the blue blocks are still missing and the player is close
-        if (!open && dz < 22f && g.state == GS.PLAY) {
-            val a = fade * clamp01((22f - dz) / 6f) * (0.35f + 0.15f * pulse(t, 4f))
-            gr.setAdditive(true)
-            gr.glow(ax, ay, r * 2.4f, Col.withA(0xFF60A8FF.toInt(), a))
-            gr.setAdditive(false)
-            gr.strokeCircle(ax, ay, r * 1.5f, gw * 0.008f, Col.withA(0xFFB8E0FF.toInt(), a * 1.6f))
+        sealedBarrier(gr, ax, ay, r, gw, fade, open, dz)
+    }
+
+    /** Sealed: a magic barrier over the portal while the blue blocks are still missing and the player is close. */
+    private fun sealedBarrier(gr: Gfx, ax: Float, ay: Float, r: Float, gw: Float, fade: Float, open: Boolean, dz: Float) {
+        if (open || dz >= 22f || g.state != GS.PLAY) return
+        val a = fade * clamp01((22f - dz) / 6f) * (0.35f + 0.15f * pulse(g.t, 4f))
+        gr.setAdditive(true)
+        gr.glow(ax, ay, r * 2.4f, Col.withA(0xFF60A8FF.toInt(), a))
+        gr.setAdditive(false)
+        gr.strokeCircle(ax, ay, r * 1.5f, gw * 0.008f, Col.withA(0xFFB8E0FF.toInt(), a * 1.6f))
+    }
+
+    private val ringPts = FloatArray(2 * 49)
+    /**
+     * The Celestial Gate's star portal (Level 7): the design's golden star turning slowly in a ring of violet and blue
+     * light, two golden rings orbiting the castle, a beam of light rising from it into the sky and sparkles drifting out.
+     * It brightens as the boy approaches and blazes when he enters.
+     */
+    private fun celestialPortal(gr: Gfx, ax: Float, ay: Float, gw: Float, fade: Float, near: Float, open: Boolean, charge: Float, inWorld: Float) {
+        val t = g.t
+        val r = archR * gw
+        // (softer once the castle is bigger than the screen: the portal's light never washes the picture out)
+        val big = lerp(0.4f, 1f, clamp01(gfx!!.width * 1.2f / max(1f, gw)))
+        val intensity = big * fade * (0.45f + 0.25f * near + (if (open) 0.15f else 0f) + 0.45f * charge)
+        gr.setAdditive(true)
+        // the swirl of violet and blue light inside the ring
+        val spin = t * (0.7f + 0.6f * near + 5f * charge)
+        for (layer in 0..1) {
+            val rr = r * (if (layer == 0) 0.95f else 0.7f)
+            val a0 = if (layer == 0) spin else -spin * 1.3f
+            for (i in 0..3) {
+                val a = a0 + i * TAU / 4f + TAU / 8f
+                gq[i * 2] = ax + cos(a) * rr * 1.414f; gq[i * 2 + 1] = ay + sin(a) * rr * 1.414f
+            }
+            gr.imageQuad(art.swirl, 0f, 0f, art.swirl.w.toFloat(), art.swirl.h.toFloat(), gq, intensity * (if (layer == 0) 0.55f else 0.4f))
+        }
+        gr.glow(ax, ay, r * (1.1f + 0.6f * charge), Col.withA(0xFF8A7CFF.toInt(), intensity * 0.35f))
+        // the golden star, turning slowly
+        val sa = t * 0.35f
+        for (i in 0 until 10) {
+            val rr = if (i % 2 == 0) r * 0.62f else r * 0.26f
+            val a = sa + i * TAU / 10f - TAU / 4f
+            poly[i * 2] = ax + cos(a) * rr; poly[i * 2 + 1] = ay + sin(a) * rr
+        }
+        gr.fillPoly(poly, 10, Col.withA(0xFFFFE6A0.toInt(), intensity * (0.35f + 0.15f * pulse(t, 3f))))
+        gr.glow(ax, ay, r * 0.55f, Col.withA(0xFFFFF4D8.toInt(), intensity * (0.4f + 0.4f * charge)))
+        // two golden rings orbiting the castle (as the design's rings sweep round it), brighter on their near side
+        for (k in 0..1) {
+            val rx = gw * (if (k == 0) 0.6f else 0.5f); val ry = gw * (if (k == 0) 0.075f else 0.06f)
+            val tilt = if (k == 0) -0.16f else 0.12f
+            val ph = t * (if (k == 0) 0.5f else -0.65f)
+            val cxr = ax; val cyr = ay - gw * (if (k == 0) 0.02f else 0.12f)
+            val ct = cos(tilt); val st = sin(tilt)
+            var px0 = 0f; var py0 = 0f
+            for (i in 0..48) {
+                val a = i / 48f * TAU
+                val ex = cos(a) * rx; val ey = sin(a) * ry
+                val x = cxr + ex * ct - ey * st; val y = cyr + ex * st + ey * ct
+                if (i > 0) {
+                    val front = 0.5f + 0.5f * sin(a)
+                    val shimmer = 0.6f + 0.4f * sin(a * 3f - ph * 4f)
+                    gr.line(px0, py0, x, y, gw * 0.009f * (0.6f + 0.6f * front), Col.withA(0xFFFFD27A.toInt(), fade * (0.18f + 0.4f * front) * shimmer * (0.7f + 0.3f * near)))
+                }
+                px0 = x; py0 = y
+            }
+            // sparks racing round the ring
+            for (j in 0 until 3) {
+                val a = ph + j * TAU / 3f
+                val ex = cos(a) * rx; val ey = sin(a) * ry
+                val front = 0.5f + 0.5f * sin(a)
+                star4(gr, cxr + ex * ct - ey * st, cyr + ex * st + ey * ct, gw * 0.014f * (0.6f + front), Col.withA(0xFFFFF0C0.toInt(), fade * (0.4f + 0.6f * front)))
+            }
+        }
+        // the beam of light rising from the portal into the sky (softer up close, so the castle stays readable)
+        val bw = r * (0.22f + 0.04f * sin(t * 5f))
+        val ba = fade * (0.4f + 0.2f * pulse(t, 3f) + 0.3f * charge) * (1f - 0.6f * inWorld * (1f - charge))
+        gr.fillRectGradient(ax - bw, -20f, ax + bw, ay - r * 0.9f, Col.withA(0xFFE0C0FF.toInt(), ba * 0.5f), Col.withA(0xFFFFF0FF.toInt(), ba))
+        gr.fillRectGradient(ax - bw * 0.35f, -20f, ax + bw * 0.35f, ay - r * 0.9f, Col.withA(Col.WHITE, ba * 0.6f), Col.withA(Col.WHITE, ba))
+        gr.setAdditive(false)
+        // sparkles drifting out of the portal, more of them the closer you get
+        val sparks = 8 + (14 * near).toInt()
+        for (i in 0 until sparks) {
+            val ph = fract(t * 0.3f + i / sparks.toFloat())
+            val sx = ax + sin(i * 2.3f + t) * r * (0.7f + 1.2f * ph)
+            val sy = ay + r * 0.8f - ph * r * 3f
+            star4(gr, sx, sy, gw * 0.011f * (1f - ph) * (1f + near), Col.withA(if (i % 3 == 0) 0xFFD8B8FF.toInt() else 0xFFFFF0C0.toInt(), fade * (1f - ph)))
         }
     }
 
@@ -1108,10 +1228,10 @@ class WorldRenderer(val g: Game) {
         val climb = clamp((cam.ey - 3.3f) * 1.6f, 0f, 60f) * s
         jbS = s
         // framed right of the design's centre so the fortress and its portal stand clear of the HUD's target panel
-        val yawShift = if (g.spec.temple) clamp(-cam.yaw * 90f, -40f, 40f) * s else 0f
+        val yawShift = if (g.spec.skyIsles) clamp(-cam.yaw * 90f, -40f, 40f) * s else 0f
         jbLeft = clamp(w * 0.5f - (art.bgArtX + 580f) * s + yawShift, w - art.artW * s + 22f * s, -22f * s) + px
         jbTop = -art.bgArtY * s - 10f * s + climb
-        gr.fillRect(0f, 0f, w, h, if (g.spec.temple) 0xFFB8CCF2.toInt() else 0xFFE0805A.toInt())
+        gr.fillRect(0f, 0f, w, h, when { g.spec.temple -> 0xFFB8CCF2.toInt(); g.spec.enchanted -> 0xFFE4C4EC.toInt(); else -> 0xFFE0805A.toInt() })
         val roll = cam.roll
         val rolled = abs(roll) > 0.0005f
         if (rolled) {
@@ -1122,11 +1242,13 @@ class WorldRenderer(val g: Game) {
         gr.image(art.bg, jbLeft, jbTop, art.artW * s, art.artH * s)
         if (jbTop > 0f) {
             if (g.spec.temple) gr.fillRectGradient(-40f, -40f, w + 40f, jbTop + 2f, 0xFF2A64D0.toInt(), 0xFF3A78DE.toInt())
+            else if (g.spec.enchanted) gr.fillRectGradient(-40f, -40f, w + 40f, jbTop + 2f, 0xFF4A34A8.toInt(), 0xFF5C44B8.toInt())
             else gr.fillRectGradient(-40f, -40f, w + 40f, jbTop + 2f, 0xFF5A4E9A.toInt(), 0xFF6A5AA8.toInt())
         }
         if (rolled) gr.restore()
         // warm haze of the lava below, rising from the bottom of the screen (Level 6: a soft cloud glow)
         if (g.spec.temple) gr.fillRectGradient(0f, h * 0.5f, w, h, 0x00F4F0FF, 0x30F4F0FF)
+        else if (g.spec.enchanted) gr.fillRectGradient(0f, h * 0.5f, w, h, 0x00FFE8F6, 0x34FFE8F6)
         else gr.fillRectGradient(0f, h * 0.45f, w, h, 0x00FF7A30, 0x40FF7A30)
     }
 
@@ -1139,6 +1261,8 @@ class WorldRenderer(val g: Game) {
             DK.TORCH -> drawTorch(gr, d)
             DK.BANNER -> drawBanner(gr, d)
             DK.RAIL -> drawRail(gr, d)
+            DK.SPIRE -> drawSpire(gr, d)
+            DK.CRYSTAL -> drawCrystal(gr, d)
         }
     }
 
@@ -1227,14 +1351,14 @@ class WorldRenderer(val g: Game) {
         val v1 = min(tex.h.toFloat(), (top - bottom) * ts)
         val ex = cam.ex; val ey = cam.ey; val ez = cam.ez
         val haze = hazeFor(depth) * 0.8f
-        val hz = if (g.spec.temple) skyHaze else 0xFFFFA070.toInt()
+        val hz = if (g.spec.skyIsles) skyHaze else 0xFFFFA070.toInt()
         if (ez > z1) { quad(6, 7, 3, 2); gr.imageQuad(tex, 0f, 0f, ts, v1, q, a, 0.6f, hz, haze) }
         if (ex < x0) { quad(7, 4, 0, 3); gr.imageQuad(tex, 0f, 0f, ts * pl.d, v1, q, a, 0.62f, hz, haze) }
         if (ex > x1) { quad(5, 6, 2, 1); gr.imageQuad(tex, 0f, 0f, ts * pl.d, v1, q, a, 0.62f, hz, haze) }
         if (ez < z0) { quad(4, 5, 1, 0); gr.imageQuad(tex, 0f, 0f, ts * pl.w, v1, q, a, 0.8f, hz, haze) }
         if (ey > top) { quad(7, 6, 5, 4); gr.imageQuad(art.top[art.pillarColor][1], 0f, 0f, ts, ts, q, a, 0.95f, 0xFFFFA070.toInt(), haze) }
         // the lava's glow on the foot of the pillar
-        if (!g.spec.temple && cam.project(pl.x, bottom + 1.2f, z0) ) {
+        if (!g.spec.skyIsles && cam.project(pl.x, bottom + 1.2f, z0) ) {
             val sc = cam.scaleAt(cam.depth)
             gr.setAdditive(true)
             gr.glow(cam.sx, cam.sy, 1.6f * sc * pl.w, Col.withA(0xFFFF6A10.toInt(), 0.35f * a))
@@ -1406,9 +1530,17 @@ class WorldRenderer(val g: Game) {
         val depth0 = cam.depthOf(l.px, l.py, l.pz)
         val a = nearFade(depth0)
         if (a <= 0.01f) return
-        // the beam across the path at the pivot
-        drawBox(gr, l.px - 3.1f, l.py, l.pz - 0.32f, l.px + 3.1f, l.py + 0.55f, l.pz + 0.32f, BC.FORT, 0, a, 0f, null)
+        val hanging = l.amp < 0.2f
+        // the beam across the path at the pivot (a spiked ball hanging beside the path hangs from far above instead)
+        if (!hanging) drawBox(gr, l.px - 3.1f, l.py, l.pz - 0.32f, l.px + 3.1f, l.py + 0.55f, l.pz + 0.32f, if (g.spec.enchanted) BC.MOON else BC.FORT, 0, a, 0f, null)
         val bx = l.cx; val by = l.cy
+        if (hanging && cam.project(l.px, l.py + 7f, l.pz)) {
+            val tx = cam.sx; val ty = cam.sy
+            if (cam.project(l.px, l.py, l.pz)) {
+                val sc = cam.scaleAt(cam.depth)
+                gr.line(tx, ty, cam.sx, cam.sy, max(1.5f, 0.07f * sc), Col.withA(0xFF2A2630.toInt(), a))
+            }
+        }
         // the chain: links from the pivot to the ball
         val n = 9
         for (i in 0 until n) {
@@ -1645,6 +1777,16 @@ class WorldRenderer(val g: Game) {
                 gr.fillRectGradient(w * 0.88f, 0f, w, h, 0x00FF2010, Col.withA(0xFFFF2010.toInt(), a * 0.6f), false)
             }
         }
+        // Level 7: a purple glow at the edges while the minions close in
+        if (g.minions.pursuit && g.state == GS.PLAY) {
+            val k = g.minions.meter
+            if (k > 0.35f) {
+                val a = (k - 0.35f) * 0.8f * (0.7f + 0.3f * pulse(t, 9f))
+                gr.fillRectGradient(0f, h * 0.74f, w, h, 0x00A030F0, Col.withA(0xFFA030F0.toInt(), a))
+                gr.fillRectGradient(0f, 0f, w * 0.12f, h, Col.withA(0xFFA030F0.toInt(), a * 0.6f), 0x00A030F0, false)
+                gr.fillRectGradient(w * 0.88f, 0f, w, h, 0x00A030F0, Col.withA(0xFFA030F0.toInt(), a * 0.6f), false)
+            }
+        }
         if (g.ev.finalOn && g.state == GS.PLAY) {
             val k = 0.12f + 0.05f * pulse(t, 3f)
             gr.fillRectGradient(0f, h * 0.8f, w, h, 0x00FF8A30, Col.withA(0xFFFF8A30.toInt(), k))
@@ -1852,7 +1994,7 @@ class WorldRenderer(val g: Game) {
         tier(gr, tex, ts, isl.x, isl.z, isl.w, isl.d, slabB, isl.x + ox * 0.5f, isl.z + oz * 0.5f, isl.w * 0.66f, isl.d * 0.66f, midY, a, haze, 0.62f, 0.5f)
         tier(gr, tex, ts, isl.x + ox * 0.5f, isl.z + oz * 0.5f, isl.w * 0.66f, isl.d * 0.66f, midY, isl.x + ox, isl.z + oz, isl.w * 0.12f, isl.d * 0.12f, botY, a, haze, 0.5f, 0.36f)
         // the slab
-        drawBox(gr, x0, slabB, z0, x1, isl.top, z1, BC.SAND, isl.seed % 3, a, 0f, null)
+        drawBox(gr, x0, slabB, z0, x1, isl.top, z1, art.pillarColor, isl.seed % 3, a, 0f, null)
         // moss on top and hanging over the edges
         if (cam.ey > isl.top && faceQuad(x0, isl.top + 0.005f, z1, x1, isl.top + 0.005f, z1, x1, isl.top + 0.005f, z0, x0, isl.top + 0.005f, z0)) {
             for (i in 0..7) poly[i] = iq[i]
@@ -1866,7 +2008,8 @@ class WorldRenderer(val g: Game) {
             val left = (k + isl.seed) % 2 == 0
             val px = if (left) x0 + 0.5f else x1 - 0.5f
             val pz = lerp(z0 + 0.6f, z1 - 0.6f, fract(k * 0.618f + isl.seed * 0.31f))
-            drawPalm(gr, px, isl.top, pz, 2.1f + 0.4f * fract(k * 0.37f + isl.seed * 0.11f), if (left) -1f else 1f, a, haze)
+            if (g.spec.enchanted) drawBlossom(gr, px, isl.top, pz, 1.7f + 0.4f * fract(k * 0.37f + isl.seed * 0.11f), if (left) -1f else 1f, a, haze, isl.seed + k)
+            else drawPalm(gr, px, isl.top, pz, 2.1f + 0.4f * fract(k * 0.37f + isl.seed * 0.11f), if (left) -1f else 1f, a, haze)
         }
         // waterfalls pouring off its edges into the clouds
         val fallH = isl.depth + 7f
@@ -1988,7 +2131,7 @@ class WorldRenderer(val g: Game) {
         val base = l.y - 1.35f
         for (side in 0..1) {
             val px = if (side == 0) l.x0 - 0.32f else l.x1 + 0.32f
-            drawBox(gr, px - 0.2f, base, l.z - 0.2f, px + 0.2f, l.y - 0.2f, l.z + 0.2f, BC.SAND, 1, 1f, 0f, null)
+            drawBox(gr, px - 0.2f, base, l.z - 0.2f, px + 0.2f, l.y - 0.2f, l.z + 0.2f, art.pillarColor, 1, 1f, 0f, null)
             drawBox(gr, px - 0.3f, l.y - 0.22f, l.z - 0.3f, px + 0.3f, l.y + 0.3f, l.z + 0.3f, BC.IRON, 0, 1f, 0f, null)
             if (cam.project(px + (if (side == 0) 0.31f else -0.31f), l.y + 0.04f, l.z)) {
                 val sc = cam.scaleAt(cam.depth)
@@ -2027,7 +2170,7 @@ class WorldRenderer(val g: Game) {
         if (b.amp > 0f) {
             val ry = b.y + 3.5f
             val rl = b.x0 - b.amp - 1.1f; val rr = b.x0 + b.amp + 1.1f
-            for (px in floatArrayOf(rl, rr)) drawBox(gr, px - 0.16f, b.y - 1.2f, b.z - 0.16f, px + 0.16f, ry + 0.14f, b.z + 0.16f, BC.SAND, 2, 1f, 0f, null)
+            for (px in floatArrayOf(rl, rr)) drawBox(gr, px - 0.16f, b.y - 1.2f, b.z - 0.16f, px + 0.16f, ry + 0.14f, b.z + 0.16f, if (g.spec.enchanted) art.pillarColor else BC.SAND, 2, 1f, 0f, null)
             drawBox(gr, rl, ry, b.z - 0.05f, rr, ry + 0.1f, b.z + 0.05f, BC.STONE, 0, 1f, 0f, null)
             if (cam.project(b.x, ry, b.z)) {
                 val x0s = cam.sx; val y0s = cam.sy
@@ -2098,5 +2241,350 @@ class WorldRenderer(val g: Game) {
         val ta = t * 44f
         gr.line(tx - kotlin.math.cos(ta) * 14f * s, ty - kotlin.math.sin(ta) * 14f * s, tx + kotlin.math.cos(ta) * 14f * s, ty + kotlin.math.sin(ta) * 14f * s, max(1f, 2.5f * s), 0x9A2A2A2E.toInt())
         gr.restore()
+    }
+
+    // ------------------------------------------------------------------ Level 7: the enchanted sky realm
+    private val SPIRE_ORDER = intArrayOf(2, 3, 1, 0)
+    private val SPIRE_CX = floatArrayOf(-1f, 1f, 1f, -1f); private val SPIRE_CZ = floatArrayOf(-1f, -1f, 1f, 1f)
+    private val SPIRE_SHADE = floatArrayOf(0.85f, 1f, 0.7f, 0.6f)
+    private val CRYSTAL_COLS = intArrayOf(0xFFB04CF0.toInt(), 0xFFF070D8.toInt(), 0xFF6AA8FF.toInt(), 0xFFD890FF.toInt())
+    private val CRYSTAL_SHARDS = floatArrayOf(-0.32f, 0.1f, 0.9f, -8f, 0.02f, 0f, 1.35f, 4f, 0.3f, -0.1f, 0.8f, 16f, -0.1f, 0.25f, 0.6f, -20f)
+    private val BLOSSOM_PINKS = intArrayOf(0xFFE04AB8.toInt(), 0xFFF27AD2.toInt(), 0xFFB838C8.toInt(), 0xFFFFA8E4.toInt())
+
+    /**
+     * The sky above the course, riding on the plate where the Level 7 design shows it: the purple-and-gold balloon
+     * drifting, and the hooded Sorcerer looming on the left with his minions about him (his eyes glow; he raises his
+     * claw with a flash of purple lightning when he sends a wave down). His imps fly down to the course while a wave is
+     * on and come back after; once the last wave is over he withdraws into the mist.
+     */
+    private fun drawSkyLayer(gr: Gfx) {
+        val s = jbS; val L = jbLeft; val T = jbTop; val t = g.t
+        val mn = g.minions
+        // the balloon, drifting slowly
+        art.balloon?.let { img ->
+            val dx = sin(t * 0.13f) * 18f + sin(t * 0.41f) * 3f; val dy = sin(t * 0.7f) * 5f
+            gr.image(img, L + (157f + dx) * s, T + (554f + dy) * s, 96f * s, 114f * s)
+            gr.setAdditive(true); gr.glow(L + (206f + dx) * s, T + (648f + dy) * s, 18f * s, Col.withA(0xFFFFC860.toInt(), 0.5f + 0.2f * pulse(t, 5f))); gr.setAdditive(false)
+        }
+        val away = mn.retreat
+        val show = 1f - smooth(away)
+        if (show > 0.01f) {
+            art.sorcerer?.let { img ->
+                val bob = sin(t * 1.1f) * 5f
+                val rise = -away * 60f
+                val sc = 1f + 0.015f * sin(t * 0.9f) - 0.15f * away
+                val bx = L + (186f + 172f * (1f - sc)) * s; val by = T + (262f + bob + rise + 169f * (1f - sc)) * s
+                val w = 344f * s * sc; val h = 338f * s * sc
+                val cast = mn.cast
+                gr.setAdditive(true)
+                gr.glow(L + 330f * s, T + (420f + bob + rise) * s, 230f * s, Col.withA(0xFF9040E0.toInt(), show * (0.22f + 0.1f * pulse(t, 1.5f) + 0.35f * cast)))
+                gr.setAdditive(false)
+                gr.image(img, bx, by, w, h, show)
+                // his eyes, and the purple lightning crackling round his claw (a burst of it when he casts)
+                gr.setAdditive(true)
+                val ea = show * (0.55f + 0.25f * pulse(t, 2.3f) + 0.6f * cast)
+                val ex0 = bx + (274f - 186f) * s * sc; val ey0 = by + (395f - 262f) * s * sc
+                val ex1 = bx + (315f - 186f) * s * sc; val ey1 = by + (400f - 262f) * s * sc
+                gr.glow(ex0, ey0, 16f * s, Col.withA(0xFFE8A0FF.toInt(), ea)); gr.glow(ex1, ey1, 15f * s, Col.withA(0xFFE8A0FF.toInt(), ea))
+                val hx = bx + (455f - 186f) * s * sc; val hy = by + (455f - 262f) * s * sc
+                gr.glow(hx, hy, 70f * s, Col.withA(0xFFB060FF.toInt(), show * (0.18f + 0.5f * cast)))
+                val zap = cast > 0.05f || fract(t * 0.45f) < 0.07f
+                if (zap) for (k in 0 until (if (cast > 0.05f) 4 else 2)) lightning(gr, hx, hy, hx + (sin(t * 3f + k * 2.1f) * 90f + 40f) * s, hy + (60f + 50f * k) * s, 8f * s, show * (0.5f + 0.5f * cast), k + (t * 20f).toInt())
+                gr.setAdditive(false)
+            }
+        }
+        // his minions about him in the sky (they fly down to the course while a wave is on)
+        val fa = (1f - mn.skyAway) * show
+        if (fa > 0.01f) {
+            skyImp(gr, art.minionShip, 58f, 394f, 112f, 152f, 0f, fa, 0xFFFFD040.toInt())
+            skyImp(gr, art.minionHat2, 0f, 400f, 77f, 110f, 1.3f, fa, 0xFFE070FF.toInt())
+            skyImp(gr, art.minionHat, 310f, 501f, 105f, 112f, 2.2f, fa, 0xFFFFA030.toInt())
+            skyImp(gr, art.minionOrb, 286f, 620f, 93f, 110f, 3.1f, fa, 0xFFFFC040.toInt())
+        }
+    }
+
+    private fun skyImp(gr: Gfx, img: Img?, x: Float, y: Float, w: Float, h: Float, ph: Float, a: Float, eye: Int) {
+        img ?: return
+        val s = jbS; val t = g.t
+        val dx = sin(t * 0.8f + ph) * 6f; val dy = sin(t * 1.7f + ph * 1.3f) * 7f - (1f - a) * 40f
+        gr.image(img, jbLeft + (x + dx) * s, jbTop + (y + dy) * s, w * s, h * s, a)
+        gr.setAdditive(true); gr.glow(jbLeft + (x + w * 0.5f + dx) * s, jbTop + (y + h * 0.55f + dy) * s, w * 0.45f * s, Col.withA(eye, 0.18f * a * (0.7f + 0.3f * pulse(t + ph, 3f)))); gr.setAdditive(false)
+    }
+
+    /** A jagged bolt of purple lightning between two screen points. */
+    private fun lightning(gr: Gfx, x0: Float, y0: Float, x1: Float, y1: Float, width: Float, a: Float, seed: Int) {
+        var px = x0; var py = y0
+        val n = 6
+        for (i in 1..n) {
+            val u = i / n.toFloat()
+            val j = if (i == n) 0f else (fract(sin((seed * 31 + i) * 12.9898f) * 43758.547f) - 0.5f) * 0.35f
+            val nx = lerp(x0, x1, u) + (y1 - y0) * j; val ny = lerp(y0, y1, u) - (x1 - x0) * j
+            gr.line(px, py, nx, ny, width, Col.withA(0xFFB070FF.toInt(), a * 0.5f))
+            gr.line(px, py, nx, ny, width * 0.35f, Col.withA(0xFFF4E0FF.toInt(), a))
+            px = nx; py = ny
+        }
+    }
+
+    /**
+     * One of the Sorcerer's minions on the course: the design's imp standing in the world facing the camera. It drops
+     * out of a purple flash when it appears, hops as it patrols, glows before a swoop, flares its eyes before a lunge,
+     * is squashed flat by a stomp and vanishes in a puff of smoke.
+     */
+    private fun drawMinion(gr: Gfx, m: Minion) {
+        val img = when (m.kind) {
+            MK.SWOOP -> art.minionOrb
+            MK.BOMBER -> art.minionShip
+            MK.CHASER -> art.minionHat2
+            else -> if (m.look == 1) art.minionHat2 else art.minionHat
+        } ?: return
+        val t = g.t
+        val worldH = when (m.kind) { MK.SWOOP -> 1.12f; MK.BOMBER -> 2.0f; MK.CHASER -> 1.3f; else -> 1.35f }
+        val onGround = m.kind == MK.PATROL
+        // patrollers stand on the path; the fliers are drawn round their middle
+        val baseY = if (onGround) m.y else m.y - worldH * 0.45f
+        if (onGround && m.state != MS.APPEAR) {
+            val gy = m.spot?.y ?: m.y
+            drawShadow(gr, m.x, m.z, gy, m.show * 0.8f, 0.34f, 0.24f)
+        }
+        // swooper: the path of its next pass, dotted and glowing, before it swoops
+        if (m.kind == MK.SWOOP && m.warn > 0.01f && m.state == MS.ACTIVE) swoopWarning(gr, m)
+        if (!cam.project(m.x, baseY, m.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        var a = m.show * nearFade(cam.depth)
+        if (a <= 0.01f) return
+        var h = worldH * sc
+        var sy = 1f
+        if (m.state == MS.STOMPED) sy = max(0.15f, 1f - m.t * 5f)
+        if (m.state == MS.APPEAR && onGround) { val u = clamp01(m.t / 0.6f); sy = 0.7f + 0.3f * easeOutBack(u) }
+        val w = h * img.w / img.h
+        val bx = cam.sx; val by = cam.sy
+        val lunging = m.state == MS.LUNGE
+        val wind = lunging && m.t < MinionSystem.WINDUP
+        // the purple aura, stronger when it is about to strike
+        gr.setAdditive(true)
+        val eye = when (m.kind) { MK.CHASER -> 0xFFE070FF.toInt(); MK.SWOOP, MK.BOMBER -> 0xFFFFC040.toInt(); else -> if (m.look == 1) 0xFFE070FF.toInt() else 0xFFFFA030.toInt() }
+        gr.glow(bx, by - h * 0.5f, w * 0.8f, Col.withA(0xFFA050F0.toInt(), a * (0.2f + (if (wind) 0.4f * pulse(t, 14f) else 0f) + 0.35f * m.warn)))
+        if (m.state == MS.APPEAR) gr.glow(bx, by - h * 0.5f, w * (1.4f - clamp01(m.t / 0.6f)), Col.withA(0xFFE0A0FF.toInt(), a * 0.7f * (1f - clamp01(m.t / 0.6f))))
+        gr.setAdditive(false)
+        gr.save(); gr.translate(bx, by)
+        val tilt = when {
+            m.kind == MK.SWOOP && m.crossing -> m.face * 14f
+            m.kind == MK.CHASER -> m.face * 8f + sin(t * 4f + m.side) * 4f
+            m.kind == MK.BOMBER -> sin(t * 1.3f + m.side) * 5f
+            else -> sin(t * 7f + (m.spot?.phase ?: 0f)) * 5f
+        }
+        gr.rotate(tilt)
+        gr.scale(if (m.face < 0f) -1f else 1f, sy)
+        gr.image(img, -w * 0.5f, -h, w, h, a)
+        gr.restore()
+        // its eyes blaze before it strikes
+        if (wind || m.warn > 0.3f || (m.kind == MK.BOMBER && m.cool < 0.3f)) {
+            gr.setAdditive(true)
+            gr.glow(bx, by - h * 0.45f * sy, w * 0.32f, Col.withA(eye, a * (0.5f + 0.5f * pulse(t, 12f))))
+            gr.setAdditive(false)
+            if (wind) star4(gr, bx, by - h * 1.12f, w * 0.14f * (0.7f + 0.3f * pulse(t, 10f)), Col.withA(0xFFFFE070.toInt(), a))
+        }
+        // a puff of smoke as it vanishes
+        if (m.state == MS.VANISH) { gr.setAdditive(true); gr.glow(bx, by - h * 0.5f, w * (0.6f + m.t), Col.withA(0xFFC8A0F0.toInt(), 0.5f * (1f - clamp01(m.t / 0.5f)))); gr.setAdditive(false) }
+    }
+
+    /** The arc a swooper will fly across the path, shown dotted before it goes. */
+    private fun swoopWarning(gr: Gfx, m: Minion) {
+        val sp = m.spot ?: return
+        val on = ((g.t * 16f).toInt() and 1) == 0
+        if (!on) return
+        var px = 0f; var py = 0f; var ok = false
+        for (i in 0..16) {
+            val u = i / 16f
+            val x = lerp(sp.x - sp.amp - 0.6f, sp.x + sp.amp + 0.6f, u)
+            val k = 2f * u - 1f
+            val y = sp.y + 0.5f + 1.25f * k * k + 0.35f
+            if (!cam.project(x, y, sp.z + 0.5f)) { ok = false; continue }
+            if (ok && i % 2 == 0) gr.line(px, py, cam.sx, cam.sy, max(1.5f, 0.05f * cam.scaleAt(cam.depth)), Col.withA(0xFFE0A0FF.toInt(), 0.35f + 0.5f * m.warn))
+            px = cam.sx; py = cam.sy; ok = true
+        }
+    }
+
+    /** A magic bolt dropped by a lantern ship: a glowing orb in flight, a ring on the path where it will land. */
+    private fun drawBolt(gr: Gfx, b: Bolt) {
+        if (!b.landed) {
+            var m = 0
+            val u = clamp01(b.t / MinionSystem.BOLT_FLIGHT)
+            for (i in 0 until 16) {
+                val an = i / 16f * TAU
+                if (!cam.project(b.tx + cos(an) * 0.55f, b.ground + 0.03f, b.tz + sin(an) * 0.55f)) { m = 0; break }
+                poly[m * 2] = cam.sx; poly[m * 2 + 1] = cam.sy; m++
+            }
+            if (m > 0) {
+                val pa = 0.3f + 0.5f * u
+                gr.fillPoly(poly, m, Col.withA(0xFFB040F0.toInt(), 0.18f + 0.3f * u * (0.7f + 0.3f * pulse(g.t, 10f))))
+                gr.strokePoly(poly, m, 3.5f * g.hud.s, Col.withA(0xFFF0C8FF.toInt(), pa))
+            }
+        }
+        if (!cam.project(b.x, b.y, b.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val a = smooth((cam.depth - 1.2f) / 1.5f)
+        if (a <= 0.01f) return
+        gr.setAdditive(true)
+        val r = (if (b.landed) 0.9f + b.t * 4f else 0.32f) * sc
+        gr.glow(cam.sx, cam.sy, r * 2.2f, Col.withA(0xFFA040FF.toInt(), 0.6f * a * (if (b.landed) 1f - b.t / 0.2f else 1f)))
+        gr.glow(cam.sx, cam.sy, r, Col.withA(0xFFF8E8FF.toInt(), a * (if (b.landed) 1f - b.t / 0.2f else 1f)))
+        gr.setAdditive(false)
+    }
+
+    /** A gem floating over the path (the design's purple gems), turning and glinting. */
+    private fun drawGemPickup(gr: Gfx, gp: GemPickup) {
+        val img = art.gemBig ?: art.gem
+        val bob = sin(gp.phase * 2.4f + gp.oz) * 0.08f
+        if (!cam.project(gp.x, gp.y + bob, gp.z)) return
+        val sc = cam.scaleAt(cam.depth)
+        val hgt = 0.72f * sc
+        if (hgt < 2f) return
+        val a = (1f - smooth((cam.depth - (maxDepth - 10f)) / 10f)) * smooth((cam.depth - 2.2f) / 1.6f)
+        if (a <= 0.01f) return
+        val spin = cos(g.t * 2.2f + gp.oz * 0.7f)
+        val wid = hgt * img.w / img.h * max(0.35f, abs(spin))
+        gr.setAdditive(true)
+        gr.glow(cam.sx, cam.sy, hgt * 1.2f, Col.withA(0xFFD060FF.toInt(), 0.55f * a))
+        gr.setAdditive(false)
+        gr.image(img, cam.sx - wid * 0.5f, cam.sy - hgt * 0.5f, wid, hgt, a)
+        val ph = fract(g.t * 0.9f + gp.oz * 0.13f)
+        if (ph < 0.25f) star4(gr, cam.sx + wid * 0.25f, cam.sy - hgt * 0.3f, hgt * 0.22f * sin(ph / 0.25f * Math.PI.toFloat()), Col.withA(Col.WHITE, a))
+    }
+
+    /** An iron chain slung between two points, sagging in the middle. */
+    private fun drawChain(gr: Gfx, c: ChainLink) {
+        var px = 0f; var py = 0f; var ok = false
+        val n = 14
+        for (i in 0..n) {
+            val u = i / n.toFloat()
+            val x = lerp(c.x0, c.x1, u); val z = lerp(c.z0, c.z1, u); val y = lerp(c.y0, c.y1, u) - c.sag * 4f * u * (1f - u)
+            if (!cam.project(x, y, z)) { ok = false; continue }
+            val sc = cam.scaleAt(cam.depth)
+            val a = nearFade(cam.depth)
+            if (ok && a > 0.01f) {
+                gr.line(px, py, cam.sx, cam.sy, max(1.5f, 0.09f * sc), Col.withA(0xFF1E1A26.toInt(), a))
+                if (i % 2 == 0) gr.strokeCircle(cam.sx, cam.sy, max(1f, 0.07f * sc), max(1f, 0.03f * sc), Col.withA(0xFF6A6478.toInt(), a))
+            }
+            px = cam.sx; py = cam.sy; ok = true
+        }
+    }
+
+    /**
+     * A fantasy tower of the design: a round-ish moonstone turret with a gold band, a pointed purple witch-hat roof with a
+     * gold tip, a glowing window and a pennant.
+     */
+    private fun drawSpire(gr: Gfx, d: Deco) {
+        val x = d.x; val base = d.y; val z = d.z; val r = d.w * 0.5f
+        val h = d.w * 2.0f
+        // it stands on its own little floating rock beside the course, moss on top
+        val tex = art.pillarSide
+        if (tex != null) {
+            val d0 = cam.depthOf(x, base - 1f, z)
+            val ra = nearFade(d0 + 0.5f); val rh = hazeFor(d0)
+            if (ra > 0.01f) {
+                val rw = d.w * 1.9f
+                drawBox(gr, x - rw * 0.5f, base - 0.45f, z - rw * 0.5f, x + rw * 0.5f, base, z + rw * 0.5f, art.pillarColor, 1, ra, 0f, null)
+                tier(gr, tex, art.texSize.toFloat(), x, z, rw, rw, base - 0.45f, x + 0.1f, z, rw * 0.12f, rw * 0.12f, base - 2.8f, ra, rh, 0.6f, 0.4f)
+                mossEdge(gr, x - rw * 0.5f, z - rw * 0.5f, x + rw * 0.5f, z - rw * 0.5f, base, (z * 7f).toInt(), ra, rh)
+            }
+        }
+        if (!drawBox(gr, x - r, base, z - r, x + r, base + h, z + r, art.pillarColor, 2, 1f, 0f, null)) return
+        drawBox(gr, x - r - 0.08f, base + h - 0.05f, z - r - 0.08f, x + r + 0.08f, base + h + 0.14f, z + r + 0.08f, BC.GOLD, 0, 1f, 0f, null)
+        // the roof: a cone of four faces (purple, shaded), lit from the upper left
+        val top = base + h + 0.14f; val tipY = top + d.w * 1.9f
+        val rr = r + 0.18f
+        if (!cam.project(x, tipY, z)) return
+        val tx = cam.sx; val ty = cam.sy
+        val a = nearFade(cam.depth)
+        if (a <= 0.01f) return
+        val haze = hazeFor(cam.depth)
+        // faces sorted back to front (the camera looks along +z: the -z face is nearest)
+        for (fi in SPIRE_ORDER) {
+            val c0x = SPIRE_CX[fi] * rr; val c0z = SPIRE_CZ[fi] * rr; val c1x = SPIRE_CX[(fi + 1) % 4] * rr; val c1z = SPIRE_CZ[(fi + 1) % 4] * rr
+            val nx = (c0x + c1x) * 0.5f; val nz = (c0z + c1z) * 0.5f
+            if ((cam.ex - (x + nx)) * nx + (cam.ez - (z + nz)) * nz < 0f) continue
+            if (!cam.project(x + c0x, top, z + c0z)) return
+            poly[0] = cam.sx; poly[1] = cam.sy
+            if (!cam.project(x + c1x, top, z + c1z)) return
+            poly[2] = cam.sx; poly[3] = cam.sy
+            poly[4] = tx; poly[5] = ty
+            val col = Col.mix(Col.scale(0xFF6A2CB8.toInt(), SPIRE_SHADE[fi]), skyHaze, haze)
+            gr.fillPolyGradient(poly, 3, tx, ty, (poly[0] + poly[2]) * 0.5f, (poly[1] + poly[3]) * 0.5f, Col.withA(Col.mix(col, 0xFFB080F0.toInt(), 0.25f), a), Col.withA(col, a))
+        }
+        val sc = cam.scaleAt(cam.depth)
+        gr.fillCircle(tx, ty, max(1f, 0.07f * sc), Col.withA(0xFFFFD040.toInt(), a))
+        // the pennant on the tip, fluttering
+        val t = g.t + d.z
+        val fl = sin(t * 5f) * 0.08f
+        if (cam.project(x + 0.55f, tipY - 0.05f + fl, z)) {
+            poly[0] = tx; poly[1] = ty; poly[2] = cam.sx; poly[3] = cam.sy
+            if (cam.project(x, tipY - 0.3f, z)) { poly[4] = cam.sx; poly[5] = cam.sy; gr.fillPoly(poly, 3, Col.withA(Col.mix(0xFFE03A6A.toInt(), skyHaze, haze), a)) }
+        }
+        // a glowing window on the side facing the camera
+        if (cam.project(x, base + h * 0.62f, z - r - 0.01f)) {
+            val wsc = cam.scaleAt(cam.depth)
+            gr.fillRoundRect(cam.sx - 0.1f * wsc, cam.sy - 0.2f * wsc, cam.sx + 0.1f * wsc, cam.sy + 0.12f * wsc, 0.1f * wsc, Col.withA(0xFFFFC860.toInt(), a))
+            gr.setAdditive(true); gr.glow(cam.sx, cam.sy, 0.35f * wsc, Col.withA(0xFFFFB040.toInt(), 0.4f * a)); gr.setAdditive(false)
+        }
+    }
+
+    /** A cluster of glowing magic crystals (violet, pink and blue) standing on an island. */
+    private fun drawCrystal(gr: Gfx, d: Deco) {
+        val x = d.x; val y = d.y; val z = d.z; val s0 = d.w
+        if (!cam.project(x, y + 0.6f * s0, z)) return
+        val a = nearFade(cam.depth)
+        if (a <= 0.01f) return
+        val sc = cam.scaleAt(cam.depth)
+        if (sc * s0 < 3f) return
+        val haze = hazeFor(cam.depth)
+        val t = g.t + z
+        gr.setAdditive(true)
+        gr.glow(cam.sx, cam.sy, 1.1f * s0 * sc, Col.withA(0xFFC060FF.toInt(), a * (0.3f + 0.12f * pulse(t, 2f))))
+        gr.setAdditive(false)
+        for (k in 0 until 4) {
+            val ox = CRYSTAL_SHARDS[k * 4] * s0; val oz = CRYSTAL_SHARDS[k * 4 + 1] * s0; val hh = CRYSTAL_SHARDS[k * 4 + 2] * s0; val lean = CRYSTAL_SHARDS[k * 4 + 3]
+            if (!cam.project(x + ox, y, z + oz)) continue
+            val bx = cam.sx; val by = cam.sy
+            val w = 0.16f * s0 * cam.scaleAt(cam.depth)
+            if (!cam.project(x + ox + lean * 0.01f * hh, y + hh, z + oz)) continue
+            val tx = cam.sx; val ty = cam.sy
+            val c = Col.mix(CRYSTAL_COLS[k], skyHaze, haze * 0.7f)
+            poly[0] = bx - w; poly[1] = by; poly[2] = bx - w * 0.9f; poly[3] = lerp(by, ty, 0.7f); poly[4] = tx; poly[5] = ty
+            poly[6] = bx + w * 0.9f; poly[7] = lerp(by, ty, 0.7f); poly[8] = bx + w; poly[9] = by
+            gr.fillPolyGradient(poly, 5, tx, ty, bx, by, Col.withA(Col.mix(c, Col.WHITE, 0.55f), a), Col.withA(c, a))
+            gr.line(tx, ty, bx - w * 0.2f, by, max(1f, w * 0.25f), Col.withA(Col.WHITE, 0.45f * a))
+        }
+        val ph = fract(t * 0.7f)
+        if (ph < 0.3f) star4(gr, cam.sx + 0.2f * s0 * sc, cam.sy - 0.5f * s0 * sc, 0.25f * s0 * sc * sin(ph / 0.3f * Math.PI.toFloat()), Col.withA(Col.WHITE, a))
+    }
+
+    /** A blossom tree on an island (the design's magenta-flowered trees): a curved trunk and a round, shaded pink crown. */
+    private fun drawBlossom(gr: Gfx, x: Float, y: Float, z: Float, h: Float, lean: Float, a: Float, haze: Float, seed: Int) {
+        val trunk = Col.withA(Col.mix(0xFF6A3E2A.toInt(), skyHaze, haze), a)
+        var px = 0f; var py = 0f; var sc = 1f
+        for (i in 0..5) {
+            val u = i / 5f
+            if (!cam.project(x + lean * 0.35f * u * u, y + h * u, z)) return
+            sc = cam.scaleAt(cam.depth)
+            if (i > 0) gr.line(px, py, cam.sx, cam.sy, max(1.2f, (0.17f - 0.07f * u) * sc), trunk)
+            px = cam.sx; py = cam.sy
+        }
+        if (sc < 2f) return
+        val cx = x + lean * 0.35f; val cy = y + h + 0.1f
+        // three layers of blossom: deep magenta underneath, pink, then pale pink highlights on the lit upper left
+        for (layer in 0..2) {
+            val n = if (layer == 0) 7 else if (layer == 1) 6 else 4
+            val base = BLOSSOM_PINKS[if (layer == 0) 2 else if (layer == 1) 0 else 3]
+            for (k in 0 until n) {
+                val an = k * TAU / n + seed * 0.7f + layer * 0.5f
+                val rad = if (layer == 0) 0.6f else if (layer == 1) 0.42f else 0.24f
+                val ox = cos(an) * rad - (if (layer == 2) 0.15f else 0f)
+                val oy = sin(an) * rad * 0.55f + (if (layer == 0) -0.1f else if (layer == 1) 0.12f else 0.3f)
+                if (!cam.project(cx + ox, cy + oy, z - layer * 0.12f)) continue
+                val rr = (if (layer == 0) 0.36f else if (layer == 1) 0.32f else 0.2f) * (0.85f + 0.3f * fract(k * 0.61f + seed * 0.13f)) * cam.scaleAt(cam.depth)
+                gr.fillCircle(cam.sx, cam.sy, rr, Col.withA(Col.mix(base, skyHaze, haze), a))
+            }
+        }
     }
 }

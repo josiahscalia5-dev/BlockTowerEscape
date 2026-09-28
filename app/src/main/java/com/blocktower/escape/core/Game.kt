@@ -81,6 +81,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     val rig = PlayerRig(this)
     /** Level 5's Runaway Relic (CHASE & COLLECT). */
     val relic = RelicChase(this)
+    /** Level 7: the Sorcerer's minions. */
+    val minions = MinionSystem(this)
     /** Levels 5 and 6: height of the lava sea (the cloud sea), far below the course (it follows the climb). */
     var seaY = -100f
     val view = WorldRenderer(this)
@@ -179,10 +181,11 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         coinsCollected = 0; mysteryOpened = 0; falls = 0; checkpoint = 0
         for (k in 0..3) tools[k].count = spec.toolCounts[k]
         for (tl in tools) { tl.active = 0f; tl.cooldown = 0f; tl.anim = 0f; tl.gain = 0f; tl.readyFlash = 0f }
-        fx.clear(); ev.reset(); relic.reset(); seaY = -100f
+        fx.clear(); ev.reset(); relic.reset(); minions.reset(); seaY = -100f
+        gemsCollected = 0
         results = null; failReason = ""
         shake = 0f; rumble = 0f; flashWhite = 0f; flashRed = 0f; hint = ""; hintT = 0f; pendingHint = ""
-        camInit = false; camYaw = 0f; camCyK = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
+        camInit = false; camYaw = 0f; camCyK = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f; minionCam = 0f
         combo = 0; lastTargetT = -9f
         kickY = 0f; kickV = 0f; camLead = 0f; camRoll = 0f; camFov = 1f
         swipe.reset(); joy.release(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f; movedYet = false
@@ -208,6 +211,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         restoreFrom(cp.z)
         ev.resetAfter(cp.z, cp.y)
         relic.resetAfter(cp.z)
+        minions.resetAfter(cp.z)
         player.reset(cp.x, cp.y, cp.z)
         hearts = maxHearts; hud.bumpHearts()
         continues++
@@ -216,7 +220,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         fx.clear(); results = null; failReason = ""
         shake = 0f; flashRed = 0f; flashWhite = 0f; slowMo = 1f; slowTarget = 1f; slowHold = 0f
         state = GS.INTRO; stateT = 1.39f; introCountFrom = 1.39f; introSwoop = false; paused = false
-        camInit = false; camYaw = 0f; camCyK = 0f
+        camInit = false; camYaw = 0f; camCyK = 0f; minionCam = 0f
         swipe.stop(); steerX = player.x; turn = 0f; flickJumpT = 0f; autoHoldT = 0f
         markSpawnContacts()
     }
@@ -283,6 +287,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         updateSpikeBoxes(sdt)
         ev.update(sdt)
         relic.update(sdt)
+        minions.update(sdt)
         updatePlayer(sdt)
         updateCoins(sdt)
         checkTriggers()
@@ -1471,6 +1476,17 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             }
             if (d < 0.8f && (p.state == PS.NORMAL || p.state == PS.LOOP || p.state == PS.SLIDE || p.state == PS.RESCUE_FALL)) collectCoin(c)
         }
+        // Level 7: gems over the path (the magnet pulls them in too)
+        for (gp in world.gemPicks) {
+            if (gp.collected) continue
+            if (abs(gp.z - pz) > 12f) continue
+            gp.phase += dt
+            val dx = px - gp.x; val dy = py - gp.y; val dz = pz - gp.z
+            val d = len3(dx, dy, dz)
+            if (magR > 0f && d < magR && p.state == PS.NORMAL) gp.pulled = true
+            if (gp.pulled) { val k = min(1f, 15f * dt / max(d, 0.001f)); gp.x += dx * k; gp.y += dy * k; gp.z += dz * k }
+            if (d < 0.85f && (p.state == PS.NORMAL || p.state == PS.RESCUE_FALL)) collectGem(gp)
+        }
         for (bb in world.bubbles) {
             if (bb.taken) { bb.pop = max(0f, bb.pop - dt * 3f); continue }
             if (abs(bb.z - pz) > 12f) continue
@@ -1514,6 +1530,21 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             // (down a slide the coins come thick and fast: fewer sparks, so they don't blaze over the boy)
             fx.burst(c.x, c.y, c.z, if (player.state == PS.SLIDE) 2 else 6, PK.SPARK, 0xFFFFE070.toInt(), 2.5f, 0.1f, 0.35f)
         }
+    }
+
+    /** Gems picked up from the path (Level 7). */
+    var gemsCollected = 0
+
+    private fun collectGem(gp: GemPickup) {
+        gp.collected = true
+        gemsCollected++
+        score += 50
+        platform.sound(Sfx.GEM, 0.9f, 1f + (gemsCollected % 4) * 0.05f)
+        if (cam.project(gp.x, gp.y, gp.z)) {
+            fx.fly(FK.GEM, cam.sx, cam.sy, hud.gemIconX(), hud.gemIconY(), 1, 0f, 0.6f)
+            fx.burst(gp.x, gp.y, gp.z, 8, PK.STAR, 0xFFE8A8FF.toInt(), 2.8f, 0.1f, 0.45f)
+        }
+        player.collectT = 0f
     }
 
     private fun takeBubble(bb: Bubble) {
@@ -1747,6 +1778,7 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             steerX = x
             p.invuln = 1.5f; p.landT = 0f; p.landAmt = 0.6f
             ev.onRecovered(x, y, z)
+            minions.onRecovered()
             fx.burst(p.x, p.y + 0.3f, p.z, 20, PK.STAR, 0xFFB8F2FF.toInt(), 4f, 0.14f, 0.6f)
             fx.popupWorld("BACK ON TRACK!", p.x, p.y + 2.3f, p.z, Col.WHITE, 42f)
             gather(p.z - 1f, p.z + 1f)
@@ -1826,6 +1858,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             Ev.ZONE -> fx.toast(tr.text, tr.text2, 0xFFFFE14A.toInt())
             Ev.TUT -> { hint = ""; hintT = 0f; queueHint(tutText(tr.text), tr.text2.toIntOrNull() ?: 7) }
             Ev.RELIC -> relic.start()
+            Ev.MINIONS -> minions.startWave(tr.text2.toIntOrNull() ?: 0)
+            Ev.MINIONS_END -> minions.endWave(tr.text2.toIntOrNull() ?: 0)
             else -> ev.fire(tr.event)
         }
     }
@@ -1941,8 +1975,12 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
     // ------------------------------------------------------------------ camera
     private fun noise(x: Float) = sin(x) * 0.6f + sin(x * 2.17f + 1.3f) * 0.3f + sin(x * 4.31f + 2.1f) * 0.1f
 
+    /** 0..1: the camera's pull-back while the minions chase (eased in and out). */
+    private var minionCam = 0f
+
     private fun updateCamera(dt: Float) {
         val p = player
+        minionCam = approach(minionCam, if (minions.pursuit && state == GS.PLAY) 1f else 0f, dt * 0.8f)
         var dist = baseDist; var height = baseHeight; var pitch = basePitch; var fov = 1f; var roll = 0f; var yaw = 0f
         if (state == GS.INTRO && introSwoop) {
             val u = smooth(stateT / 2.8f)
@@ -1955,6 +1993,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
             if (spec.plate) yaw -= 0.08f * k
         }
         if (spec.plate && ev.chase == Chase.REVEAL) { dist += 1.3f; height += 0.9f; yaw -= 0.1f * smooth(ev.phaseT / 0.5f); fov = 0.95f }
+        // Level 7: while the minions chase him the camera draws back and up a little, so they show at the screen's sides
+        if (minionCam > 0.001f) { dist += 0.6f * minionCam; height += 0.35f * minionCam; fov = lerp(fov, 0.94f, minionCam); roll += sin(t * 1.25f) * 0.008f * minionCam }
         if (ev.lavaOn && !ev.lavaStop) { dist += 0.5f; height += 0.5f; pitch += 0.03f }
         if (ev.finalOn && state == GS.PLAY) {
             // the final escape: a lower, closer, wider camera that sways with the collapse
@@ -2159,6 +2199,8 @@ class Game(val platform: Platform, levelNumber: Int = 5, sharedArt: Art? = null,
         if (ev.windOn) i = max(i, 0.55f)
         if (ev.chase == Chase.WARNING || ev.chase == Chase.REVEAL) i = max(i, 0.75f)
         if (ev.chase == Chase.RUN || ev.finalOn) i = 1f
+        if (minions.anyWave) i = max(i, 0.8f)
+        if (minions.pursuit) i = 1f
         if (ev.lavaOn && !ev.lavaStop) i = max(i, 0.9f)
         return i
     }

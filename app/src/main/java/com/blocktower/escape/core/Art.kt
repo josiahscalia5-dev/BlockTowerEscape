@@ -4,9 +4,15 @@ package com.blocktower.escape.core
 class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
     private val volcano = theme == Theme.VOLCANO
     private val temple = theme == Theme.SKY_TEMPLE
-    private val plate = volcano || temple
-    /** The sky: Level 6 has a sharper one (twice the design's size) for big, high-resolution screens ([hd]). */
-    val bg = p.loadImage(when { volcano -> "l5v/bg_plate.jpg"; temple -> if (hd) "l6/bg_plate_hd.jpg" else "l6/bg_plate.jpg"; else -> "img/bg_plate.jpg" })
+    private val enchanted = theme == Theme.ENCHANTED
+    private val plate = volcano || temple || enchanted
+    /** The sky: Levels 6 and 7 have a sharper one (twice the design's size) for big, high-resolution screens ([hd]). */
+    val bg = p.loadImage(when {
+        volcano -> "l5v/bg_plate.jpg"
+        temple -> if (hd) "l6/bg_plate_hd.jpg" else "l6/bg_plate.jpg"
+        enchanted -> if (hd) "l7/bg_plate_hd.jpg" else "l7/bg_plate.jpg"
+        else -> "img/bg_plate.jpg"
+    })
     /** Where the design sits inside the background plate, and the design's size (in the design's own pixels). */
     val bgArtX = if (plate) 0f else 64f
     val bgArtY = if (plate) 0f else 480f
@@ -43,8 +49,11 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
     val cracks = arrayOf(p.loadImage("emb/cracks1.png"), p.loadImage("emb/cracks2.png"), p.loadImage("emb/cracks3.png"))
     val lava = p.loadImage("emb/lava.png")
     val swirl = p.loadImage("emb/portal_swirl.png")
-    /** The destination cut from the level's design: the Ancient Gate (Level 4), the volcano fortress (Level 5) or the sky temple (Level 6). */
-    val gate = p.loadImage(when { volcano -> "l5v/gate.png"; temple -> "l6/gate.png"; else -> "img/gate.png" })
+    /**
+     * The destination cut from the level's design: the Ancient Gate (Level 4), the volcano fortress (Level 5), the sky
+     * temple (Level 6) or the Celestial Gate, the golden crystal castle with the star portal (Level 7).
+     */
+    val gate = p.loadImage(when { volcano -> "l5v/gate.png"; temple -> "l6/gate.png"; enchanted -> "l7/gate.png"; else -> "img/gate.png" })
     val guardFace = p.loadImage("emb/guard_face.png")
 
     // ---- Level 5 (volcanic sky fortress) art, cut from its design by `sim l5art`; Level 6 (the sky temple) art, cut
@@ -55,13 +64,24 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
     val banner = if (volcano) p.loadImage("l5v/banner.png") else null
     /** Level 6: the helicopter flying round the sky temple, and a strip of its waterfalls (tiles vertically). */
     val heli = if (temple) p.loadImage("l6/heli.png") else null
-    val falls = if (temple) p.loadImage("l6/falls.png") else null
-    /** Level 6: soft clouds for the cloud sea far below the course (tiles both ways). */
-    val clouds = if (temple) p.createImage(cloudTexture(128)) else null
+    val falls = if (temple) p.loadImage("l6/falls.png") else if (enchanted) p.loadImage("l7/falls.png") else null
+    /** Levels 6 and 7: soft clouds for the cloud sea far below the course (tiles both ways): blue sky or the pink dusk. */
+    val clouds = if (temple || enchanted) p.createImage(cloudTexture(128, enchanted)) else null
+    // ---- Level 7 (the enchanted sky realm) art, cut from its design by design/level7/build_l7.py
+    /** The hooded Sorcerer in the sky, his minions (witch-hat imps, the orb imp, the lantern ship), the balloon and the gem. */
+    val sorcerer = if (enchanted) p.loadImage("l7/sorcerer.png") else null
+    val minionHat = if (enchanted) p.loadImage("l7/m_hat.png") else null
+    val minionHat2 = if (enchanted) p.loadImage("l7/m_hat2.png") else null
+    val minionOrb = if (enchanted) p.loadImage("l7/m_orb.png") else null
+    val minionShip = if (enchanted) p.loadImage("l7/m_ship.png") else null
+    val balloon = if (enchanted) p.loadImage("l7/balloon.png") else null
+    val gemBig = if (enchanted) p.loadImage("l7/gem.png") else null
+    /** The design's wooden RUN • JUMP • COLLECT • ESCAPE plank along the bottom of the screen (the Home screen's). */
+    val plank = if (enchanted) p.loadImage("home/tagline.png") else null
     /** Tall stone texture (the brick courses repeated) for the pillars and islands under the course. */
     val pillarSide: Img?
     /** The stone the pillars and islands are made of. */
-    val pillarColor = if (temple) BC.SAND else BC.FORT
+    val pillarColor = if (temple) BC.SAND else if (enchanted) BC.MOON else BC.FORT
 
     /** [colour][variant] */
     val top: Array<Array<Img>>
@@ -87,7 +107,7 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
      * A tileable patch of soft cloud tops (fractal value noise that wraps round): pale lavender-white billows with
      * blue sky showing between them, the colours of the Level 6 design's clouds.
      */
-    private fun cloudTexture(size: Int): Pixels {
+    private fun cloudTexture(size: Int, pink: Boolean = false): Pixels {
         val out = IntArray(size * size)
         val rng = Rng(66)
         val grids = Array(5) { o -> val g = 4 shl o; FloatArray(g * g) { rng.f() } }
@@ -100,7 +120,10 @@ class Art(p: Platform, val theme: Int = Theme.SKY_TOWER, hd: Boolean = false) {
             val a = lerp(v(x0, y0), v(x0 + 1, y0), ux); val b = lerp(v(x0, y0 + 1), v(x0 + 1, y0 + 1), ux)
             return lerp(a, b, uy)
         }
-        val sky = 0xFFA8C8F4.toInt(); val lav = 0xFFD6CCF0.toInt(); val white = 0xFFF8F6FF.toInt()
+        // (Level 7: the design's dusk: violet between rose-pink and lavender billows, lit warm white)
+        val sky = if (pink) 0xFFB89CE0.toInt() else 0xFFA8C8F4.toInt()
+        val lav = if (pink) 0xFFE8BCE4.toInt() else 0xFFD6CCF0.toInt()
+        val white = if (pink) 0xFFFFF0F6.toInt() else 0xFFF8F6FF.toInt()
         for (y in 0 until size) for (x in 0 until size) {
             val u = x / size.toFloat(); val v = y / size.toFloat()
             var n = 0f; var amp = 0.5f

@@ -186,7 +186,8 @@ class Events(val g: Game) {
                 val c = finalCollapse
                 c.on = true; c.z = p.z - 6f; c.speed = 3.0f; c.maxSpeed = 5.0f; c.accel = 0.4f
                 c.endZ = g.world.finalSafeZ - 0.5f
-                g.fx.banner("FINAL ESCAPE!", when { g.spec.volcano -> "THE BRIDGE IS FALLING — RUN FOR THE PORTAL!"; g.spec.temple -> "THE ISLANDS ARE FALLING — RUN FOR THE PORTAL!"; else -> "THE TOWER IS FALLING — RUN TO THE GATE!" }, 0xFFFFB04A.toInt(), 2.4f, true)
+                g.fx.banner("FINAL ESCAPE!", when { g.spec.volcano -> "THE BRIDGE IS FALLING — RUN FOR THE PORTAL!"; g.spec.temple -> "THE ISLANDS ARE FALLING — RUN FOR THE PORTAL!"
+                    g.spec.enchanted -> "THE STAR BRIDGE IS FADING — RUN FOR THE GATE!"; else -> "THE TOWER IS FALLING — RUN TO THE GATE!" }, 0xFFFFB04A.toInt(), 2.4f, true)
                 g.platform.sound(Sfx.CRUMBLE); g.platform.sound(Sfx.WARNING, 0.7f); g.platform.haptic(true)
                 g.shake = max(g.shake, 0.6f)
             }
@@ -229,6 +230,8 @@ class Events(val g: Game) {
                 meterKind = 1; meterLabel = "COLLAPSE"; meter = 1f - clamp01((p.z - finalCollapse.z - 1f) / 9f); 1f
             }
             lavaOn && !lavaStop && g.state == GS.PLAY -> { meterKind = 2; meterLabel = "LAVA"; meter = 1f - clamp01((p.y - lavaY - 0.8f) / 6f); 1f }
+            // Level 7: the Sorcerer's minions flying after the boy
+            g.minions.pursuit && g.state == GS.PLAY -> { meterKind = 3; meterLabel = "MINIONS"; meter = g.minions.meter; 1f }
             else -> 0f
         }
         meterShow = approach(meterShow, want, dt * 3f)

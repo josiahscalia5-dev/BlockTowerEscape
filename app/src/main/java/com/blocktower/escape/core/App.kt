@@ -323,7 +323,7 @@ class App(platform: Platform, showSplash: Boolean = true) : GameHost {
         val opened = progress.recordLevel(n, r.stars, r.totalScore, r.earnedCoins + r.rewardCoins, r.earnedGems + r.gemReward,
             r.targetGot, r.coinsCollected, g.toolUses, g.ev.chase == Chase.ESCAPED, g.mysteryOpened, !g.heartLost)
         if (g.relic.caught) {
-            if (n == 6) progress.runawayRelic6 = true else progress.runawayRelic = true
+            when (n) { 6 -> progress.runawayRelic6 = true; 7 -> progress.runawayRelic7 = true; else -> progress.runawayRelic = true }
             progress.save()
         }
         if (opened && n + 1 <= Levels.count) justUnlocked = n + 1

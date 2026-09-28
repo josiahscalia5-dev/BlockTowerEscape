@@ -221,6 +221,7 @@ class Hud(val g: Game) {
         if (g.spec.plate) drawLevel5Panels(gr)
         drawTargetPanel(gr)
         for (k in 0..3) drawTool(gr, k)
+        if (g.spec.enchanted) drawPlank(gr)
         drawJoystick(gr)
         drawJump(gr)
         drawSwipeTrail(gr)
@@ -540,11 +541,32 @@ class Hud(val g: Game) {
     }
     private val arrowPath = VPath()
 
+    /**
+     * Level 7: the design's wooden plank with RUN • JUMP • COLLECT • ESCAPE along the bottom, between the movement pad
+     * and the JUMP button (it is only a picture: swipes over it still steer).
+     */
+    private fun drawPlank(gr: Gfx) {
+        val img = g.art.plank ?: return
+        val pw = min(ax(772f) - ax(318f), 470f * s)
+        val ph = pw * img.h / img.w
+        val cxp = (ax(318f) + ax(772f)) * 0.5f
+        val bottom = ayB(1528f)
+        gr.image(img, cxp - pw * 0.5f, bottom - ph, pw, ph, 0.96f)
+    }
+    /** Top of the Level 7 plank (the danger meter sits above it). */
+    private fun plankTop(): Float {
+        val img = g.art.plank ?: return h
+        val pw = min(ax(772f) - ax(318f), 470f * s)
+        return ayB(1528f) - pw * img.h / img.w
+    }
+
     private fun drawMeter(gr: Gfx) {
         val a = g.ev.meterShow
         if (a <= 0.01f) return
-        // bottom centre, between the joystick and the jump button (the danger comes from behind)
-        val l = ax(335f); val r = ax(745f); val t = ayB(1452f) + (1f - a) * 30f * s; val b = t + 54f * s
+        // bottom centre, between the joystick and the jump button (the danger comes from behind); above the plank in Level 7
+        val l = ax(335f); val r = ax(745f); var t = ayB(1452f) + (1f - a) * 30f * s
+        if (g.spec.enchanted) t = min(t, plankTop() - 64f * s + (1f - a) * 30f * s)
+        val b = t + 54f * s
         gr.fillRoundRect(l, t, r, b, 16f * s, Col.withA(0xFF0A1438.toInt(), 0.85f * a))
         gr.strokeRoundRect(l, t, r, b, 16f * s, 3f * s, Col.withA(0xFFFF5A4A.toInt(), a))
         val label = g.ev.meterLabel
@@ -561,6 +583,11 @@ class Hud(val g: Game) {
         if (g.ev.meterKind == 0) {
             gr.fillRect(ex - 12f * s, ey - 5f * s, ex - 3f * s, ey + 1f * s, Col.withA(0xFFFF8A20.toInt(), a))
             gr.fillRect(ex + 3f * s, ey - 5f * s, ex + 12f * s, ey + 1f * s, Col.withA(0xFFFF8A20.toInt(), a))
+        } else if (g.ev.meterKind == 3) {
+            // the Sorcerer's imp: a purple witch hat over two glowing eyes
+            tp[0] = ex - 15f * s; tp[1] = ey - 2f * s; tp[2] = ex + 15f * s; tp[3] = ey - 2f * s; tp[4] = ex + 3f * s; tp[5] = ey - 20f * s
+            gr.fillPoly(tp, 3, Col.withA(0xFF7A3CD0.toInt(), a))
+            gr.fillCircle(ex - 6f * s, ey + 7f * s, 4f * s, Col.withA(0xFFFFB030.toInt(), a)); gr.fillCircle(ex + 6f * s, ey + 7f * s, 4f * s, Col.withA(0xFFFFB030.toInt(), a))
         } else if (g.ev.meterKind == 2) {
             gr.fillRoundRect(ex - 14f * s, ey - 2f * s, ex + 14f * s, ey + 14f * s, 5f * s, Col.withA(0xFFFF6A10.toInt(), a))
             gr.fillCircle(ex - 5f * s, ey - 4f * s, 6f * s, Col.withA(0xFFFFB040.toInt(), a)); gr.fillCircle(ex + 6f * s, ey - 7f * s, 4f * s, Col.withA(0xFFFFD070.toInt(), a))

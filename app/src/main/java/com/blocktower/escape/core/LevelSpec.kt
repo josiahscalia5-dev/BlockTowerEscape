@@ -1,7 +1,7 @@
 package com.blocktower.escape.core
 
 /** Which art set a level uses (world plate, landmark gate, chaser, checkpoints, block trims). */
-object Theme { const val SKY_TOWER = 0; const val VOLCANO = 1; const val SKY_TEMPLE = 2 }
+object Theme { const val SKY_TOWER = 0; const val VOLCANO = 1; const val SKY_TEMPLE = 2; const val ENCHANTED = 3 }
 
 /**
  * Everything that differs from one level to the next: the numbers on the HUD, the objective, the tools
@@ -47,8 +47,12 @@ class LevelSpec(
     val volcano get() = theme == Theme.VOLCANO
     /** Level 6: the sky temple (its own plate, temple gate, cloud sea, stone Guardian, rainbow slides). */
     val temple get() = theme == Theme.SKY_TEMPLE
+    /** Level 7: the enchanted sky realm (its own plate, the Celestial Gate, pink cloud sea, the Sorcerer and his minions). */
+    val enchanted get() = theme == Theme.ENCHANTED
+    /** Levels 6 and 7: floating islands over a sea of clouds (not lava). */
+    val skyIsles get() = temple || enchanted
     /**
-     * Levels built on their design's picture (5 and 6): the design's sky plate with the destination standing far
+     * Levels built on their design's picture (5, 6 and 7): the design's sky plate with the destination standing far
      * away in it, the route-progress / score / CHASE & COLLECT panels, and the Guardian running beside the path.
      */
     val plate get() = theme != Theme.SKY_TOWER
@@ -131,10 +135,26 @@ object Levels {
         coinStar = 0.5f, timeStar = 40, rewardCoins = 400, rewardGems = 10,
     ) { Level6.build() }
 
-    /** Levels that exist so far (1..6). */
-    val all = listOf(level1, level2, level3, level4, level5, level6)
+    /**
+     * Level 7: the enchanted sky realm from the approved Level 7 design (design/level7_reference.png): the longest,
+     * hardest route yet, over floating islands with waterfalls and witch-hat towers to the Celestial Gate (the golden
+     * crystal castle with the star portal) far away in the violet sky, while the hooded Sorcerer sends his minions after
+     * the boy, and the Runaway Relic to chase.
+     */
+    val level7 = LevelSpec(
+        number = 7, name = "Enchanted Sky", theme = Theme.ENCHANTED, targetNeed = 20, startTime = 190f,
+        startHearts = 3, maxHearts = 3, toolCounts = intArrayOf(3, 3, 2, 3),
+        guardName = "", gateName = "Celestial Gate",
+        camDist = 4.6f, camHeight = 3.45f, camPitch = 0.36f, camFocal = 1.0f,
+        extraObjective = "Escape the Sorcerer's minions",
+        newThings = listOf("The Sorcerer's minions", "Minion pursuit", "Magic bolts", "Gems on the path", "Runaway Relic (bonus)"),
+        coinStar = 0.5f, timeStar = 35, rewardCoins = 480, rewardGems = 12,
+    ) { Level7.build() }
+
+    /** Levels that exist so far (1..7). */
+    val all = listOf(level1, level2, level3, level4, level5, level6, level7)
     val count get() = all.size
 
     /** Level by number (23, the old number of the Screen 4 level, still means Level 4). */
-    fun get(n: Int) = when (n) { 1 -> level1; 2 -> level2; 3 -> level3; 4, 23 -> level4; 5 -> level5; else -> level6 }
+    fun get(n: Int) = when (n) { 1 -> level1; 2 -> level2; 3 -> level3; 4, 23 -> level4; 5 -> level5; 6 -> level6; else -> level7 }
 }
